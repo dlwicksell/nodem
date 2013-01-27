@@ -1,0 +1,2 @@
+export GTMCI=${HOME}/nodem/resources/calltab.ci
+export gtmroutines="${HOME}/nodem/resources ${gtmroutines}"
