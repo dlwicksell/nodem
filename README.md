@@ -45,7 +45,8 @@ in your home directory. The paths will likely be different if you have
 installed this with npm (Node Package Manager). You will need to change
 directories to ~/nodem/lib/ and copy the correct version of mumps.node for
 your system architecture (mumps.node_i386 for 32-bit or mumps.node_x8664 for
-64-bit) to mumps.node in the ~/nodem/lib/ directory. E.g.
+64-bit) to mumps.node in the ~/nodem/lib/ directory. By default there is a
+mumps.node already there, which is a copy of the 64-bit version. E.g.
 
     $ cd ~/nodem/lib
     $ cp mumps.node_x8664 mumps.node
