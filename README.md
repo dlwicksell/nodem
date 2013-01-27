@@ -78,11 +78,16 @@ script. E.g.
 or
     $ echo "source ~/nodem/resources/environ" >> ~/.profile
 
-If you did not install Nodem in your home directory, you will need to fix the
-paths in the environ file. If you don't source the environ file, than you will
-need to put a copy of node.m into a directory that is specified in your
-$gtmroutines routine path, so that the GT.M shared library can find it. It is
-located in ~/nodem/resources/ directory.
+If you did not install Nodem in your home directory, you will need to fix
+the paths in the environ file. If you don't source the environ file, than
+you will need to put a copy of node.m into a directory that is specified in
+your $gtmroutines routine path, so that the GT.M shared library can find it.
+It is located in ~/nodem/resources/ directory. Again, if you don't source
+the environ file, than you will need to define the GTMCI environment
+variable, and point it at the file calltab.ci, located in the
+~/nodem/resources/ directory. E.g.
+
+    $ export GTMCI=~/nodem/resources/calltab.ci
 
 You can clone the repository with this command..
 
