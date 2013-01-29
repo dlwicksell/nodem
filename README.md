@@ -25,8 +25,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 Currently, the Node.js addon module itself, mumps.node, is not fully open
 sourced, and is therefore excluded under this license. That is not a
 permanent state, however. It is still being actively developed and not all
-of its API are finished, nor all of its core functionality. Once finished,
-, or when the author deems it appropriate, it will be fully open sourced,
+of its APIs are finished, nor all of its core functionality. Once finished,
+or when the author deems it appropriate, it will be fully open sourced,
 probably under the LGPL 3.0.
 
 ***
