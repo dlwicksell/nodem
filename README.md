@@ -2,7 +2,7 @@
 
 ## A Node.js binding to the GT.M language and database ##
 
-Version 0.1.0 - 2013 Jan 27
+Version 0.1.0 - 2013 Jan 29
 
 ## Copyright and License ##
 
@@ -21,6 +21,13 @@ GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
+
+Currently, the Node.js addon module itself, mumps.node, is not fully open
+sourced, and is therefore excluded under this license. That is not a
+permanent state, however. It is still being actively developed and not all
+of its API are finished, nor all of its core functionality. Once finished,
+, or when the author deems it appropriate, it will be fully open sourced,
+probably under the LGPL 3.0.
 
 ***
 
