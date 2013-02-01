@@ -1,2 +1,3 @@
 export GTMCI=${HOME}/nodem/resources/calltab.ci
 export gtmroutines="${HOME}/nodem/resources ${gtmroutines}"
+export LD_LIBRARY_PATH=${gtm_dist}:${LD_LIBRARY_PATH}
