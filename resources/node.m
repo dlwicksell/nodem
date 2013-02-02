@@ -1,7 +1,7 @@
-node() ;;2013-01-26  4:11 PM
+node() ;;2013-02-01  5:55 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012 Fourth Watch Software, LC
+ ; Copyright © 2012,2013 Fourth Watch Software, LC
  ; 
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
@@ -80,7 +80,7 @@ escape(data) ;escape quotes or ctrl chars within a string in mumps
 version() ;return the version string
  n $et s $et="zg "_$zl_":error^node"
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.1.0 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.1.2 (FWSLC); "_$zv
  ;
  ;
 set(glvn,subs,data) ;set a global
