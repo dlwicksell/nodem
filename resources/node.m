@@ -1,4 +1,4 @@
-node() ;;2013-02-01  5:55 PM
+node() ;;2013-02-13  7:16 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
  ; Copyright © 2012,2013 Fourth Watch Software, LC
@@ -20,9 +20,7 @@ node() ;;2013-02-01  5:55 PM
  quit:$q "Call an API entry point" w "Call an API entry point" quit
  ;
  ;
-parse(subs) ;parse an argument list or list of subscripts
- n $et s $et="zg "_$zl_":error^node"
- ;
+parse:(subs) ;parse an argument list or list of subscripts
  n i,num,sub,temp,tmp
  ;
  s (temp,tmp)=""
@@ -38,7 +36,7 @@ parse(subs) ;parse an argument list or list of subscripts
  . . . . e  s tmp=tmp_$e(sub,i)
  . . . ;
  . . . s sub=tmp
- . . i (sub'=+sub&($e(sub,1,2)'="0."))!($e(sub)=".") s sub=""""_sub_""""_","
+ . . i (sub'=+sub&($e(sub,1,2)'="0."))!($e(sub)=".") s sub=""""_sub_""","
  . . e  s sub=sub_","
  . . ;
  . . s temp=temp_sub,$e(subs,1,num+1)=""
@@ -48,9 +46,7 @@ parse(subs) ;parse an argument list or list of subscripts
  quit subs
  ;
  ;
-construct(glvn,subs) ;construct a global reference
- n $et s $et="zg "_$zl_":error^node"
- ;
+construct:(glvn,subs) ;construct a global reference
  n globalname,subscripts
  ;
  s subscripts=$$parse(.subs)
@@ -59,15 +55,12 @@ construct(glvn,subs) ;construct a global reference
  quit globalname
  ;
  ;
-escape(data) ;escape quotes or ctrl chars within a string in mumps
- n $et s $et="zg "_$zl_":error^node"
- ;
+escape:(data) ;escape quotes or ctrl chars within a string in mumps
  n i,charh,charl,ndata
  ;
  s ndata=""
  f i=1:1:$l(data) d
- . i $e(data,i)="""" s ndata=ndata_"\"_$e(data,i)
- . e  i $e(data,i)="\" s ndata=ndata_"\"_$e(data,i)
+ . i $e(data,i)=""""!($e(data,i)="\") s ndata=ndata_"\"_$e(data,i)
  . e  i $e(data,i)?1c d
  . . s charh=$a($e(data,i))\16,charh=$e("0123456789abcdef",charh+1)
  . . s charl=$a($e(data,i))#16,charl=$e("0123456789abcdef",charl+1)
@@ -80,16 +73,19 @@ escape(data) ;escape quotes or ctrl chars within a string in mumps
 version() ;return the version string
  n $et s $et="zg "_$zl_":error^node"
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.1.2 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.1.3 (FWSLC); "_$zv
  ;
  ;
-set(glvn,subs,data) ;set a global
+set(glvn,subs,data) ;set a global node
  n $et s $et="zg "_$zl_":error^node"
  ;
  n globalname,ok,result,return
  ;
- s globalname=$$construct(glvn,.subs)
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
  s @globalname=data
+ ;
  s ok=1,result=0
  ;
  s return="{""ok"": "_ok_", ""global"": """_glvn_""","
@@ -103,11 +99,14 @@ get(glvn,subs) ;get one node of a global
  ;
  n data,defined,globalname,ok,return
  ;
- s globalname=$$construct(glvn,.subs)
- s data=$g(@globalname)
- s:data[""""!(data["'")!(data?.e1c.e) data=$$escape(data)
+ i '$d(subs)#10 s subs=""
  ;
- i data'=+data s data=""""_data_""""
+ s globalname=$$construct(glvn,subs)
+ ;
+ s data=$g(@globalname)
+ s:data[""""!(data["\")!(data?.e1c.e) data=$$escape(data)
+ ;
+ i (data'=+data&($e(data,1,2)'="0."))!($e(data)=".") s data=""""_data_""""
  ;
  s defined=$d(@globalname)#10
  s ok=1
@@ -123,7 +122,9 @@ kill(glvn,subs) ;kill a global or global node
  ;
  n globalname,ok,result,return
  ;
- s globalname=$$construct(glvn,.subs)
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
  k @globalname
  ;
  s ok=1,result=0
@@ -139,8 +140,11 @@ data(glvn,subs) ;find out if global node has data or children
  ;
  n globalname,defined,ok,return
  ;
- s globalname=$$construct(glvn,.subs)
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
  s defined=$d(@globalname)
+ ;
  s ok=1
  ;
  s return="{""ok"": "_ok_", ""global"": """_glvn_""","
@@ -154,16 +158,18 @@ order(glvn,subs,order) ;return the next global node at the same level
  ;
  n globalname,defined,ok,result,return
  ;
- s globalname=$$construct(glvn,.subs)
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
  ;
  i $g(order)=-1 s result=$o(@globalname,-1)
  e  s result=$o(@globalname)
  ;
- i $e(result)="^" s result=$e(result,2,$l(result))
- s:result[""""!(result["'")!(result?.e1c.e) result=$$escape(result)
+ s:result[""""!(result["\")!(result?.e1c.e) result=$$escape(result)
  ;
- i subs,$e(result)="^" s $e(result)=""
- i (result'=+result&($e(result,1,2)'="0."))!($e(result)=".") s result=""""_result_""""
+ i $e(result)="^" s $e(result)=""
+ i (result'=+result&($e(result,1,2)'="0."))!($e(result)=".") d
+ . s result=""""_result_""""
  ;
  s ok=1
  ;
@@ -175,6 +181,8 @@ order(glvn,subs,order) ;return the next global node at the same level
  ;
 previous(glvn,subs) ;same as order, only in reverse
  n $et s $et="zg "_$zl_":error^node"
+ ;
+ i '$d(subs)#10 s subs=""
  ;
  quit $$order(glvn,subs,-1)
  ;
@@ -196,8 +204,11 @@ increment(glvn,subs,incr) ;increment the number in a global node
  ;
  n globalname,increment,ok,return
  ;
- s globalname=$$construct(glvn,.subs)
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
  s increment=$i(@globalname,$g(incr,1))
+ ;
  s ok=1
  ;
  s return="{""ok"": "_ok_", ""global"": """_glvn_""","
@@ -238,16 +249,14 @@ function(func,args) ;call an arbitrary extrinsic function
  i '$d(args)#10 s args=""
  s:args'="" args=$$parse(args)
  ;
- s io=$io
- s dev="/dev/null"
- o dev u dev
- ;
  s function=func_$s(args'="":"("_args_")",1:"")
  x "s result=$$"_function
  ;
- c dev u io
+ s:result[""""!(result["\")!(result?.e1c.e) result=$$escape(result)
  ;
- i result'=+result s result=""""_result_""""
+ i (result'=+result&($e(result,1,2)'="0."))!($e(result)=".") d
+ . s result=""""_result_""""
+ ;
  s ok=1
  ;
  s return="{""ok"": "_ok_", ""function"": """_func_""","
@@ -272,10 +281,13 @@ update() ;
 error ;
  s $ec=""
  ;
- n error
+ n error,errorCode,errorMsg
  ;
- s error="{""ok"": 0, ""errorCode"": "_$p($zs,",")_", "
- s error=error_"""errorMessage"": """_$p($p($zs," ",2,$l($zs," ")),":")_"""}"
+ s errorCode=$p($zs,",")
+ s errorMsg=$tr($p($zs,",",2,$l($zs,",")),"""","")
+ ;
+ s error="{""ok"": 0, ""errorCode"": "_errorCode_", "
+ s error=error_"""errorMessage"": """_errorMsg_"""}"
  ;
  quit error
  ;

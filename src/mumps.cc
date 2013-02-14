@@ -233,11 +233,11 @@ Handle<Value> Gtm::version(const Arguments &args)
 
     if (gtm_is_open == 0) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.1.2 (FWSLC) - "
+            String::New("Node.js Adaptor for GT.M: Version: 0.1.3 (FWSLC) - "
                         "must open() first"));
     } else if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.1.2 (FWSLC) - "
+            String::New("Node.js Adaptor for GT.M: Version: 0.1.3 (FWSLC) - "
                         "connection closed, cannot restart"));
     }
 
