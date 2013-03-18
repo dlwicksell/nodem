@@ -1,4 +1,4 @@
-node() ;;2013-02-13  7:16 PM
+node() ;;2013-03-18  3:58 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
  ; Copyright © 2012,2013 Fourth Watch Software, LC
@@ -73,7 +73,7 @@ escape:(data) ;escape quotes or ctrl chars within a string in mumps
 version() ;return the version string
  n $et s $et="zg "_$zl_":error^node"
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.1.3 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.2.0 (FWSLC); "_$zv
  ;
  ;
 set(glvn,subs,data) ;set a global node
@@ -223,10 +223,36 @@ merge() ;
  quit ""
  ;
  ;
-globalDirectory() ;
+globalDirectory(max,lo,hi) ;
  n $et s $et="zg "_$zl_":error^node"
  ;
- quit ""
+ n flag,cnt,global,return
+ ;
+ i '$d(max)#10 s max=0
+ ;
+ s cnt=1,flag=0
+ ;
+ i $g(lo)'="" s global="^"_lo
+ e  s global="^%"
+ ;
+ i $g(hi)="" s hi=""
+ e  s hi="^"_hi
+ ;
+ s return="[" 
+ ;
+ i $d(@global) d
+ . s return=return_""""_$e(global,2,$l(global))_""", "
+ . i max=1 s flag=1 q
+ . s:max>1 max=max-1
+ ;
+ f  s global=$o(@global) q:flag!(global="")!(global]]hi&(hi]""))  d
+ . s return=return_""""_$e(global,2,$l(global))_""", "
+ . i max>0 s cnt=cnt+1 s:cnt>max flag=1
+ ;
+ s:$l(return)>2 return=$e(return,1,$l(return)-2)
+ s return=return_"]"
+ ;
+ quit return
  ;
  ;
 lock() ;
@@ -278,13 +304,14 @@ update() ;
  quit ""
  ;
  ;
-error ;
+error() ;
  s $ec=""
  ;
  n error,errorCode,errorMsg
  ;
  s errorCode=$p($zs,",")
  s errorMsg=$tr($p($zs,",",2,$l($zs,",")),"""","")
+ s errorMsg=$tr(errorMsg,$c(9)," ")
  ;
  s error="{""ok"": 0, ""errorCode"": "_errorCode_", "
  s error=error_"""errorMessage"": """_errorMsg_"""}"

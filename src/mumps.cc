@@ -231,14 +231,9 @@ Handle<Value> Gtm::version(const Arguments &args)
 {
     HandleScope scope;
 
-    if (gtm_is_open == 0) {
+    if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.1.3 (FWSLC) - "
-                        "must open() first"));
-    } else if (gtm_is_open < 1) {
-        return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.1.3 (FWSLC) - "
-                        "connection closed, cannot restart"));
+            String::New("Node.js Adaptor for GT.M: Version: 0.2.0 (FWSLC)"));
     }
 
     ci_name_descriptor version;
@@ -284,6 +279,9 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
     Local<Value> name;
     Local<Value> arrays;
+    Local<Value> max;
+    Local<Value> lo;
+    Local<Value> hi;
     Local<Value> data;
     Local<Value> number;
 
@@ -292,21 +290,26 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     if (db_status)
         return scope.Close(db_error);
 
-    if (args.Length() < 1) {
+    Local<String> test = String::Cast(*cmd)->ToString();
+
+    Local<String> function = String::New("function");
+    Local<String> global_directory = String::New("global_directory");
+    Local<String> increment = String::New("increment");
+    Local<String> order = String::New("order");
+    Local<String> previous = String::New("previous");
+    Local<String> set = String::New("set");
+       
+    if (! test->Equals(global_directory) && args.Length() < 1) {
         ThrowException(Exception::TypeError(String::
                        New("Argument must be specified")));
 
         return scope.Close(Undefined());
       }
 
-    Local<String> test = String::Cast(*cmd)->ToString();
-    Local<String> set = String::New("set");
-    Local<String> increment = String::New("increment");
-    Local<String> function = String::New("function");
-    Local<String> order = String::New("order");
-    Local<String> previous = String::New("previous");
-       
     Local<Object> object = Local<Object>::Cast(args[0]);
+
+    if (object->IsUndefined())
+        object = object->New();
 
     if (test->Equals(function)) {
         name = object->Get(String::New("function"));
@@ -318,6 +321,12 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
             return scope.Close(Undefined());
         }
+    } else if (test->Equals(global_directory)) {
+        max = object->Get(String::New("max"));
+        lo = object->Get(String::New("lo"));
+        hi = object->Get(String::New("hi"));
+
+        arrays = object->Get(Undefined());
     } else {
         name = object->Get(String::New("global"));
         arrays = object->Get(String::New("subscripts"));
@@ -388,6 +397,20 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
                         *String::AsciiValue(name),
                         *String::AsciiValue(arg),
                         number->NumberValue());
+    } else if (test->Equals(global_directory)) {
+        if (max->IsUndefined())
+            max = Number::New(0);
+
+        if (lo->IsUndefined())
+            lo = String::Empty();
+
+        if (hi->IsUndefined())
+            hi = String::Empty();
+
+        status = gtm_cip(&access, ret,
+                        max->Uint32Value(),
+                        *String::AsciiValue(lo),
+                        *String::AsciiValue(hi));
     } else {
         status = gtm_cip(&access, ret,
                         *String::AsciiValue(name),

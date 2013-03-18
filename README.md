@@ -2,7 +2,7 @@
 
 ## A Node.js binding to the GT.M language and database ##
 
-Version 0.1.3 - 2013 Feb 13
+Version 0.2.0 - 2013 Mar 18
 
 ## Copyright and License ##
 
@@ -65,10 +65,10 @@ probably want to use /usr/local/lib/ and you could create a symbolic link
 to it if you choose. E.g.
 
     $ sudo -i
-    $ cd /usr/local/lib
-    $ ln -s /opt/lsb-gtm/6.0-001_x8664/libgtmshr.so
-    $ ldconfig
-    $ exit
+    # cd /usr/local/lib
+    # ln -s /opt/lsb-gtm/6.0-001_x8664/libgtmshr.so
+    # ldconfig
+    # exit
 
 You may have to add the /usr/local/lib/ directory to /etc/ld.so.conf or
 create an /etc/ld.so.conf.d/libc.conf file and add it there, and then run
@@ -87,7 +87,7 @@ profile script. E.g.
 
     $ cd ~/nodem/resources
     $ source environ
-or
+    or
     $ echo "source ~/nodem/resources/environ" >> ~/.profile
 
 If you did not install Nodem in your home directory, you will need to fix
@@ -106,7 +106,7 @@ environment, so you might want to define it right before calling node.
 E.g.
 
     $ LD_LIBRARY_PATH=${gtm_dist} node 
-or
+    or
     $ LD_LIBRARY_PATH=${gtm_dist} node test
 
 As you can see though, that is more of a pain.
@@ -126,3 +126,5 @@ requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 [Globals]: http://globalsdb.org/
 [Cache]: http://www.intersystems.com/cache/
 [Documentation]: http://globalsdb.org/api-nodejs/Node.js%20Interface%20-%20User%20Guide%20-%20e1.5%20-%20v2012.2.0.580.x.pdf
+
+[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/a637d9ddd6ebc0e7f45f49ca0c2ea701 "githalytics.com")](http://githalytics.com/dlwicksell/nodem)
