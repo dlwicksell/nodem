@@ -114,25 +114,18 @@ int db_is_open(void)
 } //End of db_is_open
 
 
-Handle<Object> gtm_status(gtm_char_t *msgbuf)
+Handle<Object> gtm_status(gtm_char_t *msg_buf)
 {
-    char *copy = &msgbuf[0];
-    char *errcodestr = strtok(&copy[0], ",");
+    char *error_msg;
+    char *err_code = strtok_r(msg_buf, ",", &error_msg);
 
-    uint32_t errcode = atoi(&errcodestr[0]);
-
-    char *errmsg;
-
-    for (uint32_t i = 0; i < 3; i++)
-        errmsg = strtok(NULL, ",");
-
-    errmsg = &errmsg[1];
+    uint32_t error_code = atoi(err_code);
 
     Local<Object> result = Object::New();
 
     result->Set(String::New("ok"), Number::New(0));
-    result->Set(String::New("errorCode"), Number::New(errcode));
-    result->Set(String::New("errorMessage"), String::New(errmsg));
+    result->Set(String::New("errorCode"), Number::New(error_code));
+    result->Set(String::New("errorMessage"), String::New(error_msg));
 
     return result;
 }
@@ -233,7 +226,7 @@ Handle<Value> Gtm::version(const Arguments &args)
 
     if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.2.0 (FWSLC)"));
+            String::New("Node.js Adaptor for GT.M: Version: 0.2.1 (FWSLC)"));
     }
 
     ci_name_descriptor version;

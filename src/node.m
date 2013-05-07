@@ -1,4 +1,4 @@
-node() ;;2013-03-18  3:58 PM
+node() ;;2013-05-05  12:43 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
  ; Copyright © 2012,2013 Fourth Watch Software, LC
@@ -71,14 +71,10 @@ escape:(data) ;escape quotes or ctrl chars within a string in mumps
  ;
  ;
 version() ;return the version string
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit "Node.js Adaptor for GT.M: Version: 0.2.0 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.2.1 (FWSLC); "_$zv
  ;
  ;
 set(glvn,subs,data) ;set a global node
- n $et s $et="zg "_$zl_":error^node"
- ;
  n globalname,ok,result,return
  ;
  i '$d(subs)#10 s subs=""
@@ -95,8 +91,6 @@ set(glvn,subs,data) ;set a global node
  ;
  ;
 get(glvn,subs) ;get one node of a global
- n $et s $et="zg "_$zl_":error^node"
- ;
  n data,defined,globalname,ok,return
  ;
  i '$d(subs)#10 s subs=""
@@ -118,8 +112,6 @@ get(glvn,subs) ;get one node of a global
  ;
  ;
 kill(glvn,subs) ;kill a global or global node
- n $et s $et="zg "_$zl_":error^node"
- ;
  n globalname,ok,result,return
  ;
  i '$d(subs)#10 s subs=""
@@ -136,8 +128,6 @@ kill(glvn,subs) ;kill a global or global node
  ;
  ;
 data(glvn,subs) ;find out if global node has data or children
- n $et s $et="zg "_$zl_":error^node"
- ;
  n globalname,defined,ok,return
  ;
  i '$d(subs)#10 s subs=""
@@ -154,8 +144,6 @@ data(glvn,subs) ;find out if global node has data or children
  ;
  ;
 order(glvn,subs,order) ;return the next global node at the same level
- n $et s $et="zg "_$zl_":error^node"
- ;
  n globalname,defined,ok,result,return
  ;
  i '$d(subs)#10 s subs=""
@@ -180,28 +168,20 @@ order(glvn,subs,order) ;return the next global node at the same level
  ;
  ;
 previous(glvn,subs) ;same as order, only in reverse
- n $et s $et="zg "_$zl_":error^node"
- ;
  i '$d(subs)#10 s subs=""
  ;
  quit $$order(glvn,subs,-1)
  ;
  ;
 nextNode(glvn,subs) ;
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit ""
+ quit "{""status"": ""next_node not yet implemented""}"
  ;
  ;
 previousNode(glvn,subs) ;
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit ""
+ quit "{""status"": ""previous_node not yet implemented""}"
  ;
  ;
 increment(glvn,subs,incr) ;increment the number in a global node
- n $et s $et="zg "_$zl_":error^node"
- ;
  n globalname,increment,ok,return
  ;
  i '$d(subs)#10 s subs=""
@@ -218,14 +198,10 @@ increment(glvn,subs,incr) ;increment the number in a global node
  ;
  ;
 merge() ;
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit ""
+ quit "{""status"": ""merge not yet implemented""}"
  ;
  ;
 globalDirectory(max,lo,hi) ;
- n $et s $et="zg "_$zl_":error^node"
- ;
  n flag,cnt,global,return
  ;
  i '$d(max)#10 s max=0
@@ -256,20 +232,14 @@ globalDirectory(max,lo,hi) ;
  ;
  ;
 lock() ;
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit ""
+ quit "{""status"": ""lock not yet implemented""}"
  ;
  ;
 unlock() ;
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit ""
+ quit "{""status"": ""unlock not yet implemented""}"
  ;
  ;
 function(func,args) ;call an arbitrary extrinsic function
- n $et s $et="zg "_$zl_":error^node"
- ;
  n dev,function,ok,result,return
  ;
  i '$d(args)#10 s args=""
@@ -293,29 +263,10 @@ function(func,args) ;call an arbitrary extrinsic function
  ;
  ;
 retrieve() ;
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit ""
+ quit "{""status"": ""retrieve not yet implemented""}"
  ;
  ;
 update() ;
- n $et s $et="zg "_$zl_":error^node"
- ;
- quit ""
- ;
- ;
-error() ;
- s $ec=""
- ;
- n error,errorCode,errorMsg
- ;
- s errorCode=$p($zs,",")
- s errorMsg=$tr($p($zs,",",2,$l($zs,",")),"""","")
- s errorMsg=$tr(errorMsg,$c(9)," ")
- ;
- s error="{""ok"": 0, ""errorCode"": "_errorCode_", "
- s error=error_"""errorMessage"": """_errorMsg_"""}"
- ;
- quit error
+ quit "{""status"": ""update not yet implemented""}"
  ;
  ;

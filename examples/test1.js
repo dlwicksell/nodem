@@ -9,7 +9,7 @@ var ret;
 
 console.log('Testing the set command, starting at: ' + Date());
 
-for (var i=0;i<1000000;i++) {
+for (var i = 0; i < 1000000; i++) {
 
   node = {global: 'dlw', subscripts: ["testing", i], data: 'record ' + i};
 
@@ -23,7 +23,7 @@ for (var i=0;i<1000000;i++) {
 db.close()
 
 if (ret.ok == 1) {
-  console.log('Set a million nodes at the ^dlw("testing") global node, ending at: ' + Date());
+  console.log('Set a million nodes in ^dlw("testing"), ending at: ' + Date());
 } else {
   console.log('There was an error: ' + ret.errorCode + ' ' + ret.errorMessage);
 }

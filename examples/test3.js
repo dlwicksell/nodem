@@ -7,7 +7,6 @@ db.open();
 var node = {global: 'zewd', subscripts: ['loader']};
 
 var retrieve = function(node) {
-  
   var global = node.global;
   var subscripts = JSON.stringify(node.subscripts);
   
