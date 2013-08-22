@@ -1,3 +1,5 @@
 export GTMCI=${HOME}/nodem/resources/calltab.ci
+#export GTMCI=${HOME}/node_modules/nodem/resources/calltab.ci
 export gtmroutines="${HOME}/nodem/src ${gtmroutines}"
+#export gtmroutines="${HOME}/node_modules/nodem/src ${gtmroutines}"
 #export LD_LIBRARY_PATH=${gtm_dist}:${LD_LIBRARY_PATH}

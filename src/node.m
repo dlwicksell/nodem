@@ -1,4 +1,4 @@
-node() ;;2013-05-05  12:43 PM
+node() ;;2013-08-22  12:41 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
  ; Copyright © 2012,2013 Fourth Watch Software, LC
@@ -20,7 +20,52 @@ node() ;;2013-05-05  12:43 PM
  quit:$q "Call an API entry point" w "Call an API entry point" quit
  ;
  ;
-parse:(subs) ;parse an argument list or list of subscripts
+construct:(glvn,subs) ;construct a global reference
+ n globalname,subscripts
+ ;
+ s subscripts=$$parse(.subs,"i")
+ s globalname="^"_glvn_$s(subscripts'="":"("_subscripts_")",1:"")
+ ;
+ quit globalname
+ ;
+ ;
+convert:(data,dir,type) ;convert to numbers or strings
+ n ndata
+ ;
+ i dir="i" d
+ . i data=+data s ndata=data
+ . e  i $e(data,1,2)="0.",$e(data,2,$l(data))=+$e(data,2,$l(data)) d
+ . . s $e(data)="",ndata=data
+ . e  i type="sub" s ndata=""""_data_""""
+ . e  s ndata=data
+ e  i dir="o" d
+ . i data=+data d
+ . . i $e(data)="." s ndata=0_data
+ . . e  s ndata=data
+ . e  i type="data" s ndata=""""_data_""""
+ . e  s ndata=data
+ ;
+ q ndata
+ ;
+ ;
+escape:(data) ;escape quotes or control characters within a string
+ n i,charh,charl,ndata
+ ;
+ i data[""""!(data["\")!(data?.e1c.e) d
+ . s ndata=""
+ . f i=1:1:$l(data) d
+ . . i ($e(data,i)="""")!($e(data,i)="\") s ndata=ndata_"\"_$e(data,i)
+ . . e  i $e(data,i)?1c d
+ . . . s charh=$a($e(data,i))\16,charh=$e("0123456789abcdef",charh+1)
+ . . . s charl=$a($e(data,i))#16,charl=$e("0123456789abcdef",charl+1)
+ . . . s ndata=ndata_"\u00"_charh_charl
+ . . e  s ndata=ndata_$e(data,i)
+ e  s ndata=data
+ ;
+ quit ndata
+ ;
+ ;
+parse:(subs,dir) ;parse an argument list or list of subscripts
  n i,num,sub,temp,tmp
  ;
  s (temp,tmp)=""
@@ -36,95 +81,13 @@ parse:(subs) ;parse an argument list or list of subscripts
  . . . . e  s tmp=tmp_$e(sub,i)
  . . . ;
  . . . s sub=tmp
- . . i (sub'=+sub&($e(sub,1,2)'="0."))!($e(sub)=".") s sub=""""_sub_""","
- . . e  s sub=sub_","
+ . . s sub=$$convert(sub,dir,"sub")_","
  . . ;
  . . s temp=temp_sub,$e(subs,1,num+1)=""
- s subs=temp
+ . s subs=temp
  s subs=$e(subs,1,$l(subs)-1)
  ;
  quit subs
- ;
- ;
-construct:(glvn,subs) ;construct a global reference
- n globalname,subscripts
- ;
- s subscripts=$$parse(.subs)
- s globalname="^"_glvn_$s(subscripts'="":"("_subscripts_")",1:"")
- ;
- quit globalname
- ;
- ;
-escape:(data) ;escape quotes or ctrl chars within a string in mumps
- n i,charh,charl,ndata
- ;
- s ndata=""
- f i=1:1:$l(data) d
- . i $e(data,i)=""""!($e(data,i)="\") s ndata=ndata_"\"_$e(data,i)
- . e  i $e(data,i)?1c d
- . . s charh=$a($e(data,i))\16,charh=$e("0123456789abcdef",charh+1)
- . . s charl=$a($e(data,i))#16,charl=$e("0123456789abcdef",charl+1)
- . . s ndata=ndata_"\u00"_charh_charl
- . e  s ndata=ndata_$e(data,i)
- ;
- quit ndata
- ;
- ;
-version() ;return the version string
- quit "Node.js Adaptor for GT.M: Version: 0.2.1 (FWSLC); "_$zv
- ;
- ;
-set(glvn,subs,data) ;set a global node
- n globalname,ok,result,return
- ;
- i '$d(subs)#10 s subs=""
- ;
- s globalname=$$construct(glvn,subs)
- s @globalname=data
- ;
- s ok=1,result=0
- ;
- s return="{""ok"": "_ok_", ""global"": """_glvn_""","
- s return=return_" ""result"": "_result_"}"
- ;
- quit return
- ;
- ;
-get(glvn,subs) ;get one node of a global
- n data,defined,globalname,ok,return
- ;
- i '$d(subs)#10 s subs=""
- ;
- s globalname=$$construct(glvn,subs)
- ;
- s data=$g(@globalname)
- s:data[""""!(data["\")!(data?.e1c.e) data=$$escape(data)
- ;
- i (data'=+data&($e(data,1,2)'="0."))!($e(data)=".") s data=""""_data_""""
- ;
- s defined=$d(@globalname)#10
- s ok=1
- ;
- s return="{""ok"": "_ok_", ""global"": """_glvn_""","
- s return=return_" ""data"": "_data_", ""defined"": "_defined_"}"
- ;
- quit return
- ;
- ;
-kill(glvn,subs) ;kill a global or global node
- n globalname,ok,result,return
- ;
- i '$d(subs)#10 s subs=""
- ;
- s globalname=$$construct(glvn,subs)
- k @globalname
- ;
- s ok=1,result=0
- ;
- s return="{""ok"": "_ok_", ""global"": """_glvn_""","
- s return=return_" ""result"": "_result_"}"
- ;
- quit return
  ;
  ;
 data(glvn,subs) ;find out if global node has data or children
@@ -143,65 +106,50 @@ data(glvn,subs) ;find out if global node has data or children
  quit return
  ;
  ;
-order(glvn,subs,order) ;return the next global node at the same level
- n globalname,defined,ok,result,return
+function(func,args) ;call an arbitrary extrinsic function
+ n dev,function,nargs,ok,result,return
  ;
- i '$d(subs)#10 s subs=""
+ i '$d(args)#10 s args=""
+ s:args'="" nargs=$$parse(args,"o")
+ s:args'="" args=$$parse(args,"i")
  ;
- s globalname=$$construct(glvn,subs)
+ s function=func_$s(args'="":"("_args_")",1:"")
+ x "s result=$$"_function
  ;
- i $g(order)=-1 s result=$o(@globalname,-1)
- e  s result=$o(@globalname)
- ;
- s:result[""""!(result["\")!(result?.e1c.e) result=$$escape(result)
- ;
- i $e(result)="^" s $e(result)=""
- i (result'=+result&($e(result,1,2)'="0."))!($e(result)=".") d
- . s result=""""_result_""""
+ s result=$$escape(result)
+ s result=$$convert(result,"o","data")
  ;
  s ok=1
  ;
- s return="{""ok"": "_ok_", ""global"": """_glvn_""","
+ s return="{""ok"": "_ok_", ""function"": """_func_""","
+ i $g(args)'="" s return=return_" ""arguments"": ["_nargs_"],"
  s return=return_" ""result"": "_result_"}"
  ;
  quit return
  ;
  ;
-previous(glvn,subs) ;same as order, only in reverse
- i '$d(subs)#10 s subs=""
- ;
- quit $$order(glvn,subs,-1)
- ;
- ;
-nextNode(glvn,subs) ;
- quit "{""status"": ""next_node not yet implemented""}"
- ;
- ;
-previousNode(glvn,subs) ;
- quit "{""status"": ""previous_node not yet implemented""}"
- ;
- ;
-increment(glvn,subs,incr) ;increment the number in a global node
- n globalname,increment,ok,return
+get(glvn,subs) ;get one node of a global
+ n data,defined,globalname,ok,return
  ;
  i '$d(subs)#10 s subs=""
  ;
  s globalname=$$construct(glvn,subs)
- s increment=$i(@globalname,$g(incr,1))
  ;
+ s data=$g(@globalname)
+ ;
+ s data=$$escape(data)
+ s data=$$convert(data,"o","data")
+ ;
+ s defined=$d(@globalname)#10
  s ok=1
  ;
  s return="{""ok"": "_ok_", ""global"": """_glvn_""","
- s return=return_" ""data"": "_increment_"}"
+ s return=return_" ""data"": "_data_", ""defined"": "_defined_"}"
  ;
  quit return
  ;
  ;
-merge() ;
- quit "{""status"": ""merge not yet implemented""}"
- ;
- ;
-globalDirectory(max,lo,hi) ;
+globalDirectory(max,lo,hi) ;list the globals in a database, filtered or not
  n flag,cnt,global,return
  ;
  i '$d(max)#10 s max=0
@@ -231,42 +179,162 @@ globalDirectory(max,lo,hi) ;
  quit return
  ;
  ;
-lock() ;
- quit "{""status"": ""lock not yet implemented""}"
+increment(glvn,subs,incr) ;increment the number in a global node
+ n globalname,increment,ok,return
  ;
+ i '$d(subs)#10 s subs=""
  ;
-unlock() ;
- quit "{""status"": ""unlock not yet implemented""}"
- ;
- ;
-function(func,args) ;call an arbitrary extrinsic function
- n dev,function,ok,result,return
- ;
- i '$d(args)#10 s args=""
- s:args'="" args=$$parse(args)
- ;
- s function=func_$s(args'="":"("_args_")",1:"")
- x "s result=$$"_function
- ;
- s:result[""""!(result["\")!(result?.e1c.e) result=$$escape(result)
- ;
- i (result'=+result&($e(result,1,2)'="0."))!($e(result)=".") d
- . s result=""""_result_""""
+ s globalname=$$construct(glvn,subs)
+ s increment=$i(@globalname,$g(incr,1))
  ;
  s ok=1
  ;
- s return="{""ok"": "_ok_", ""function"": """_func_""","
- i $g(args)'="" s return=return_" ""arguments"": ["_args_"],"
+ s return="{""ok"": "_ok_", ""global"": """_glvn_""","
+ s return=return_" ""data"": "_increment_"}"
+ ;
+ quit return
+ ;
+ ;
+kill(glvn,subs) ;kill a global or global node
+ n globalname,ok,result,return
+ ;
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
+ k @globalname
+ ;
+ s ok=1,result=0
+ ;
+ s return="{""ok"": "_ok_", ""global"": """_glvn_""","
  s return=return_" ""result"": "_result_"}"
  ;
  quit return
+ ;
+ ;
+lock(glvn,subs) ;lock a global node, incrementally
+ n globalname,ok,result,return
+ ;
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
+ l +@globalname:0
+ ;
+ s ok=1
+ i $t s result="1"
+ e  s result="0"
+ ;
+ s return="{""ok"": "_ok_", ""global"": """_glvn_""","
+ s return=return_" ""result"": """_result_"""}"
+ ;
+ quit return
+ ;
+ ;
+merge(tglvn,tsubs,fglvn,fsubs) ;merge an array node to another array node
+ n tglobalname,fglobalname,ok,result,return
+ ;
+ s tglobalname=$$construct(tglvn,.tsubs)
+ s fglobalname=$$construct(fglvn,.fsubs)
+ ;
+ m @tglobalname=@fglobalname
+ ;
+ s ok=1,result=1
+ ;
+ s return="{""ok"": "_ok_", ""global"": """_fglvn_""","
+ i fsubs'="",tsubs'="" d
+ . s return=return_" ""subscripts"": ["_fsubs_", """_tglvn_""""
+ . s tsubs=$s($l(tsubs,",")>1:", "_$p(tsubs,",",1,$l(tsubs,",")-1),1:"")
+ . s return=return_tsubs_"],"
+ s return=return_" ""result"": """_result_"""}"
+ ;
+ quit return
+ ;
+ ;
+nextNode(glvn,subs) ;
+ quit "{""status"": ""next_node not yet implemented""}"
+ ;
+ ;
+order(glvn,subs,order) ;return the next global node at the same level
+ n globalname,defined,ok,result,return
+ ;
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
+ ;
+ i $g(order)=-1 s result=$o(@globalname,-1)
+ e  s result=$o(@globalname)
+ ;
+ i $e(result)="^" s $e(result)=""
+ ;
+ s result=$$escape(result)
+ s result=$$convert(result,"o","data")
+ ;
+ s ok=1
+ ;
+ s return="{""ok"": "_ok_", ""global"": """_glvn_""","
+ s return=return_" ""result"": "_result_"}"
+ ;
+ quit return
+ ;
+ ;
+previous(glvn,subs) ;same as order, only in reverse
+ i '$d(subs)#10 s subs=""
+ ;
+ quit $$order(glvn,subs,-1)
+ ;
+ ;
+previousNode(glvn,subs) ;
+ quit "{""status"": ""previous_node not yet implemented""}"
  ;
  ;
 retrieve() ;
  quit "{""status"": ""retrieve not yet implemented""}"
  ;
  ;
+set(glvn,subs,data) ;set a global node
+ n globalname,ok,result,return
+ ;
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,subs)
+ ;
+ s data=$$escape(data)
+ s data=$$convert(data,"i","data")
+ ;
+ s @globalname=data
+ ;
+ s ok=1,result=0
+ ;
+ s return="{""ok"": "_ok_", ""global"": """_glvn_""","
+ s return=return_" ""result"": "_result_"}"
+ ;
+ quit return
+ ;
+ ;
+unlock(glvn,subs) ;unlock a global node, incrementally; or release all locks
+ n globalname,ok,result,return
+ ;
+ i '$d(subs)#10 s subs=""
+ ;
+ s globalname=$$construct(glvn,.subs)
+ i glvn=""&(subs="") d
+ . l  s return="""0"""
+ e  d
+ . l -@globalname
+ ;
+ s ok=1,result=0
+ ;
+ i $g(return)'="" quit return
+ ;
+ s return="{""ok"": "_ok_", ""global"": """_glvn_""","
+ s return=return_" ""result"": """_result_"""}"
+ ;
+ quit return
+ ;
+ ;
 update() ;
  quit "{""status"": ""update not yet implemented""}"
  ;
+ ;
+version() ;return the version string
+ quit "Node.js Adaptor for GT.M: Version: 0.3.0 (FWSLC); "_$zv
  ;

@@ -2,7 +2,7 @@
 
 ## A Node.js binding to the GT.M language and database ##
 
-Version 0.2.1 - 2013 May 7
+Version 0.3.0 - 2013 Aug 22
 
 ## Copyright and License ##
 
@@ -27,7 +27,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 ## Disclaimer ##
 
 Nodem is experimental, and not yet ready for production. It is a work in
-progress, and as such, its implementation is likely to change a lot.
+progress, and as such, its implementation is likely to change.
 
 ## Summary and Info ##
 
@@ -39,8 +39,17 @@ GT.M/Mumps functions. Although designed exclusively for use with GT.M,
 Nodem aims to be API-compatible with the in-process Node.js interface for
 [Globals][] and [Caché][], at least for the APIs that have been
 implemented in Nodem. As such, please refer to the Caché Node.js [API
-documentation][Docs] for further details on how to use those
-APIs.
+documentation][Docs] for further details on how to use those APIs. 
+
+The open() call works slightly differently than the Caché/Globals version.
+It does not require any arguments, and it will default to using the
+database specified in the environment variable, $gtmgbldir. If you have
+more than one database and would like to connect to a different one than
+$gtmgbldir points to, you can define an object, with a property called
+namespace, defined as the path to your global directory file for that
+database. E.g.
+
+    > db.open({namespace: '/home/dlw/g/db_utf.gld'});
 
 ## Installation ##
 
@@ -58,9 +67,9 @@ find in ~/nodem/lib/, are named for the version of Node.js that they
 support, mumps10 for Node.js version 0.10.x, and mumps8 for Node.js
 version 0.8.x (and 0.6.x). Each module will also end in _x8664 for 64-bit,
 or _i686 for 32-bit systems. By default there is a mumps.node already
-there, which is a copy of the 64-bit version for Node.js version 0.8.x
-(and 0.6.x). It is important to realize that the addon will not function
-unless it is called mumps.node, and a symbolic link won't work. E.g.
+there, which is a copy of the 64-bit version for Node.js version 0.10.x .
+It is important to realize that the addon will not function unless it is
+called mumps.node, and a symbolic link won't work. E.g.
 
     $ cd ~/nodem/lib
     $ cp mumps10.node_x8664 mumps.node
@@ -72,9 +81,9 @@ linker/loader when mumps.node is loaded at runtime, if it isn't already
 located in one. You will find libgtmshr.so bundled with GT.M wherever you
 have installed it. There are a couple of things you can do at this point.
 You can move libgtmshr.so to a standard directory that is searched by the
-loader, such as /usr/lib/, or on some systems, /usr/local/lib/. Then you
-will have to run ldconfig as root to rebuild the linker's cache. You could
-also create a symbolic link to it if you choose. E.g.
+loader, such as lib/, or /usr/lib, or on some systems, /usr/local/lib/.
+Then you will have to run ldconfig as root to rebuild the linker's cache.
+You could also create a symbolic link to it if you choose. E.g.
 
     $ sudo -i
     # cd /usr/local/lib
@@ -98,8 +107,10 @@ node. E.g.
 
 As you can see though, that is more of a pain. If you happen to have
 installed GT.M where I have, in /opt/lsb-gtm/6.0-001_x8664/, then you
-don't have to do anything. There is an embedded rpath in the pre-built
-modules, so the loader will also check in that directory.
+don't have to do anything. There is an embedded rpath directory search
+path in the pre-built modules, so the loader will also check in that
+directory. The rpath search path will also search in /home/vista/lib/gtm/,
+which is the link to GT.M in the dEWDrop virtual machine appliance.
 
 In addition you will need to set a few environment variables in order for
 GT.M to find the call-in table and the MUMPS routine that it maps to. The
@@ -107,7 +118,7 @@ Nodem package supplies a sample environment file, called environ. It has a
 commented out command to set LD_LIBRARY_PATH to $gtm_dist, which you will
 need to uncomment if you need it. It is located in ~/nodem/resources/ and
 can simply be sourced into your working environment, either directly, or
-from your own environment scripts or profile script. E.g.
+from your own environment scripts or profile/login script. E.g.
 
     $ cd ~/nodem/resources
     $ source environ
@@ -133,6 +144,10 @@ You can also install it via npm with this command..
 
     $ npm install nodem
 
+You can update to the latest version of Nodem with this command..
+
+    $ npm update nodem
+
 I hope you enjoy the Nodem package. If you have any questions, feature
 requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 
@@ -145,9 +160,10 @@ requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 [Caché]: http://www.intersystems.com/cache/
 [Docs]: http://docs.intersystems.com/documentation/cache/20122/pdfs/BXJS.pdf
 
-## APIs ##
+### APIs ###
 
-* *about* *version* - Display version information
+* *about* - Display version information
+* *version* - Display version information
 * *close* - Close the database
 * *data* - Call the $DATA intrinsic function
 * *function* - Call an extrinisic function
@@ -155,16 +171,17 @@ requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 * *global_directory* - List the names of the globals in the database
 * *increment* - Call the $INCREMENT intrinsic function
 * *kill* - Delete a global node, and all of its children
-* *lock* - Not yet implemented
-* *merge* - Not yet implemented
-* *next* *order* - Call the $ORDER intrinsic function
+* *lock* - Lock a global or global node incrementally
+* *merge* - Merge a global or a global node, to a global or a global node
+* *next* - Call the $ORDER intrinsic function
+* *order* - Call the $ORDER intrinsic function
 * *next_node* - Not yet implemented
 * *open* - Open the database
 * *previous* - Call the $ORDER intrinsic function in reverse
 * *previous_node* - Not yet implemented
 * *retrieve* - Not yet implemented
 * *set* - Set a global node to a new value
-* *unlock* - Not yet implemented
+* *unlock* - Unlock a global or global node incrementally, or release all locks
 * *update* - Not yet implemented
 
 [![githalytics.com alpha](https://cruel-carlota.pagodabox.com/a637d9ddd6ebc0e7f45f49ca0c2ea701 "githalytics.com")](http://githalytics.com/dlwicksell/nodem)

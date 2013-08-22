@@ -16,6 +16,9 @@
           }
         }]
       ],
+      'variables': {
+        'gtm_link%': '/home/vista/lib/gtm'
+      },
       'include_dirs': [
         '<(gtm_dist)'
       ],
@@ -24,7 +27,8 @@
         '-lgtmshr'
       ],
       'ldflags': [
-        '-Wl,-rpath,<(gtm_dist)'
+        '-Wl,-rpath,<(gtm_dist),--enable-new-dtags',
+        '-Wl,-rpath,<(gtm_link),--enable-new-dtags'
       ]
     }
   ]

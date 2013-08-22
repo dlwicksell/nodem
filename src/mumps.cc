@@ -1,5 +1,5 @@
 /*
- * mumps - A set of APIs to work on a GT.M database from Node.js
+ * mumps.cc - A set of APIs to work on a GT.M database from Node.js
  *
  * Written by David Wicksell <dlw@linux.com>
  *
@@ -20,7 +20,6 @@
  */
 
 
-#include <v8.h>
 #include <nodejs/node.h>
 
 using namespace v8;
@@ -37,12 +36,16 @@ extern "C" {
     #include <gtmxc_types.h>
 }
 
+#define LENGTH 9999
 #define BUF_LEN (2048 + 1)
 #define RET_LEN ((1024 * 1024) + 1)
+#define WIDTH 6
 
 gtm_char_t msgbuf[BUF_LEN];
 gtm_char_t ret[RET_LEN];
 gtm_status_t status;
+
+bool is_utf = false;
 
 struct termios tp;
 struct sigaction n_signal;
@@ -145,11 +148,23 @@ Handle<Value> Gtm::open(const Arguments &args)
 
     Local<Object> object = Local<Object>::Cast(args[0]);
 
+    char *chset = getenv("gtm_chset");
+
+    if (chset == NULL) {
+        is_utf = false;
+    } else if (strcmp(chset, "utf-8") == 0) {
+        is_utf = true;
+    } else if (strcmp(chset, "Utf-8") == 0) {
+        is_utf = true;
+    } else if (strcmp(chset, "UTF-8") == 0) {
+        is_utf = true;
+    }
+
     if (! object->IsUndefined()) {
         Local<Value> nspace = object->Get(String::New("namespace"));
 
         if (! nspace->IsUndefined()) {
-            if (setenv("gtmgbldir", *String::AsciiValue(nspace), 1) == -1)
+            if (setenv("gtmgbldir", *String::Utf8Value(nspace), 1) == -1)
                 strerror(errno);
         }
     }
@@ -226,7 +241,7 @@ Handle<Value> Gtm::version(const Arguments &args)
 
     if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.2.1 (FWSLC)"));
+            String::New("Node.js Adaptor for GT.M: Version: 0.3.0 (FWSLC)"));
     }
 
     ci_name_descriptor version;
@@ -278,6 +293,14 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     Local<Value> data;
     Local<Value> number;
 
+    Local<Object> to_object;
+    Local<Object> from_object;
+
+    Local<Value> to_name;
+    Local<Value> to_arrays;
+    Local<Value> from_name;
+    Local<Value> from_arrays;
+
     int db_status = db_is_open();
 
     if (db_status)
@@ -291,13 +314,16 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     Local<String> order = String::New("order");
     Local<String> previous = String::New("previous");
     Local<String> set = String::New("set");
+    Local<String> unlock = String::New("unlock");
+    Local<String> merge = String::New("merge");
        
-    if (! test->Equals(global_directory) && args.Length() < 1) {
+    if (! test->Equals(global_directory) && ! test->Equals(unlock)
+                                             && args.Length() < 1) {
         ThrowException(Exception::TypeError(String::
                        New("Argument must be specified")));
 
         return scope.Close(Undefined());
-      }
+    }
 
     Local<Object> object = Local<Object>::Cast(args[0]);
 
@@ -307,6 +333,9 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     if (test->Equals(function)) {
         name = object->Get(String::New("function"));
         arrays = object->Get(String::New("arguments"));
+
+        to_arrays = object->Get(Undefined());
+        from_arrays = object->Get(Undefined());
 
         if (name->IsUndefined()) {
             ThrowException(Exception::TypeError(String::New
@@ -320,9 +349,32 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
         hi = object->Get(String::New("hi"));
 
         arrays = object->Get(Undefined());
+
+        to_arrays = object->Get(Undefined());
+        from_arrays = object->Get(Undefined());
+    } else if (test->Equals(unlock)) {
+        name = object->Get(String::New("global"));
+        arrays = object->Get(String::New("subscripts"));
+
+        to_arrays = object->Get(Undefined());
+        from_arrays = object->Get(Undefined());
+    } else if (test->Equals(merge)) {
+        to_object = Local<Object>::Cast(object->Get(String::New("to")));
+        from_object = Local<Object>::Cast(object->Get(String::New("from")));
+
+        to_name = to_object->Get(String::New("global"));
+        to_arrays = to_object->Get(String::New("subscripts"));
+
+        from_name = from_object->Get(String::New("global"));
+        from_arrays = from_object->Get(String::New("subscripts"));
+
+        arrays = object->Get(Undefined());
     } else {
         name = object->Get(String::New("global"));
         arrays = object->Get(String::New("subscripts"));
+
+        to_arrays = object->Get(Undefined());
+        from_arrays = object->Get(Undefined());
 
         if (name->IsUndefined()) {
             ThrowException(Exception::TypeError(String::New
@@ -345,43 +397,113 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
         number = Local<Number>::Cast(args[1]);
     }
 
-    Local<Value> arg;
+    Local<Value> arg = String::Empty();
+    Local<Value> to_arg = String::Empty();
+    Local<Value> from_arg = String::Empty();
 
     if (! arrays->IsUndefined()) {
-      Local<Array> array = Local<Array>::Cast(arrays);
-      Local<Array> temparg = Array::New();
+        Local<Array> array = Local<Array>::Cast(arrays);
+        Local<Array> temparg = Array::New();
 
-      for (uint32_t i = 0; i < array->Length(); i++) {
-          Local<String> str = Local<String>::Cast(array->Get(i)->ToString());
+        char buf[WIDTH];
 
-          char buf[str->Length() + 1]; 
-          sprintf(buf, "%d:", str->Length());
+        for (uint32_t i = 0; i < array->Length(); i++) {
+            Local<String> str = Local<String>::Cast(array->Get(i)->ToString());
 
-          Local<Value> out = String::Concat(String::New(buf), str);
-          temparg->Set(i, out);
-      }
+            int length = str->Length();
+            if (length > LENGTH)
+                return scope.Close(String::New("Subscript too big!"));
 
-      arg = Local<Array>::Cast(temparg);
+            sprintf(buf, "%d:", length);
+
+            Local<Value> out = String::Concat(String::New(buf), str);
+            temparg->Set(i, out);
+        }
+
+        arg = Local<Array>::Cast(temparg);
+    } else  if (test->Equals(merge)) {
+        if (! to_arrays->IsUndefined()) {
+            Local<Array> to_array = Local<Array>::Cast(to_arrays);
+            Local<Array> to_temparg = Array::New();
+
+            char to_buf[WIDTH];
+
+            for (uint32_t i = 0; i < to_array->Length(); i++) {
+                Local<String> to_str = Local<String>::Cast
+                                    (to_array->Get(i)->ToString());
+
+                int to_length = to_str->Length();
+                if (to_length > LENGTH)
+                    return scope.Close(String::New("Subscript too big!"));
+
+                sprintf(to_buf, "%d:", to_length);
+
+                Local<Value> to_out = String::Concat
+                                      (String::New(to_buf), to_str);
+                to_temparg->Set(i, to_out);
+            }
+
+            to_arg = Local<Array>::Cast(to_temparg);
+        } else {
+            from_arg = String::Empty();
+        }
+
+        if (! from_arrays->IsUndefined()) {
+            Local<Array> from_array = Local<Array>::Cast(from_arrays);
+            Local<Array> from_temparg = Array::New();
+
+            char from_buf[WIDTH];
+
+            for (uint32_t j = 0; j < from_array->Length(); j++) {
+                Local<String> from_str = Local<String>::Cast
+                                    (from_array->Get(j)->ToString());
+
+                int from_length = from_str->Length();
+                if (from_length > LENGTH)
+                    return scope.Close(String::New("Subscript too big!"));
+
+                sprintf(from_buf, "%d:", from_length);
+
+                Local<Value> from_out = String::Concat
+                                        (String::New(from_buf), from_str);
+                from_temparg->Set(j, from_out);
+            }
+
+            from_arg = Local<Array>::Cast(from_temparg);
+        } else {
+            from_arg = String::Empty();
+        }
     } else {
-      arg = String::Empty();
+        arg = String::Empty();
     }
 
-    ret[0] = 0;
+    ret[0] = '\0';
 
     ci_name_descriptor access;
 
     Local<String> string = cmd->ToString();
+
     String::AsciiValue str(string);
+
+    if (is_utf)
+        String::Utf8Value str(string);
 
     access.rtn_name.address = *str;
     access.rtn_name.length = strlen(access.rtn_name.address);
     access.handle = NULL;
 
     if (test->Equals(set)) {
-        status = gtm_cip(&access, ret,
-                        *String::AsciiValue(name),
-                        *String::AsciiValue(arg),
-                        *String::AsciiValue(data)); 
+        if (is_utf) {
+            status = gtm_cip(&access, ret,
+                            *String::Utf8Value(name),
+                            *String::Utf8Value(arg),
+                            *String::Utf8Value(data)); 
+        } else {
+            status = gtm_cip(&access, ret,
+                            *String::AsciiValue(name),
+                            *String::AsciiValue(arg),
+                            *String::AsciiValue(data)); 
+        }
     } else if (test->Equals(increment)) {
         if (number->IsUndefined())
             number = Number::New(1);
@@ -390,6 +512,16 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
                         *String::AsciiValue(name),
                         *String::AsciiValue(arg),
                         number->NumberValue());
+    } else if (test->Equals(unlock)) {
+        if (name->IsUndefined())
+            name = String::Empty();
+
+        if (arg->IsUndefined())
+            arg = String::Empty();
+
+        status = gtm_cip(&access, ret,
+                        *String::AsciiValue(name),
+                        *String::AsciiValue(arg));
     } else if (test->Equals(global_directory)) {
         if (max->IsUndefined())
             max = Number::New(0);
@@ -404,10 +536,22 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
                         max->Uint32Value(),
                         *String::AsciiValue(lo),
                         *String::AsciiValue(hi));
-    } else {
+    } else if (test->Equals(merge)) {
         status = gtm_cip(&access, ret,
-                        *String::AsciiValue(name),
-                        *String::AsciiValue(arg));
+                        *String::AsciiValue(to_name),
+                        *String::AsciiValue(to_arg),
+                        *String::AsciiValue(from_name),
+                        *String::AsciiValue(from_arg));
+    } else {
+        if (is_utf) {
+            status = gtm_cip(&access, ret,
+                            *String::Utf8Value(name),
+                            *String::Utf8Value(arg));
+        } else {
+            status = gtm_cip(&access, ret,
+                            *String::AsciiValue(name),
+                            *String::AsciiValue(arg));
+        }
     }
 
     if (status) { 
@@ -428,6 +572,11 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     }
 
     Handle<Value> retvalue = parse_json(nstring);    
+
+    if (retvalue.IsEmpty()) {
+        return scope.Close(Undefined());
+    }
+
     Handle<Object> retobject = Handle<Object>::Cast(retvalue);
 
     if ((arrays->IsUndefined()) || (test->Equals(function))) {
