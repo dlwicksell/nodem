@@ -2,7 +2,7 @@
 
 ## A Node.js binding to the GT.M language and database ##
 
-Version 0.3.0 - 2013 Aug 22
+Version 0.3.1 - 2013 Sep 4
 
 ## Copyright and License ##
 
@@ -144,7 +144,7 @@ You can also install it via npm with this command..
 
     $ npm install nodem
 
-You can update to the latest version of Nodem with this command..
+You can update to the latest version with this command..
 
     $ npm update nodem
 

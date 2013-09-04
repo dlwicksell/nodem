@@ -1,4 +1,4 @@
-node() ;;2013-08-22  12:41 PM
+node() ;;2013-09-04  1:28 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
  ; Copyright © 2012,2013 Fourth Watch Software, LC
@@ -29,7 +29,7 @@ construct:(glvn,subs) ;construct a global reference
  quit globalname
  ;
  ;
-convert:(data,dir,type) ;convert to numbers or strings
+convert:(data,dir,type) ;convert for input or output
  n ndata
  ;
  i dir="i" d
@@ -107,10 +107,9 @@ data(glvn,subs) ;find out if global node has data or children
  ;
  ;
 function(func,args) ;call an arbitrary extrinsic function
- n dev,function,nargs,ok,result,return
+ n dev,function,ok,result,return
  ;
  i '$d(args)#10 s args=""
- s:args'="" nargs=$$parse(args,"o")
  s:args'="" args=$$parse(args,"i")
  ;
  s function=func_$s(args'="":"("_args_")",1:"")
@@ -122,7 +121,6 @@ function(func,args) ;call an arbitrary extrinsic function
  s ok=1
  ;
  s return="{""ok"": "_ok_", ""function"": """_func_""","
- i $g(args)'="" s return=return_" ""arguments"": ["_nargs_"],"
  s return=return_" ""result"": "_result_"}"
  ;
  quit return
@@ -235,6 +233,9 @@ merge(tglvn,tsubs,fglvn,fsubs) ;merge an array node to another array node
  s tglobalname=$$construct(tglvn,.tsubs)
  s fglobalname=$$construct(fglvn,.fsubs)
  ;
+ s tsubs=$$convert(tsubs,"o","subs")
+ s fsubs=$$convert(fsubs,"o","subs")
+ ;
  m @tglobalname=@fglobalname
  ;
  s ok=1,result=1
@@ -336,5 +337,5 @@ update() ;
  ;
  ;
 version() ;return the version string
- quit "Node.js Adaptor for GT.M: Version: 0.3.0 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.3.1 (FWSLC); "_$zv
  ;

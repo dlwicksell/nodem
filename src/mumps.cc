@@ -241,7 +241,7 @@ Handle<Value> Gtm::version(const Arguments &args)
 
     if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.3.0 (FWSLC)"));
+            String::New("Node.js Adaptor for GT.M: Version: 0.3.1 (FWSLC)"));
     }
 
     ci_name_descriptor version;
@@ -579,7 +579,7 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
     Handle<Object> retobject = Handle<Object>::Cast(retvalue);
 
-    if ((arrays->IsUndefined()) || (test->Equals(function))) {
+    if (arrays->IsUndefined()) {
 
         return scope.Close(retobject);
     } else if ((test->Equals(order)) || (test->Equals(previous))){
