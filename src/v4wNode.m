@@ -1,13 +1,13 @@
-node() ;;2013-09-04  1:28 PM
+v4wNode() ;; 2014-06-11  8:18 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012,2013 Fourth Watch Software, LC
- ; 
+ ; Copyright © 2012-2014 Fourth Watch Software, LC
+ ;
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
  ; as published by the Free Software Foundation, either version 3 of
  ; the License, or (at your option) any later version.
- ; 
+ ;
  ; This program is distributed in the hope that it will be useful,
  ; but WITHOUT ANY WARRANTY; without even the implied warranty of
  ; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
@@ -36,14 +36,13 @@ convert:(data,dir,type) ;convert for input or output
  . i data=+data s ndata=data
  . e  i $e(data,1,2)="0.",$e(data,2,$l(data))=+$e(data,2,$l(data)) d
  . . s $e(data)="",ndata=data
- . e  i type="sub" s ndata=""""_data_""""
+ . e  i type="data" s $e(data)="",$e(data,$l(data))="",ndata=data
  . e  s ndata=data
  e  i dir="o" d
- . i data=+data d
- . . i $e(data)="." s ndata=0_data
+ . i $l(data)<19,data=+data d
+ . . i $e(data)="." s ndata=""""_data_""""
  . . e  s ndata=data
- . e  i type="data" s ndata=""""_data_""""
- . e  s ndata=data
+ . e  s ndata=""""_data_""""
  ;
  q ndata
  ;
@@ -51,11 +50,12 @@ convert:(data,dir,type) ;convert for input or output
 escape:(data) ;escape quotes or control characters within a string
  n i,charh,charl,ndata
  ;
- i data[""""!(data["\")!(data?.e1c.e) d
+ i data[""""!(data["\")!(data?.e1c.e)!($d(data)) d
  . s ndata=""
  . f i=1:1:$l(data) d
  . . i ($e(data,i)="""")!($e(data,i)="\") s ndata=ndata_"\"_$e(data,i)
- . . e  i $e(data,i)?1c d
+ . . e  i ($e(data,i)="\") s ndata=ndata_"\"_$e(data,i)
+ . . e  i $e(data,i)?1c!($a($e(data,i))>127&($a($e(data,i))<256)&($zch="M")) d
  . . . s charh=$a($e(data,i))\16,charh=$e("0123456789abcdef",charh+1)
  . . . s charl=$a($e(data,i))#16,charl=$e("0123456789abcdef",charl+1)
  . . . s ndata=ndata_"\u00"_charh_charl
@@ -70,17 +70,14 @@ parse:(subs,dir) ;parse an argument list or list of subscripts
  ;
  s (temp,tmp)=""
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
+ ;
  i subs'="" d
  . f  q:subs=""  d
  . . s num=+subs,$e(subs,1,$l(num)+1)=""
+ . . ;
  . . s sub=$e(subs,1,num)
- . . i sub["""" d
- . . . f i=1:1:$l(sub) d
- . . . . i $e(sub,i)="""" s tmp=tmp_""""_$e(sub,i)
- . . . . e  s tmp=tmp_$e(sub,i)
- . . . ;
- . . . s sub=tmp
+ . . s sub=$$unescape(sub)
  . . s sub=$$convert(sub,dir,"sub")_","
  . . ;
  . . s temp=temp_sub,$e(subs,1,num+1)=""
@@ -90,10 +87,28 @@ parse:(subs,dir) ;parse an argument list or list of subscripts
  quit subs
  ;
  ;
+unescape:(data) ;unescape quotes within a string
+ n i,charh,charl,ndata
+ ;
+ i data["""" d
+ . s ndata=""
+ . ;
+ . f i=1:1:$l(data) d
+ . . i $e(data,i)="""" d
+ . . . i (i=1)!(i=$l(data)) d
+ . . . . s ndata=ndata_$e(data,i)
+ . . . e  d
+ . . . . s ndata=ndata_""""_$e(data,i)
+ . . e  s ndata=ndata_$e(data,i)
+ e  s ndata=data
+ ;
+ quit ndata
+ ;
+ ;
 data(glvn,subs) ;find out if global node has data or children
  n globalname,defined,ok,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,subs)
  s defined=$d(@globalname)
@@ -109,7 +124,8 @@ data(glvn,subs) ;find out if global node has data or children
 function(func,args) ;call an arbitrary extrinsic function
  n dev,function,ok,result,return
  ;
- i '$d(args)#10 s args=""
+ i '($d(args)#10) s args=""
+ ;
  s:args'="" args=$$parse(args,"i")
  ;
  s function=func_$s(args'="":"("_args_")",1:"")
@@ -129,7 +145,7 @@ function(func,args) ;call an arbitrary extrinsic function
 get(glvn,subs) ;get one node of a global
  n data,defined,globalname,ok,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,subs)
  ;
@@ -150,7 +166,7 @@ get(glvn,subs) ;get one node of a global
 globalDirectory(max,lo,hi) ;list the globals in a database, filtered or not
  n flag,cnt,global,return
  ;
- i '$d(max)#10 s max=0
+ i '($d(max)#10) s max=0
  ;
  s cnt=1,flag=0
  ;
@@ -180,7 +196,7 @@ globalDirectory(max,lo,hi) ;list the globals in a database, filtered or not
 increment(glvn,subs,incr) ;increment the number in a global node
  n globalname,increment,ok,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,subs)
  s increment=$i(@globalname,$g(incr,1))
@@ -196,7 +212,7 @@ increment(glvn,subs,incr) ;increment the number in a global node
 kill(glvn,subs) ;kill a global or global node
  n globalname,ok,result,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,subs)
  k @globalname
@@ -212,7 +228,7 @@ kill(glvn,subs) ;kill a global or global node
 lock(glvn,subs) ;lock a global node, incrementally
  n globalname,ok,result,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,subs)
  l +@globalname:0
@@ -257,14 +273,14 @@ nextNode(glvn,subs) ;
 order(glvn,subs,order) ;return the next global node at the same level
  n globalname,defined,ok,result,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,subs)
  ;
  i $g(order)=-1 s result=$o(@globalname,-1)
  e  s result=$o(@globalname)
  ;
- i $e(result)="^" s $e(result)=""
+ i subs="",$e(result)="^" s $e(result)=""
  ;
  s result=$$escape(result)
  s result=$$convert(result,"o","data")
@@ -278,7 +294,7 @@ order(glvn,subs,order) ;return the next global node at the same level
  ;
  ;
 previous(glvn,subs) ;same as order, only in reverse
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  quit $$order(glvn,subs,-1)
  ;
@@ -294,11 +310,10 @@ retrieve() ;
 set(glvn,subs,data) ;set a global node
  n globalname,ok,result,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,subs)
  ;
- s data=$$escape(data)
  s data=$$convert(data,"i","data")
  ;
  s @globalname=data
@@ -314,7 +329,7 @@ set(glvn,subs,data) ;set a global node
 unlock(glvn,subs) ;unlock a global node, incrementally; or release all locks
  n globalname,ok,result,return
  ;
- i '$d(subs)#10 s subs=""
+ i '($d(subs)#10) s subs=""
  ;
  s globalname=$$construct(glvn,.subs)
  i glvn=""&(subs="") d
@@ -337,5 +352,5 @@ update() ;
  ;
  ;
 version() ;return the version string
- quit "Node.js Adaptor for GT.M: Version: 0.3.1 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.3.2 (FWSLC); "_$zv
  ;

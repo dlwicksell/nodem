@@ -1,17 +1,15 @@
-var gtm = require("../lib/mumps");
-
+var gtm = require('../lib/nodem');
 var db = new gtm.Gtm();
-
 db.open();
 
 var node;
 var ret;
+var i;
 
 console.log('Testing the set command, starting at: ' + Date());
 
-for (var i = 0; i < 1000000; i++) {
-
-  node = {global: 'dlw', subscripts: ["testing", i], data: 'record ' + i};
+for (i = 0; i < 1000000; i++) {
+  node = {global: 'dlw', subscripts: ['testing', i], data: 'record ' + i};
 
   ret = db.set(node);
 

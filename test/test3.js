@@ -1,17 +1,15 @@
-var gtm = require("../lib/mumps");
-
+var gtm = require('../lib/nodem');
 var db = new gtm.Gtm();
-
 db.open();
 
-var node = {global: 'zewd', subscripts: ['loader']};
+var node = {global: 'zewd', subscripts: ['config']};
 
 var retrieve = function(node) {
   var global = node.global;
   var subscripts = JSON.stringify(node.subscripts);
   
   var retrieveData = function(node) {
-    console.log("in retrieveData: node = " + JSON.stringify(node));
+    console.log('in retrieveData: node = ' + JSON.stringify(node));
 
     var subs = '';
     var data;
@@ -21,11 +19,11 @@ var retrieve = function(node) {
     node.subscripts.push(subs);
 
     do {
-      console.log("calling order: node = " + JSON.stringify(node));
+      console.log('calling order: node = ' + JSON.stringify(node));
 
       subs = db.order(node).result;
 
-      console.log("subs = " + subs);
+      console.log('subs = ' + subs);
 
       if (subs !== '') {
         node.subscripts.pop();
@@ -60,6 +58,6 @@ var retrieve = function(node) {
 
 var obj = retrieve(node);
 
-console.log("results = " + JSON.stringify(obj));
+console.log('results = ' + JSON.stringify(obj));
 
 db.close();

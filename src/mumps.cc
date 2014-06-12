@@ -3,7 +3,7 @@
  *
  * Written by David Wicksell <dlw@linux.com>
  *
- * Copyright © 2012,2013 Fourth Watch Software, LC
+ * Copyright © 2012-2014 Fourth Watch Software, LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -20,7 +20,7 @@
  */
 
 
-#include <nodejs/node.h>
+#include <node.h>
 
 using namespace v8;
 using namespace node;
@@ -172,7 +172,7 @@ Handle<Value> Gtm::open(const Arguments &args)
     status = gtm_init();
 
     if (status) {
-        gtm_zstatus(msgbuf, BUF_LEN); 
+        gtm_zstatus(msgbuf, BUF_LEN);
 
         Handle<Object> result = gtm_status(msgbuf);
 
@@ -185,14 +185,14 @@ Handle<Value> Gtm::open(const Arguments &args)
     n_signal.sa_flags = 0;
 
     if (sigemptyset(&n_signal.sa_mask) == -1) {
-        ThrowException(Exception::TypeError(String::
+        ThrowException(Exception::Error(String::
                        New("Cannot empty signal handler")));
 
         return scope.Close(Undefined());
     }
 
     if (sigaction(SIGINT, &n_signal, NULL) == -1) {
-        ThrowException(Exception::TypeError(String::
+        ThrowException(Exception::Error(String::
                        New("Cannot initialize signal handler")));
 
         return scope.Close(Undefined());
@@ -219,7 +219,7 @@ Handle<Value> Gtm::close(const Arguments &args)
     status = gtm_exit();
 
     if (status) { 
-        gtm_zstatus(msgbuf, BUF_LEN); 
+        gtm_zstatus(msgbuf, BUF_LEN);
 
         Handle<Object> result = gtm_status(msgbuf);
 
@@ -241,21 +241,25 @@ Handle<Value> Gtm::version(const Arguments &args)
 
     if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.3.1 (FWSLC)"));
+            String::New("Node.js Adaptor for GT.M: Version: 0.3.2 (FWSLC)"));
     }
 
-    ci_name_descriptor version;
-
     char str[] = "version";
+
+#if (GTM_VERSION > 54)
+    ci_name_descriptor version;
 
     version.rtn_name.address = str;
     version.rtn_name.length = strlen(version.rtn_name.address);
     version.handle = NULL;
 
     status = gtm_cip(&version, ret, NULL);
+#else
+    status = gtm_ci(str, ret, NULL);
+#endif
 
     if (status) { 
-        gtm_zstatus(msgbuf, BUF_LEN); 
+        gtm_zstatus(msgbuf, BUF_LEN);
 
         Handle<Object> result = gtm_status(msgbuf);
 
@@ -319,7 +323,7 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
        
     if (! test->Equals(global_directory) && ! test->Equals(unlock)
                                              && args.Length() < 1) {
-        ThrowException(Exception::TypeError(String::
+        ThrowException(Exception::SyntaxError(String::
                        New("Argument must be specified")));
 
         return scope.Close(Undefined());
@@ -338,7 +342,7 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
         from_arrays = object->Get(Undefined());
 
         if (name->IsUndefined()) {
-            ThrowException(Exception::TypeError(String::New
+            ThrowException(Exception::SyntaxError(String::New
                                  ("Need to supply a function property")));
 
             return scope.Close(Undefined());
@@ -377,7 +381,7 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
         from_arrays = object->Get(Undefined());
 
         if (name->IsUndefined()) {
-            ThrowException(Exception::TypeError(String::New
+            ThrowException(Exception::SyntaxError(String::New
                                  ("Need to supply a global property")));
 
             return scope.Close(Undefined());
@@ -388,10 +392,15 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
         data = object->Get(String::New("data"));
 
         if (data->IsUndefined()) {
-            ThrowException(Exception::TypeError(String::New
+            ThrowException(Exception::SyntaxError(String::New
                                  ("Need to supply a data property")));
 
             return scope.Close(Undefined());
+        }
+
+        if (object->Get(String::New("data"))->IsString()) {
+            data = String::Concat(String::New("\""),
+                   String::Concat(Local<String>::Cast(data), String::New("\"")));
         }
     } else if (test->Equals(increment)) {
         number = Local<Number>::Cast(args[1]);
@@ -414,10 +423,21 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
             if (length > LENGTH)
                 return scope.Close(String::New("Subscript too big!"));
 
-            sprintf(buf, "%d:", length);
+            if (array->Get(i)->IsString()) {
+                sprintf(buf, "%d:", length + 2);
 
-            Local<Value> out = String::Concat(String::New(buf), str);
-            temparg->Set(i, out);
+                Local<String> test = String::Concat
+                                         (String::New("\""), String::Concat
+                                         (str, String::New("\"")));
+
+                Local<Value> out = String::Concat(String::New(buf), test);
+                temparg->Set(i, out);
+            } else {
+                sprintf(buf, "%d:", length);
+
+                Local<Value> out = String::Concat(String::New(buf), str);
+                temparg->Set(i, out);
+            }
         }
 
         arg = Local<Array>::Cast(temparg);
@@ -456,17 +476,28 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
             for (uint32_t j = 0; j < from_array->Length(); j++) {
                 Local<String> from_str = Local<String>::Cast
-                                    (from_array->Get(j)->ToString());
+                                         (from_array->Get(j)->ToString());
 
                 int from_length = from_str->Length();
                 if (from_length > LENGTH)
                     return scope.Close(String::New("Subscript too big!"));
 
-                sprintf(from_buf, "%d:", from_length);
+                if (from_str->IsString()) {
+                    sprintf(from_buf, "%d:", from_length + 2);
 
-                Local<Value> from_out = String::Concat
-                                        (String::New(from_buf), from_str);
-                from_temparg->Set(j, from_out);
+                    Local<String> from_string = String::Concat
+                                             (String::New("\""), String::Concat
+                                             (from_str, String::New("\"")));
+                    Local<Value> from_out = String::Concat
+                                            (String::New(from_buf), from_string);
+                    from_temparg->Set(j, from_out);
+                } else {
+                    sprintf(from_buf, "%d:", from_length);
+
+                    Local<Value> from_out = String::Concat
+                                            (String::New(from_buf), from_str);
+                    from_temparg->Set(j, from_out);
+                }
             }
 
             from_arg = Local<Array>::Cast(from_temparg);
@@ -479,8 +510,6 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
     ret[0] = '\0';
 
-    ci_name_descriptor access;
-
     Local<String> string = cmd->ToString();
 
     String::AsciiValue str(string);
@@ -488,30 +517,55 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     if (is_utf)
         String::Utf8Value str(string);
 
+#if (GTM_VERSION > 54)
+    ci_name_descriptor access;
+
     access.rtn_name.address = *str;
     access.rtn_name.length = strlen(access.rtn_name.address);
     access.handle = NULL;
+#endif
 
     if (test->Equals(set)) {
         if (is_utf) {
+#if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret,
                             *String::Utf8Value(name),
                             *String::Utf8Value(arg),
                             *String::Utf8Value(data)); 
+#else
+            status = gtm_ci(*str, ret,
+                            *String::Utf8Value(name),
+                            *String::Utf8Value(arg),
+                            *String::Utf8Value(data));
+#endif
         } else {
+#if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret,
                             *String::AsciiValue(name),
                             *String::AsciiValue(arg),
-                            *String::AsciiValue(data)); 
+                            *String::AsciiValue(data));
+#else
+            status = gtm_ci(*str, ret,
+                            *String::AsciiValue(name),
+                            *String::AsciiValue(arg),
+                            *String::AsciiValue(data));
+#endif
         }
     } else if (test->Equals(increment)) {
         if (number->IsUndefined())
             number = Number::New(1);
 
+#if (GTM_VERSION > 54)
         status = gtm_cip(&access, ret,
                         *String::AsciiValue(name),
                         *String::AsciiValue(arg),
                         number->NumberValue());
+#else
+        status = gtm_ci(*str, ret,
+                        *String::AsciiValue(name),
+                        *String::AsciiValue(arg),
+                        number->NumberValue());
+#endif
     } else if (test->Equals(unlock)) {
         if (name->IsUndefined())
             name = String::Empty();
@@ -519,9 +573,15 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
         if (arg->IsUndefined())
             arg = String::Empty();
 
+#if (GTM_VERSION > 54)
         status = gtm_cip(&access, ret,
                         *String::AsciiValue(name),
                         *String::AsciiValue(arg));
+#else
+        status = gtm_ci(*str, ret,
+                        *String::AsciiValue(name),
+                        *String::AsciiValue(arg));
+#endif
     } else if (test->Equals(global_directory)) {
         if (max->IsUndefined())
             max = Number::New(0);
@@ -532,46 +592,73 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
         if (hi->IsUndefined())
             hi = String::Empty();
 
+#if (GTM_VERSION > 54)
         status = gtm_cip(&access, ret,
                         max->Uint32Value(),
                         *String::AsciiValue(lo),
                         *String::AsciiValue(hi));
+#else
+        status = gtm_ci(*str, ret,
+                        max->Uint32Value(),
+                        *String::AsciiValue(lo),
+                        *String::AsciiValue(hi));
+#endif
     } else if (test->Equals(merge)) {
+#if (GTM_VERSION > 54)
         status = gtm_cip(&access, ret,
                         *String::AsciiValue(to_name),
                         *String::AsciiValue(to_arg),
                         *String::AsciiValue(from_name),
                         *String::AsciiValue(from_arg));
+#else
+        status = gtm_ci(*str, ret,
+                        *String::AsciiValue(to_name),
+                        *String::AsciiValue(to_arg),
+                        *String::AsciiValue(from_name),
+                        *String::AsciiValue(from_arg));
+#endif
     } else {
         if (is_utf) {
+#if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret,
                             *String::Utf8Value(name),
                             *String::Utf8Value(arg));
+#else
+            status = gtm_ci(*str, ret,
+                            *String::Utf8Value(name),
+                            *String::Utf8Value(arg));
+#endif
         } else {
+#if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret,
                             *String::AsciiValue(name),
                             *String::AsciiValue(arg));
+#else
+            status = gtm_ci(*str, ret,
+                            *String::AsciiValue(name),
+                            *String::AsciiValue(arg));
+#endif
         }
     }
 
-    if (status) { 
-        gtm_zstatus(msgbuf, BUF_LEN); 
+    if (status) {
+        gtm_zstatus(msgbuf, BUF_LEN);
 
         Handle<Object> result = gtm_status(msgbuf);
 
         return scope.Close(result);
-    } 
+    }
 
     Local<String> nstring = String::New(ret);
 
     if (nstring->Length() < 1) {
-        ThrowException(Exception::TypeError(String::New
+        ThrowException(Exception::RangeError(String::New
                              ("No JSON string present")));
 
         return scope.Close(Undefined());
     }
 
-    Handle<Value> retvalue = parse_json(nstring);    
+    Handle<Value> retvalue = parse_json(nstring);
 
     if (retvalue.IsEmpty()) {
         return scope.Close(Undefined());
@@ -604,12 +691,20 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 } //End of call_gtm
 
 
-Handle<Value> Gtm::set(const Arguments &args)
+Handle<Value> Gtm::data(const Arguments &args)
 {
-    Local<Value> cmd = String::New("set");
+    Local<Value> cmd = String::New("data");
 
     return call_gtm(cmd, args);
-} //End of Gtm::set
+} //End of Gtm::data
+
+
+Handle<Value> Gtm::function(const Arguments &args)
+{
+    Local<Value> cmd = String::New("function");
+
+    return call_gtm(cmd, args);
+} //End of Gtm::function
 
 
 Handle<Value> Gtm::get(const Arguments &args)
@@ -620,6 +715,22 @@ Handle<Value> Gtm::get(const Arguments &args)
 } //End of Gtm::get
 
 
+Handle<Value> Gtm::global_directory(const Arguments &args)
+{
+    Local<Value> cmd = String::New("global_directory");
+
+    return call_gtm(cmd, args);
+} //End of Gtm::global_directory
+
+
+Handle<Value> Gtm::increment(const Arguments &args)
+{
+    Local<Value> cmd = String::New("increment");
+
+    return call_gtm(cmd, args);
+} //End of Gtm::increment
+
+
 Handle<Value> Gtm::kill(const Arguments &args)
 {
     Local<Value> cmd = String::New("kill");
@@ -628,12 +739,28 @@ Handle<Value> Gtm::kill(const Arguments &args)
 } //End of Gtm::kill
 
 
-Handle<Value> Gtm::data(const Arguments &args)
+Handle<Value> Gtm::lock(const Arguments &args)
 {
-    Local<Value> cmd = String::New("data");
+    Local<Value> cmd = String::New("lock");
 
     return call_gtm(cmd, args);
-} //End of Gtm::data
+} //End of Gtm::lock
+
+
+Handle<Value> Gtm::merge(const Arguments &args)
+{
+    Local<Value> cmd = String::New("merge");
+
+    return call_gtm(cmd, args);
+} //End of Gtm::merge
+
+
+Handle<Value> Gtm::next_node(const Arguments &args)
+{
+    Local<Value> cmd = String::New("next_node");
+
+    return call_gtm(cmd, args);
+} //End of Gtm::next_node
 
 
 Handle<Value> Gtm::order(const Arguments &args)
@@ -652,14 +779,6 @@ Handle<Value> Gtm::previous(const Arguments &args)
 } //End of Gtm::previous
 
 
-Handle<Value> Gtm::next_node(const Arguments &args)
-{
-    Local<Value> cmd = String::New("next_node");
-
-    return call_gtm(cmd, args);
-} //End of Gtm::next_node
-
-
 Handle<Value> Gtm::previous_node(const Arguments &args)
 {
     Local<Value> cmd = String::New("previous_node");
@@ -668,36 +787,20 @@ Handle<Value> Gtm::previous_node(const Arguments &args)
 } //End of Gtm::previous_node
 
 
-Handle<Value> Gtm::increment(const Arguments &args)
+Handle<Value> Gtm::retrieve(const Arguments &args)
 {
-    Local<Value> cmd = String::New("increment");
+    Local<Value> cmd = String::New("retrieve");
 
     return call_gtm(cmd, args);
-} //End of Gtm::increment
+} //End of Gtm::retrieve
 
 
-Handle<Value> Gtm::merge(const Arguments &args)
+Handle<Value> Gtm::set(const Arguments &args)
 {
-    Local<Value> cmd = String::New("merge");
+    Local<Value> cmd = String::New("set");
 
     return call_gtm(cmd, args);
-} //End of Gtm::merge
-
-
-Handle<Value> Gtm::global_directory(const Arguments &args)
-{
-    Local<Value> cmd = String::New("global_directory");
-
-    return call_gtm(cmd, args);
-} //End of Gtm::global_directory
-
-
-Handle<Value> Gtm::lock(const Arguments &args)
-{
-    Local<Value> cmd = String::New("lock");
-
-    return call_gtm(cmd, args);
-} //End of Gtm::lock
+} //End of Gtm::set
 
 
 Handle<Value> Gtm::unlock(const Arguments &args)
@@ -706,22 +809,6 @@ Handle<Value> Gtm::unlock(const Arguments &args)
 
     return call_gtm(cmd, args);
 } //End of Gtm::unlock
-
-
-Handle<Value> Gtm::function(const Arguments &args)
-{
-    Local<Value> cmd = String::New("function");
-
-    return call_gtm(cmd, args);
-} //End of Gtm::function
-
-
-Handle<Value> Gtm::retrieve(const Arguments &args)
-{
-    Local<Value> cmd = String::New("retrieve");
-
-    return call_gtm(cmd, args);
-} //End of Gtm::retrieve
 
 
 Handle<Value> Gtm::update(const Arguments &args)
@@ -744,10 +831,10 @@ void Gtm::Init(Handle<Object> target)
     tpl->SetClassName(String::NewSymbol("Gtm"));
     tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-    //Define prototype macro
-    #define NODE_GTM_SET_METHOD(tpl, name, func) \
+//Define prototype macro
+#define NODE_GTM_SET_METHOD(tpl, name, func) \
         tpl->PrototypeTemplate()->Set(String::NewSymbol(name), \
-            FunctionTemplate::New(func)->GetFunction());
+        FunctionTemplate::New(func)->GetFunction());
 
     NODE_GTM_SET_METHOD(tpl, "about", version);
     NODE_GTM_SET_METHOD(tpl, "close", close);
@@ -770,8 +857,7 @@ void Gtm::Init(Handle<Object> target)
     NODE_GTM_SET_METHOD(tpl, "unlock", unlock);
     NODE_GTM_SET_METHOD(tpl, "update", update);
     NODE_GTM_SET_METHOD(tpl, "version", version);
-
-    #undef NODE_GTM_SET_METHOD
+#undef NODE_GTM_SET_METHOD
 
     Persistent<Function> constructor =
         Persistent<Function>::New(tpl->GetFunction());
