@@ -13,12 +13,12 @@ for (i = 0; i < 1000000; i++) {
 
   ret = db.set(node);
 
-  if (ret.ok == 0) {
+  if (ret.ok === 0) {
     break;
   }
 }
 
-db.close()
+db.close();
 
 if (ret.ok == 1) {
   console.log('Set a million nodes in ^dlw("testing"), ending at: ' + Date());

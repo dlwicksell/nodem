@@ -46,7 +46,7 @@ var retrieve = function(node) {
           obj[subs] = value;
         }
       }
-    } while (subs !== '')
+    } while (subs !== '');
 
     return obj;  
   };

@@ -1,4 +1,4 @@
-v4wNode() ;; 2014-06-11  8:18 PM
+v4wNode() ;; 2014-06-16  2:48 PM
  ;
  ; Written by David Wicksell <dlw@linux.com>
  ; Copyright © 2012-2014 Fourth Watch Software, LC
@@ -352,5 +352,5 @@ update() ;
  ;
  ;
 version() ;return the version string
- quit "Node.js Adaptor for GT.M: Version: 0.3.2 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.3.3 (FWSLC); "_$zv
  ;

@@ -241,7 +241,7 @@ Handle<Value> Gtm::version(const Arguments &args)
 
     if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.3.2 (FWSLC)"));
+            String::New("Node.js Adaptor for GT.M: Version: 0.3.3 (FWSLC)"));
     }
 
     char str[] = "version";

@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.3.2 - 2014 Jun 11
+Version 0.3.3 - 2014 Jun 16
 
 ## Copyright and License ##
 
@@ -170,13 +170,12 @@ open up the file binding.gyp (the build specification file) and edit line 36
 out what version of GT.M you are running by invoking GT.M in direct mode.
 E.g.
 
-   GTM>write $zversion
-   GT.M V6.0-003 Linux x86_64
+    GTM>write $zversion
+    GT.M V6.0-003 Linux x86_64
 
 Then take the first two numbers in the version string, in this example, 6.0,
-and drop the decimal point and that is what you would use to set GTM_VERSION
-to in binding.gyp. Next, while in the root of the repository, run this
-command:
+and drop the decimal point and that is what you would set GTM_VERSION to in
+binding.gyp. Next, while in the root of the repository, run this command:
 
     $ npm run install
 
