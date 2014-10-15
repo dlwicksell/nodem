@@ -1,5 +1,37 @@
-export GTMCI=${HOME}/nodem/resources/nodem.ci
-#export GTMCI=${HOME}/node_modules/nodem/resources/nodem.ci
-export gtmroutines="${HOME}/nodem/src ${gtmroutines}"
-#export gtmroutines="${HOME}/node_modules/nodem/src ${gtmroutines}"
+#
+# environ - Nodem environment script
+#
+# Nodem written by David Wicksell <dlw@linux.com>
+# Copyright © 2012-2014 Fourth Watch Software, LC
+#
+# Make sure the following environment variables are using the correct paths
+# for your system, if you are planning to source this file from your
+# .profile/.bash_profile startup file (see README.md). Below are common
+# paths if you have installed via the below commented methods. I.e. Via
+# Github in your home directory, via NPM in your home directory, or via NPM,
+# as an EWD.js dependency.
+#
+
+
+# Github
+#export GTMCI=${HOME}/nodem/resources/nodem.ci
+
+# NPM
+export GTMCI=${HOME}/node_modules/nodem/resources/nodem.ci
+
+# EWD.js
+#export GTMCI=${HOME}/ewdjs/node_modules/nodem/resources/nodem.ci
+
+
+# Github
+#export gtmroutines="${HOME}/nodem/src ${gtmroutines}"
+
+# NPM
+export gtmroutines="${HOME}/node_modules/nodem/src ${gtmroutines}"
+
+# EWD.js
+#export gtmroutines="${HOME}/ewdjs/node_modules/nodem/src ${gtmroutines}"
+
+
+# Runtime loader path for GT.M shared library, if necessary (see README.md)
 #export LD_LIBRARY_PATH=${gtm_dist}:${LD_LIBRARY_PATH}

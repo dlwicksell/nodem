@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.3.3 - 2014 Jun 16
+Version 0.4.0 - 2014 Oct 14
 
 ## Copyright and License ##
 
@@ -27,7 +27,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 ## Disclaimer ##
 
 Nodem is experimental, and not yet ready for production. It is a work in
-progress, and as such, its implementation is likely to change.
+progress, and as such, its interface is likely to change.
 
 ## Summary and Info ##
 
@@ -51,6 +51,30 @@ with a property called namespace, defined as the path to your global
 directory file for that database. E.g.
 
     > db.open({namespace: '/home/dlw/g/db_utf.gld'});
+
+Nodem supports a feature called autoRelink, which will automatically relink
+a routine image containing any function called by the function API. By
+default autoRelink is off. You can enable it in one of three ways. First,
+you can pass it as a property in the object parameter, passed to the
+function API directly, with a value of true, or any non-zero number. This
+will turn on autoRelink just for that call. You can also disable it, by
+setting autoRelink to false, or 0, if it was already enabled by one of the
+global settings. E.g.
+
+    > db.function({function: 'version^v4wNode', autoRelink: true});
+
+Second, you can enable it globally, for every call to the function API, by
+setting the same configuration property in an object passed to the open API.
+E.g.
+
+    > db.open({autoRelink: true});
+
+Third, you can enable it globally, by setting the environment variable
+NODEM_AUTO_RELINK to 1, or any other non-zero number. E.g.
+
+    > export NODEM_AUTO_RELINK=1
+    or
+    > NODEM_AUTO_RELINK=1 node
 
 ## Installation ##
 
@@ -175,9 +199,15 @@ E.g.
 
 Then take the first two numbers in the version string, in this example, 6.0,
 and drop the decimal point and that is what you would set GTM_VERSION to in
-binding.gyp. Next, while in the root of the repository, run this command:
+binding.gyp. Next, if you have installed Nodem via npm, while in the root of
+the repository, run this command:
 
     $ npm run install
+
+Or, if you have not installed Nodem via npm, while in the root of the
+repository, run this command instead:
+
+    $ node-gyp rebuild 2> builderror.log
 
 That's it, now Nodem should work with your older version of GT.M.
 

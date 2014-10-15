@@ -1,8 +1,7 @@
 /*
- * nodem.js - Nodem start file
+ * testFunction.js - Test the function API
  *
  * Written by David Wicksell <dlw@linux.com>
- *
  * Copyright © 2012-2014 Fourth Watch Software, LC
  *
  * This program is free software: you can redistribute it and/or modify
@@ -20,16 +19,14 @@
  */
 
 
-try {
-    module.exports = require('../build/Release/mumps');
-} catch (e) {
-    try {
-        module.exports = require('./mumps');
-    } catch (err) {
-        console.error(err.stack + '\n');
+var gtm = require('../lib/nodem');
+var db = new gtm.Gtm();
+db.open();
 
-        if (e.code === 'MODULE_NOT_FOUND') {
-            console.info("Try rebuilding Nodem with 'npm run install'.");
-        }
-    }
-}
+var func1 = db.function({function: 'version^%zewdAPI'});
+console.log(JSON.stringify(func1) + '\n');
+
+var func2 = db.function({function: 'version^v4wNode'});
+console.log(JSON.stringify(func2));
+
+db.close();
