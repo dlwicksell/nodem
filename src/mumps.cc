@@ -249,7 +249,7 @@ Handle<Value> Gtm::version(const Arguments &args)
 
     if (gtm_is_open < 1) {
         return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.4.0 (FWSLC)"));
+            String::New("Node.js Adaptor for GT.M: Version: 0.5.0 (FWSLC)"));
     }
 
     char str[] = "version";
@@ -314,6 +314,7 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     Local<String> function = String::New("function");
     Local<String> global_directory = String::New("global_directory");
     Local<String> increment = String::New("increment");
+    Local<String> next_node = String::New("next_node");
     Local<String> order = String::New("order");
     Local<String> previous = String::New("previous");
     Local<String> set = String::New("set");
@@ -784,6 +785,8 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
             retobject->Set(String::New("subscripts"), array);
         }
 
+        return scope.Close(retobject);
+    } else if (test->Equals(next_node)) {
         return scope.Close(retobject);
     } else {
         Local<Array> array = Local<Array>::Cast(arrays);

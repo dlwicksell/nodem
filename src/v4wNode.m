@@ -1,4 +1,4 @@
-v4wNode() ;; 2014-10-14  7:59 PM
+v4wNode() ;; 2014-10-22  8:48 AM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
@@ -266,8 +266,48 @@ merge(fglvn,fsubs,tglvn,tsubs) ;merge an array node to another array node
  quit return
  ;
  ;
-nextNode(glvn,subs) ;return the next global node depth first
- quit "{""status"": ""next_node not yet implemented""}"
+nextNode(glvn,subs) ;return the next global node, depth first
+ n data,defined,globalname,nsubs,result,return
+ ;
+ s subs=$$parse($g(subs),"input")
+ s globalname=$$construct(glvn,subs)
+ ;
+ s result=$q(@globalname)
+ ;
+ i result="" s defined=0
+ e  s defined=1
+ ;
+ i defined d
+ . n sub
+ . ;
+ . s data=@result
+ . ;
+ . s data=$$oescape(data)
+ . s data=$$oconvert(data)
+ . ;
+ . i $e(result)="^" s $e(result)=""
+ . ;
+ . s nsubs=""
+ . ;
+ . f i=1:1:$ql(result) d
+ . . s sub=$$oescape($qs(result,i))
+ . . s sub=$$oconvert(sub)
+ . . ;
+ . . s nsubs=nsubs_", "_sub
+ . ;
+ . s $e(nsubs,1,2)=""
+ ;
+ s return="{""ok"": 1, ""global"": """_glvn_""","
+ ;
+ i defined,nsubs'="" s return=return_" ""subscripts"": ["_nsubs_"],"
+ ;
+ s return=return_" ""defined"": "_defined
+ ;
+ i defined s return=return_", ""data"": "_data_"}"
+ e  s return=return_"}"
+ ;
+ ;
+ quit return
  ;
  ;
 order(glvn,subs,order) ;return the next global node at the same level
@@ -332,5 +372,5 @@ update() ;not yet implemented
  ;
  ;
 version() ;return the version string
- quit "Node.js Adaptor for GT.M: Version: 0.4.0 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.5.0 (FWSLC); "_$zv
  ;

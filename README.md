@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.4.0 - 2014 Oct 14
+Version 0.5.0 - 2014 Oct 22
 
 ## Copyright and License ##
 
@@ -26,8 +26,8 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 ## Disclaimer ##
 
-Nodem is experimental, and not yet ready for production. It is a work in
-progress, and as such, its interface is likely to change.
+Nodem is still in development and its interface may change in future
+versions. Use in production at your own risk.
 
 ## Summary and Info ##
 
@@ -52,12 +52,12 @@ directory file for that database. E.g.
 
     > db.open({namespace: '/home/dlw/g/db_utf.gld'});
 
-Nodem supports a feature called autoRelink, which will automatically relink
+Nodem supports a feature called auto-relink, which will automatically relink
 a routine image containing any function called by the function API. By
-default autoRelink is off. You can enable it in one of three ways. First,
+default auto-relink is off. You can enable it in one of three ways. First,
 you can pass it as a property in the object parameter, passed to the
 function API directly, with a value of true, or any non-zero number. This
-will turn on autoRelink just for that call. You can also disable it, by
+will turn on auto-relink just for that call. You can also disable it, by
 setting autoRelink to false, or 0, if it was already enabled by one of the
 global settings. E.g.
 
@@ -72,9 +72,10 @@ E.g.
 Third, you can enable it globally, by setting the environment variable
 NODEM_AUTO_RELINK to 1, or any other non-zero number. E.g.
 
-    > export NODEM_AUTO_RELINK=1
+    $ export NODEM_AUTO_RELINK=1
+    $ node test/testSet.js 
     or
-    > NODEM_AUTO_RELINK=1 node
+    $ NODEM_AUTO_RELINK=1 node test/testSet.js
 
 ## Installation ##
 
@@ -143,7 +144,7 @@ node. E.g.
 
     $ LD_LIBRARY_PATH=${gtm_dist} node
     or
-    $ LD_LIBRARY_PATH=${gtm_dist} node test1.js
+    $ LD_LIBRARY_PATH=${gtm_dist} node test/testSet.js
 
 In addition you will need to set a few environment variables in order for
 GT.M to find the call-in table and the MUMPS routine that it maps to. The
@@ -238,7 +239,7 @@ requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 * *merge* - Merge a global or a global node, to a global or a global node
 * *next* - Call the $ORDER intrinsic function
 * *order* - Call the $ORDER intrinsic function
-* *next_node* - Not yet implemented
+* *next_node* - Call the $QUERY intrinsic function
 * *open* - Open the database
 * *previous* - Call the $ORDER intrinsic function in reverse
 * *previous_node* - Not yet implemented
