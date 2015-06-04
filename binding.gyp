@@ -2,7 +2,7 @@
 # binding.gyp - Nodem build script
 #
 # Nodem written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2014 Fourth Watch Software, LC
+# Copyright © 2012-2015 Fourth Watch Software LC
 #
 
 {

@@ -2,7 +2,7 @@
 # environ - Nodem environment script
 #
 # Nodem written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2014 Fourth Watch Software, LC
+# Copyright © 2012-2015 Fourth Watch Software LC
 #
 # Make sure the following environment variables are using the correct paths
 # for your system, if you are planning to source this file from your

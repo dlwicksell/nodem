@@ -2,7 +2,7 @@
  * testNodem.js - Test the Nodem APIs
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2014 Fourth Watch Software, LC
+ * Copyright © 2012-2015 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -25,17 +25,21 @@ db.open();
 
 var node = {global: 'zewd', subscripts: ['config']};
 
-var retrieve = function(node) {
-  var global = node.global;
-  var subscripts = JSON.stringify(node.subscripts);
+var retrieve = function (node) {
+  var global = node.global,
+    subscripts = JSON.stringify(node.subscripts),
+    obj,
+    retrieveData;
 
-  var retrieveData = function(node) {
+  retrieveData = function (node) {
     console.log('in retrieveData: node = ' + JSON.stringify(node));
 
-    var subs = '';
-    var data;
-    var value;
-    var obj = {};
+    var subs = '',
+      data,
+      value,
+      newNode,
+      subObj,
+      obj = {};
 
     node.subscripts.push(subs);
 
@@ -53,8 +57,8 @@ var retrieve = function(node) {
         data = db.data(node).defined;
 
         if (data === 10) {
-          var newNode = {global: node.global, subscripts: node.subscripts};
-          var subObj = retrieveData(newNode);
+          newNode = {global: node.global, subscripts: node.subscripts};
+          subObj = retrieveData(newNode);
 
           obj[subs] = subObj;
 
@@ -70,9 +74,15 @@ var retrieve = function(node) {
     return obj;
   };
 
-  var obj = retrieveData(node);
+  obj = retrieveData(node);
 
-  return {node:{global: global,subscripts: JSON.parse(subscripts)},object: obj};
+  return {
+    node: {
+      global: global,
+      subscripts: JSON.parse(subscripts)
+    },
+    object: obj
+  };
 };
 
 var obj = retrieve(node);

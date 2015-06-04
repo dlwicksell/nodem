@@ -1,8 +1,8 @@
-v4wNode() ;; 2014-10-22  8:48 AM
+v4wNode() ;; 2015-05-23  9:27 AM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2014 Fourth Watch Software, LC
+ ; Copyright © 2012-2015 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
@@ -141,7 +141,7 @@ function(func,args,relink) ;call an arbitrary extrinsic function
  ;
  i function'["^" s function="^"_function
  ;
- x "s result=$$"_function
+ s @("result=$$"_function)
  ;
  s result=$$oescape(result)
  s result=$$oconvert(result)
@@ -153,9 +153,7 @@ get(glvn,subs) ;get data from global node
  n data,defined,globalname,return
  ;
  s subs=$$parse($g(subs),"input")
- ;
  s globalname=$$construct(glvn,subs)
- ;
  s data=$g(@globalname)
  ;
  s data=$$oescape(data)
@@ -372,5 +370,5 @@ update() ;not yet implemented
  ;
  ;
 version() ;return the version string
- quit "Node.js Adaptor for GT.M: Version: 0.5.0 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.6.0 (FWSLC); "_$zv
  ;

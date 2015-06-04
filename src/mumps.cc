@@ -2,7 +2,7 @@
  * mumps.cc - A GT.M database driver for Node.js
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2014 Fourth Watch Software, LC
+ * Copyright © 2012-2015 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -19,26 +19,29 @@
  */
 
 
-#include <node.h>
-
-using namespace v8;
-using namespace node;
+#include <errno.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <string.h>
+#include <termios.h>
+#include <unistd.h>
+#include <sys/types.h>
 
 extern "C" {
-    #include <errno.h>
-    #include <signal.h>
-    #include <stdlib.h>
-    #include <string.h>
-    #include <termios.h>
-    #include <unistd.h>
-    #include <sys/types.h>
     #include <gtmxc_types.h>
 }
 
-#define LENGTH 9999
+#include <string>
+
+#include "mumps.hh"
+
+using namespace std;
+using namespace v8;
+using namespace node;
+
 #define BUF_LEN (2048 + 1)
 #define RET_LEN ((1024 * 1024) + 1)
-#define WIDTH 6
+#define WIDTH 9
 
 gtm_char_t msgbuf[BUF_LEN];
 gtm_char_t ret[RET_LEN];
@@ -51,41 +54,9 @@ struct sigaction n_signal;
 
 static int gtm_is_open = 0;
 
-Persistent<Number> auto_relink;
-Persistent<String> db_error = Persistent<String>::New(
-                                  String::New("GT.M is not open"));
+static uint32_t auto_relink;
 
-
-class Gtm: public ObjectWrap
-{
-    public:
-        static void Init(Handle<Object> target);
-
-    private:
-        Gtm();
-        ~Gtm();
-
-        static Handle<Value> New(const Arguments&);
-        static Handle<Value> close(const Arguments&);
-        static Handle<Value> data(const Arguments&);
-        static Handle<Value> function(const Arguments&);
-        static Handle<Value> get(const Arguments&);
-        static Handle<Value> global_directory(const Arguments&);
-        static Handle<Value> increment(const Arguments&);
-        static Handle<Value> kill(const Arguments&);
-        static Handle<Value> lock(const Arguments&);
-        static Handle<Value> merge(const Arguments&);
-        static Handle<Value> next_node(const Arguments&);
-        static Handle<Value> open(const Arguments&);
-        static Handle<Value> order(const Arguments&);
-        static Handle<Value> previous(const Arguments&);
-        static Handle<Value> previous_node(const Arguments&);
-        static Handle<Value> retrieve(const Arguments&);
-        static Handle<Value> set(const Arguments&);
-        static Handle<Value> unlock(const Arguments&);
-        static Handle<Value> update(const Arguments&);
-        static Handle<Value> version(const Arguments&);
-}; //End of class Gtm
+string db_error = "GT.M is not open";
 
 
 static void catch_intr(int signum)
@@ -102,12 +73,11 @@ static void catch_intr(int signum)
 int db_is_open(void)
 {
     if (gtm_is_open == 0) {
-        db_error = Persistent<String>::New(String::New("GT.M is not open"));
+        db_error = "GT.M is not open";
     } else if (gtm_is_open == 1) {
-        db_error = Persistent<String>::New(String::New("GT.M is already open"));
+        db_error = "GT.M is already open";
     } else if (gtm_is_open == -1) {
-        db_error = Persistent<String>::New(
-                       String::New("GT.M cannot be re-opened"));
+        db_error = "GT.M cannot be re-opened";
     }
 
     return gtm_is_open;
@@ -116,37 +86,41 @@ int db_is_open(void)
 
 Handle<Object> gtm_status(gtm_char_t *msg_buf)
 {
+    ISOLATE_CURRENT;
+
     char *error_msg;
     char *err_code = strtok_r(msg_buf, ",", &error_msg);
 
     uint32_t error_code = atoi(err_code);
 
-    Local<Object> result = Object::New();
+    Local<Object> result = Object::New(ISOLATE);
 
-    result->Set(String::New("ok"), Number::New(0));
-    result->Set(String::New("errorCode"), Number::New(error_code));
-    result->Set(String::New("errorMessage"), String::New(error_msg));
+    result->Set(STRING("ok"), NUMBER(0));
+    result->Set(STRING("errorCode"), NUMBER(error_code));
+    result->Set(STRING("errorMessage"), STRING(error_msg));
 
     return result;
 } //End of gtm_status
 
 
-Handle<Value> Gtm::open(const Arguments &args)
+RETURN_DECL Gtm::open(ARGUMENTS args)
 {
-    HandleScope scope;
+    ISOLATE_CURRENT;
+
+    SCOPE_HANDLE;
 
     char *chset;
     char *arelink;
 
-    auto_relink = Persistent<Number>::New(Number::New(0));
+    auto_relink = 0;
 
-    if (db_is_open() != 0)
-        return scope.Close(db_error);
+    if (db_is_open() != 0) {
+        SCOPE_SET(args, STRING(db_error.c_str()));
+        SCOPE_RETURN(STRING(db_error.c_str()));
+    }
 
     if (tcgetattr(STDIN_FILENO, &tp) == -1)
         strerror(errno);
-
-    Local<Object> object = Local<Object>::Cast(args[0]);
 
     chset = getenv("gtm_chset");
 
@@ -163,20 +137,20 @@ Handle<Value> Gtm::open(const Arguments &args)
     arelink = getenv("NODEM_AUTO_RELINK");
 
     if (arelink != NULL) {
-        auto_relink = Persistent<Number>::Cast(Persistent<Value>::New(
-                       String::New(arelink)));
+        auto_relink = atoi(arelink);
     }
 
+    Local<Object> object = Local<Object>::Cast(args[0]);
+
     if (! object->IsUndefined()) {
-        Local<Value> nspace = object->Get(String::New("namespace"));
+        Local<Value> nspace = object->Get(STRING("namespace"));
 
         if (! nspace->IsUndefined()) {
             if (setenv("gtmgbldir", *String::Utf8Value(nspace), 1) == -1)
                 strerror(errno);
         }
 
-        auto_relink = Persistent<Number>::Cast(Persistent<Value>::New(
-                       object->Get(String::New("autoRelink"))));
+        auto_relink = object->Get(STRING("autoRelink"))->Uint32Value();
     }
 
     status = gtm_init();
@@ -186,7 +160,8 @@ Handle<Value> Gtm::open(const Arguments &args)
 
         Handle<Object> result = gtm_status(msgbuf);
 
-        return scope.Close(result);
+        SCOPE_SET(args, result);
+        SCOPE_RETURN(result);
     }
 
     gtm_is_open = 1;
@@ -195,34 +170,39 @@ Handle<Value> Gtm::open(const Arguments &args)
     n_signal.sa_flags = 0;
 
     if (sigemptyset(&n_signal.sa_mask) == -1) {
-        ThrowException(Exception::Error(String::New(
-                       "Cannot empty signal handler")));
+        EXCEPTION(Exception::Error(STRING("Cannot empty signal handler")));
 
-        return scope.Close(Undefined());
+        SCOPE_SET(args, Undefined(ISOLATE));
+        SCOPE_RETURN(Undefined(ISOLATE));
     }
 
     if (sigaction(SIGINT, &n_signal, NULL) == -1) {
-        ThrowException(Exception::Error(String::New(
-                       "Cannot initialize signal handler")));
+        EXCEPTION(Exception::Error(STRING("Cannot initialize signal handler")));
 
-        return scope.Close(Undefined());
+        SCOPE_SET(args, Undefined(ISOLATE));
+        SCOPE_RETURN(Undefined(ISOLATE));
     }
 
-    Local<Object> result = Object::New();
+    Local<Object> result = Object::New(ISOLATE);
 
-    result->Set(String::New("ok"), Number::New(1));
-    result->Set(String::New("result"), String::New("1"));
+    result->Set(STRING("ok"), NUMBER(1));
+    result->Set(STRING("result"), STRING("1"));
 
-    return scope.Close(result);
+    SCOPE_SET(args, result);
+    SCOPE_RETURN(result);
 } //End of Gtm::open
 
 
-Handle<Value> Gtm::close(const Arguments &args)
+RETURN_DECL Gtm::close(ARGUMENTS args)
 {
-    HandleScope scope;
+    ISOLATE_CURRENT;
 
-    if (db_is_open() == 0)
-        return scope.Close(db_error);
+    SCOPE_HANDLE;
+
+    if (db_is_open() == 0) {
+        SCOPE_SET(args, STRING(db_error.c_str()));
+        SCOPE_RETURN(STRING(db_error.c_str()));
+    }
 
     status = gtm_exit();
 
@@ -231,7 +211,8 @@ Handle<Value> Gtm::close(const Arguments &args)
 
         Handle<Object> result = gtm_status(msgbuf);
 
-        return scope.Close(result);
+        SCOPE_SET(args, result);
+        SCOPE_RETURN(result);
     }
 
     gtm_is_open = -1;
@@ -239,17 +220,22 @@ Handle<Value> Gtm::close(const Arguments &args)
     if (tcsetattr(STDIN_FILENO, TCSANOW, &tp) == -1)
         strerror(errno);
 
-    return scope.Close(String::New("1"));
+    SCOPE_SET(args, STRING("1"));
+    SCOPE_RETURN(STRING("1"));
 } //End of Gtm::close
 
 
-Handle<Value> Gtm::version(const Arguments &args)
+RETURN_DECL Gtm::version(ARGUMENTS args)
 {
-    HandleScope scope;
+    ISOLATE_CURRENT;
+
+    SCOPE_HANDLE;
 
     if (gtm_is_open < 1) {
-        return scope.Close(
-            String::New("Node.js Adaptor for GT.M: Version: 0.5.0 (FWSLC)"));
+        SCOPE_SET(args,
+            STRING("Node.js Adaptor for GT.M: Version: 0.6.0 (FWSLC)"));
+        SCOPE_RETURN(
+            STRING("Node.js Adaptor for GT.M: Version: 0.6.0 (FWSLC)"));
     }
 
     char str[] = "version";
@@ -271,31 +257,37 @@ Handle<Value> Gtm::version(const Arguments &args)
 
         Handle<Object> result = gtm_status(msgbuf);
 
-        return scope.Close(result);
+        SCOPE_SET(args, result);
+        SCOPE_RETURN(result);
     }
 
-    return scope.Close(String::New(ret));
+    SCOPE_SET(args, STRING(ret));
+    SCOPE_RETURN(STRING(ret));
 } //End of Gtm::version & about
 
 
 Handle<Value> parse_json(Handle<Value> json_string)
 {
-    HandleScope scope;
+    ISOLATE_CURRENT;
 
-    Handle<Context> context = Context::GetCurrent();
+    SCOPE_HANDLE;
+
+    Handle<Context> context = CONTEXT_CURRENT;
     Handle<Object> global = context->Global();
 
-    Handle<Object> JSON = global->Get(String::New("JSON"))->ToObject();
+    Handle<Object> JSON = global->Get(STRING("JSON"))->ToObject();
     Handle<Function> JSON_parse = Handle<Function>::
-                                  Cast(JSON->Get(String::New("parse")));
+                                  Cast(JSON->Get(STRING("parse")));
 
-    return scope.Close(JSON_parse->Call(JSON, 1, &json_string));
+    return SCOPE_ESCAPE(JSON_parse->Call(JSON, 1, &json_string));
 } //End of parse_json
 
 
-Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
+RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 {
-    HandleScope scope;
+    ISOLATE_CURRENT;
+
+    SCOPE_HANDLE;
 
     Local<Value> arelink;
     Local<Value> arrays, data, name, number;
@@ -306,120 +298,126 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     Local<Value> from_arrays, from_name;
     Local<Value> to_arrays, to_name;
 
-    if (db_is_open() < 1)
-        return scope.Close(db_error);
+    if (db_is_open() < 1) {
+        SCOPE_SET(args, STRING(db_error.c_str()));
+        SCOPE_RETURN(STRING(db_error.c_str()));
+    }
 
     Local<String> test = String::Cast(*cmd)->ToString();
 
-    Local<String> function = String::New("function");
-    Local<String> global_directory = String::New("global_directory");
-    Local<String> increment = String::New("increment");
-    Local<String> next_node = String::New("next_node");
-    Local<String> order = String::New("order");
-    Local<String> previous = String::New("previous");
-    Local<String> set = String::New("set");
-    Local<String> unlock = String::New("unlock");
-    Local<String> merge = String::New("merge");
+    Local<String> function = STRING("function");
+    Local<String> global_directory = STRING("global_directory");
+    Local<String> increment = STRING("increment");
+    Local<String> next_node = STRING("next_node");
+    Local<String> order = STRING("order");
+    Local<String> previous = STRING("previous");
+    Local<String> set = STRING("set");
+    Local<String> unlock = STRING("unlock");
+    Local<String> merge = STRING("merge");
 
     if (! test->Equals(global_directory) && ! test->Equals(unlock)
                                              && args.Length() < 1) {
-        ThrowException(Exception::SyntaxError(String::
-                       New("Argument must be specified")));
+        EXCEPTION(Exception::SyntaxError(STRING(
+                  "Argument must be specified")));
 
-        return scope.Close(Undefined());
+        SCOPE_SET(args, Undefined(ISOLATE));
+        SCOPE_RETURN(Undefined(ISOLATE));
     }
 
     Local<Object> object = Local<Object>::Cast(args[0]);
 
     if (object->IsUndefined())
-        object = object->New();
+        object = object->New(ISOLATE);
 
     if (test->Equals(function)) {
-        name = object->Get(String::New("function"));
-        arrays = object->Get(String::New("arguments"));
+        name = object->Get(STRING("function"));
+        arrays = object->Get(STRING("arguments"));
 
-        if (object->Has(String::New("autoRelink"))) {
+        if (object->Has(STRING("autoRelink"))) {
             arelink = Local<Number>::Cast(object->Get
-                        (String::New("autoRelink")));
+                        (STRING("autoRelink")));
         } else {
-            arelink = Local<Number>::New(auto_relink);
+            arelink = Local<Number>::New(ISOLATE_COMMA NUMBER(auto_relink));
         }
 
-        to_arrays = object->Get(Undefined());
-        from_arrays = object->Get(Undefined());
+        to_arrays = object->Get(Undefined(ISOLATE));
+        from_arrays = object->Get(Undefined(ISOLATE));
 
         if (name->IsUndefined()) {
-            ThrowException(Exception::SyntaxError(String::New
-                                 ("Need to supply a function property")));
+            EXCEPTION(Exception::SyntaxError(STRING(
+                      "Need to supply a function property")));
 
-            return scope.Close(Undefined());
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
         }
     } else if (test->Equals(global_directory)) {
-        max = object->Get(String::New("max"));
-        lo = object->Get(String::New("lo"));
-        hi = object->Get(String::New("hi"));
+        max = object->Get(STRING("max"));
+        lo = object->Get(STRING("lo"));
+        hi = object->Get(STRING("hi"));
 
-        arrays = object->Get(Undefined());
+        arrays = object->Get(Undefined(ISOLATE));
 
-        to_arrays = object->Get(Undefined());
-        from_arrays = object->Get(Undefined());
+        to_arrays = object->Get(Undefined(ISOLATE));
+        from_arrays = object->Get(Undefined(ISOLATE));
     } else if (test->Equals(merge)) {
-        to_object = Local<Object>::Cast(object->Get(String::New("to")));
-        from_object = Local<Object>::Cast(object->Get(String::New("from")));
+        to_object = Local<Object>::Cast(object->Get(STRING("to")));
+        from_object = Local<Object>::Cast(object->Get(STRING("from")));
 
-        to_name = to_object->Get(String::New("global"));
-        to_arrays = to_object->Get(String::New("subscripts"));
+        to_name = to_object->Get(STRING("global"));
+        to_arrays = to_object->Get(STRING("subscripts"));
 
-        from_name = from_object->Get(String::New("global"));
-        from_arrays = from_object->Get(String::New("subscripts"));
+        from_name = from_object->Get(STRING("global"));
+        from_arrays = from_object->Get(STRING("subscripts"));
 
-        arrays = object->Get(Undefined());
+        arrays = object->Get(Undefined(ISOLATE));
     } else if (test->Equals(unlock)) {
-        name = object->Get(String::New("global"));
-        arrays = object->Get(String::New("subscripts"));
+        name = object->Get(STRING("global"));
+        arrays = object->Get(STRING("subscripts"));
 
-        to_arrays = object->Get(Undefined());
-        from_arrays = object->Get(Undefined());
+        to_arrays = object->Get(Undefined(ISOLATE));
+        from_arrays = object->Get(Undefined(ISOLATE));
     } else {
-        name = object->Get(String::New("global"));
-        arrays = object->Get(String::New("subscripts"));
+        name = object->Get(STRING("global"));
+        arrays = object->Get(STRING("subscripts"));
 
-        to_arrays = object->Get(Undefined());
-        from_arrays = object->Get(Undefined());
+        to_arrays = object->Get(Undefined(ISOLATE));
+        from_arrays = object->Get(Undefined(ISOLATE));
 
         if (name->IsUndefined()) {
-            ThrowException(Exception::SyntaxError(String::New
-                                 ("Need to supply a global property")));
+            EXCEPTION(Exception::SyntaxError(STRING(
+                      "Need to supply a global property")));
 
-            return scope.Close(Undefined());
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
         }
     }
 
     if (test->Equals(increment)) {
         number = Local<Number>::Cast(args[1]);
     } else if (test->Equals(set)) {
-        data = object->Get(String::New("data"));
+        data = object->Get(STRING("data"));
 
         if (data->IsUndefined()) {
-            ThrowException(Exception::SyntaxError(String::New
-                                 ("Need to supply a data property")));
+            EXCEPTION(Exception::SyntaxError(STRING(
+                      "Need to supply a data property")));
 
-            return scope.Close(Undefined());
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
         }
 
-        if (object->Get(String::New("data"))->IsString()) {
-            data = String::Concat(String::New("\""), String::Concat
-                  (Local<String>::Cast(data), String::New("\"")));
+        if (object->Get(STRING("data"))->IsString()) {
+            data = String::Concat(STRING("\""), String::Concat
+                  (Local<String>::Cast(data), STRING("\"")));
         }
     }
 
-    Local<Value> arg = String::Empty();
-    Local<Value> from_arg = String::Empty();
-    Local<Value> to_arg = String::Empty();
+    Local<Value> arg = String::Empty(ISOLATE);
+    Local<Value> from_arg = String::Empty(ISOLATE);
+    Local<Value> to_arg = String::Empty(ISOLATE);
 
     if (! arrays->IsUndefined()) {
         Local<Array> array = Local<Array>::Cast(arrays);
-        Local<Array> temparg = Array::New();
+        Local<Array> temparg = Array::New(ISOLATE);
 
         char buf[WIDTH];
 
@@ -428,22 +426,19 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
             int length = str->Length();
 
-            if (length > LENGTH)
-                return scope.Close(String::New("Subscript too big!"));
-
             if (array->Get(i)->IsString()) {
                 sprintf(buf, "%d:", length + 2);
 
                 Local<String> out_string = String::Concat
-                                         (String::New("\""), String::Concat
-                                         (str, String::New("\"")));
+                                         (STRING("\""), String::Concat
+                                         (str, STRING("\"")));
 
-                Local<Value> out = String::Concat(String::New(buf), out_string);
+                Local<Value> out = String::Concat(STRING(buf), out_string);
                 temparg->Set(i, out);
             } else {
                 sprintf(buf, "%d:", length);
 
-                Local<Value> out = String::Concat(String::New(buf), str);
+                Local<Value> out = String::Concat(STRING(buf), str);
                 temparg->Set(i, out);
             }
         }
@@ -452,7 +447,7 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
     } else  if (test->Equals(merge)) {
         if (! from_arrays->IsUndefined()) {
             Local<Array> from_array = Local<Array>::Cast(from_arrays);
-            Local<Array> from_temparg = Array::New();
+            Local<Array> from_temparg = Array::New(ISOLATE);
 
             char from_buf[WIDTH];
 
@@ -462,35 +457,32 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
                 int from_length = from_str->Length();
 
-                if (from_length > LENGTH)
-                    return scope.Close(String::New("Subscript too big!"));
-
                 if (from_array->Get(j)->IsString()) {
                     sprintf(from_buf, "%d:", from_length + 2);
 
                     Local<String> from_string = String::Concat
-                                             (String::New("\""), String::Concat
-                                             (from_str, String::New("\"")));
+                                             (STRING("\""), String::Concat
+                                             (from_str, STRING("\"")));
                     Local<Value> from_out = String::Concat
-                                           (String::New(from_buf), from_string);
+                                           (STRING(from_buf), from_string);
                     from_temparg->Set(j, from_out);
                 } else {
                     sprintf(from_buf, "%d:", from_length);
 
                     Local<Value> from_out = String::Concat
-                                           (String::New(from_buf), from_str);
+                                           (STRING(from_buf), from_str);
                     from_temparg->Set(j, from_out);
                 }
             }
 
             from_arg = Local<Array>::Cast(from_temparg);
         } else {
-            from_arg = String::Empty();
+            from_arg = String::Empty(ISOLATE);
         }
 
         if (! to_arrays->IsUndefined()) {
             Local<Array> to_array = Local<Array>::Cast(to_arrays);
-            Local<Array> to_temparg = Array::New();
+            Local<Array> to_temparg = Array::New(ISOLATE);
 
             char to_buf[WIDTH];
 
@@ -500,45 +492,42 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
                 int to_length = to_str->Length();
 
-                if (to_length > LENGTH)
-                    return scope.Close(String::New("Subscript too big!"));
-
                 if (to_array->Get(i)->IsString()) {
                     sprintf(to_buf, "%d:", to_length + 2);
 
                     Local<String> to_string = String::Concat
-                                             (String::New("\""), String::Concat
-                                             (to_str, String::New("\"")));
+                                             (STRING("\""), String::Concat
+                                             (to_str, STRING("\"")));
                     Local<Value> to_out = String::Concat
-                                            (String::New(to_buf), to_string);
+                                            (STRING(to_buf), to_string);
                     to_temparg->Set(i, to_out);
                 } else {
                     sprintf(to_buf, "%d:", to_length);
 
                     Local<Value> to_out = String::Concat
-                                         (String::New(to_buf), to_str);
+                                         (STRING(to_buf), to_str);
                     to_temparg->Set(i, to_out);
                 }
             }
 
             to_arg = Local<Array>::Cast(to_temparg);
         } else {
-            to_arg = String::Empty();
+            to_arg = String::Empty(ISOLATE);
         }
     } else {
-        arg = String::Empty();
+        arg = String::Empty(ISOLATE);
     }
 
     ret[0] = '\0';
 
     Local<String> string = cmd->ToString();
 
-    String::AsciiValue str(string);
+    ASCII_STRING(str, string);
 
 #if (GTM_VERSION > 54)
     ci_name_descriptor access;
 
-    access.rtn_name.address = *str;
+    access.rtn_name.address = CAST(str, gtm_char_t*);
     access.rtn_name.length = strlen(access.rtn_name.address);
     access.handle = NULL;
 #endif
@@ -558,26 +547,28 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 #endif
         } else {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg),
-                            arelink->Uint32Value());
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_cip(&access, ret, ASCII_VALUE(name),
+                             ASCII_VALUE(arg), arelink->Uint32Value());
 #else
-            status = gtm_ci(*str, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg),
-                            arelink->Uint32Value());
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_ci(*str, ret, ASCII_VALUE(name),
+                            ASCII_VALUE(arg), arelink->Uint32Value());
 #endif
         }
     } else if (test->Equals(global_directory)) {
         if (max->IsUndefined())
-            max = Number::New(0);
+            max = NUMBER(0);
 
         if (lo->IsUndefined())
-            lo = String::Empty();
+            lo = String::Empty(ISOLATE);
 
         if (hi->IsUndefined())
-            hi = String::Empty();
+            hi = String::Empty(ISOLATE);
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
@@ -593,20 +584,22 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 #endif
         } else {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            max->Uint32Value(),
-                            *String::AsciiValue(lo),
-                            *String::AsciiValue(hi));
+            ASCII_PROTO(lo);
+            ASCII_PROTO(hi);
+
+            status = gtm_cip(&access, ret, max->Uint32Value(),
+                             ASCII_VALUE(lo), ASCII_VALUE(hi));
 #else
-            status = gtm_ci(*str, ret,
-                            max->Uint32Value(),
-                            *String::AsciiValue(lo),
-                            *String::AsciiValue(hi));
+            ASCII_PROTO(lo);
+            ASCII_PROTO(hi);
+
+            status = gtm_ci(*str, ret, max->Uint32Value(),
+                            ASCII_VALUE(lo), ASCII_VALUE(hi));
 #endif
         }
     } else if (test->Equals(increment)) {
         if (number->IsUndefined())
-            number = Number::New(1);
+            number = NUMBER(1);
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
@@ -622,15 +615,17 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 #endif
         } else {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg),
-                            number->NumberValue());
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_cip(&access, ret, ASCII_VALUE(name),
+                             ASCII_VALUE(arg), number->NumberValue());
 #else
-            status = gtm_ci(*str, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg),
-                            number->NumberValue());
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_ci(*str, ret, ASCII_VALUE(name),
+                            ASCII_VALUE(arg), number->NumberValue());
 #endif
         }
     } else if (test->Equals(merge)) {
@@ -650,17 +645,23 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 #endif
         } else {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::AsciiValue(from_name),
-                            *String::AsciiValue(from_arg),
-                            *String::AsciiValue(to_name),
-                            *String::AsciiValue(to_arg));
+            ASCII_PROTO(from_name);
+            ASCII_PROTO(from_arg);
+            ASCII_PROTO(to_name);
+            ASCII_PROTO(to_arg);
+
+            status = gtm_cip(&access, ret, ASCII_VALUE(from_name),
+                             ASCII_VALUE(from_arg),
+                             ASCII_VALUE(to_name), ASCII_VALUE(to_arg));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::AsciiValue(from_name),
-                            *String::AsciiValue(from_arg),
-                            *String::AsciiValue(to_name),
-                            *String::AsciiValue(to_arg));
+            ASCII_PROTO(from_name);
+            ASCII_PROTO(from_arg);
+            ASCII_PROTO(to_name);
+            ASCII_PROTO(to_arg);
+
+            status = gtm_ci(*str, ret, ASCII_VALUE(from_name),
+                            ASCII_VALUE(from_arg),
+                            ASCII_VALUE(to_name), ASCII_VALUE(to_arg));
 #endif
         }
     } else if (test->Equals(set)) {
@@ -678,23 +679,27 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 #endif
         } else {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg),
-                            *String::AsciiValue(data));
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+            ASCII_PROTO(data);
+
+            status = gtm_cip(&access, ret, ASCII_VALUE(name),
+                             ASCII_VALUE(arg), ASCII_VALUE(data));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg),
-                            *String::AsciiValue(data));
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+            ASCII_PROTO(data);
+
+            status = gtm_ci(*str, ret, ASCII_VALUE(name),
+                            ASCII_VALUE(arg), ASCII_VALUE(data));
 #endif
         }
     } else if (test->Equals(unlock)) {
         if (name->IsUndefined())
-            name = String::Empty();
+            name = String::Empty(ISOLATE);
 
         if (arg->IsUndefined())
-            arg = String::Empty();
+            arg = String::Empty(ISOLATE);
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
@@ -708,13 +713,17 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 #endif
         } else {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg));
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_cip(&access, ret, ASCII_VALUE(name),
+                             ASCII_VALUE(arg));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg));
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_ci(*str, ret, ASCII_VALUE(name),
+                            ASCII_VALUE(arg));
 #endif
         }
     } else {
@@ -730,13 +739,17 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 #endif
         } else {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg));
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_cip(&access, ret, ASCII_VALUE(name),
+                             ASCII_VALUE(arg));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::AsciiValue(name),
-                            *String::AsciiValue(arg));
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
+            status = gtm_ci(*str, ret, ASCII_VALUE(name),
+                            ASCII_VALUE(arg));
 #endif
         }
     }
@@ -746,249 +759,279 @@ Handle<Value> call_gtm(Local<Value> cmd, const Arguments &args)
 
         Handle<Object> result = gtm_status(msgbuf);
 
-        return scope.Close(result);
+        SCOPE_SET(args, result);
+        SCOPE_RETURN(result);
     }
 
-    Local<String> nstring = String::New(ret);
+    Local<String> nstring = STRING(ret);
 
     if (nstring->Length() < 1) {
-        ThrowException(Exception::RangeError(String::New
-                             ("No JSON string present")));
+        EXCEPTION(Exception::RangeError(STRING("No JSON string present")));
 
-        return scope.Close(Undefined());
+        SCOPE_SET(args, Undefined(ISOLATE));
+        SCOPE_RETURN(Undefined(ISOLATE));
     }
 
     Handle<Value> retvalue = parse_json(nstring);
 
     if (retvalue.IsEmpty()) {
-        return scope.Close(Undefined());
+        SCOPE_SET(args, Undefined(ISOLATE));
+        SCOPE_RETURN(Undefined(ISOLATE));
     }
 
     Handle<Object> retobject = Handle<Object>::Cast(retvalue);
 
     if (arrays->IsUndefined()) {
-        return scope.Close(retobject);
+        SCOPE_SET(args, retobject);
+        SCOPE_RETURN(retobject);
     } else if (test->Equals(function)) {
         Local<Array> array = Local<Array>::Cast(arrays);
 
-        if (retobject->Get(String::New("errorCode"))->IsUndefined())
-            retobject->Set(String::New("arguments"), array);
+        if (retobject->Get(STRING("errorCode"))->IsUndefined())
+            retobject->Set(STRING("arguments"), array);
 
-        return scope.Close(retobject);
+        SCOPE_SET(args, retobject);
+        SCOPE_RETURN(retobject);
     } else if ((test->Equals(order)) || (test->Equals(previous))) {
         Local<Array> array = Local<Array>::Cast(arrays);
 
-        if (retobject->Get(String::New("errorCode"))->IsUndefined()) {
-            array->Set(Number::New(array->Length() - 1),
-                       retobject->Get(String::New("result")));
+        if (retobject->Get(STRING("errorCode"))->IsUndefined()) {
+            array->Set(NUMBER(array->Length() - 1),
+                       retobject->Get(STRING("result")));
 
-            retobject->Set(String::New("subscripts"), array);
+            retobject->Set(STRING("subscripts"), array);
         }
 
-        return scope.Close(retobject);
+        SCOPE_SET(args, retobject);
+        SCOPE_RETURN(retobject);
     } else if (test->Equals(next_node)) {
-        return scope.Close(retobject);
+        SCOPE_SET(args, retobject);
+        SCOPE_RETURN(retobject);
     } else {
         Local<Array> array = Local<Array>::Cast(arrays);
 
-        if (retobject->Get(String::New("errorCode"))->IsUndefined())
-            retobject->Set(String::New("subscripts"), array);
+        if (retobject->Get(STRING("errorCode"))->IsUndefined())
+            retobject->Set(STRING("subscripts"), array);
 
-        return scope.Close(retobject);
+        SCOPE_SET(args, retobject);
+        SCOPE_RETURN(retobject);
     }
 } //End of call_gtm
 
 
-Handle<Value> Gtm::data(const Arguments &args)
+RETURN_DECL Gtm::data(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("data");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("data");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::data
 
 
-Handle<Value> Gtm::function(const Arguments &args)
+RETURN_DECL Gtm::function(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("function");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("function");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::function
 
 
-Handle<Value> Gtm::get(const Arguments &args)
+RETURN_DECL Gtm::get(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("get");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("get");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::get
 
 
-Handle<Value> Gtm::global_directory(const Arguments &args)
+RETURN_DECL Gtm::global_directory(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("global_directory");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("global_directory");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::global_directory
 
 
-Handle<Value> Gtm::increment(const Arguments &args)
+RETURN_DECL Gtm::increment(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("increment");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("increment");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::increment
 
 
-Handle<Value> Gtm::kill(const Arguments &args)
+RETURN_DECL Gtm::kill(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("kill");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("kill");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::kill
 
 
-Handle<Value> Gtm::lock(const Arguments &args)
+RETURN_DECL Gtm::lock(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("lock");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("lock");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::lock
 
 
-Handle<Value> Gtm::merge(const Arguments &args)
+RETURN_DECL Gtm::merge(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("merge");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("merge");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::merge
 
 
-Handle<Value> Gtm::next_node(const Arguments &args)
+RETURN_DECL Gtm::next_node(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("next_node");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("next_node");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::next_node
 
 
-Handle<Value> Gtm::order(const Arguments &args)
+RETURN_DECL Gtm::order(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("order");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("order");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::order
 
 
-Handle<Value> Gtm::previous(const Arguments &args)
+RETURN_DECL Gtm::previous(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("previous");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("previous");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::previous
 
 
-Handle<Value> Gtm::previous_node(const Arguments &args)
+RETURN_DECL Gtm::previous_node(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("previous_node");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("previous_node");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::previous_node
 
 
-Handle<Value> Gtm::retrieve(const Arguments &args)
+RETURN_DECL Gtm::retrieve(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("retrieve");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("retrieve");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::retrieve
 
 
-Handle<Value> Gtm::set(const Arguments &args)
+RETURN_DECL Gtm::set(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("set");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("set");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::set
 
 
-Handle<Value> Gtm::unlock(const Arguments &args)
+RETURN_DECL Gtm::unlock(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("unlock");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("unlock");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::unlock
 
 
-Handle<Value> Gtm::update(const Arguments &args)
+RETURN_DECL Gtm::update(ARGUMENTS args)
 {
-    Local<Value> cmd = String::New("update");
+    ISOLATE_CURRENT;
 
-    return call_gtm(cmd, args);
+    Local<Value> cmd = STRING("update");
+
+    RETURN call_gtm(cmd, args);
 } //End of Gtm::update
 
 
 Gtm::Gtm() {}
-Gtm::~Gtm()
-{
-    auto_relink.Dispose();
-    auto_relink.Clear();
-
-    db_error.Dispose();
-    db_error.Clear();
-}
+Gtm::~Gtm() {}
 
 
 void Gtm::Init(Handle<Object> target)
 {
-    //Prepare constructor template
-    Local<FunctionTemplate> tpl = FunctionTemplate::New(New);
+    ISOLATE_CURRENT;
 
-    tpl->SetClassName(String::NewSymbol("Gtm"));
+    //Prepare constructor template
+    Local<FunctionTemplate> tpl = FunctionTemplate::New(ISOLATE_COMMA New);
+
+    tpl->SetClassName(SYMBOL("Gtm"));
     tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-//Define prototype macro
-#define NODE_GTM_SET_METHOD(tpl, name, func) \
-        tpl->PrototypeTemplate()->Set(String::NewSymbol(name), \
-        FunctionTemplate::New(func)->GetFunction());
+    NODE_SET_PROTOTYPE_METHOD(tpl, "about", version);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "close", close);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "data", data);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "function", function);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "get", get);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "global_directory", global_directory);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "increment", increment);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "kill", kill);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "lock", lock);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "merge", merge);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "next", order);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "next_node", next_node);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "open", open);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "order", order);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "previous", previous);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "previous_node", previous_node);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "retrieve", retrieve);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "set", set);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "unlock", unlock);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "update", update);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "version", version);
 
-    NODE_GTM_SET_METHOD(tpl, "about", version);
-    NODE_GTM_SET_METHOD(tpl, "close", close);
-    NODE_GTM_SET_METHOD(tpl, "data", data);
-    NODE_GTM_SET_METHOD(tpl, "function", function);
-    NODE_GTM_SET_METHOD(tpl, "get", get);
-    NODE_GTM_SET_METHOD(tpl, "global_directory", global_directory);
-    NODE_GTM_SET_METHOD(tpl, "increment", increment);
-    NODE_GTM_SET_METHOD(tpl, "kill", kill);
-    NODE_GTM_SET_METHOD(tpl, "lock", lock);
-    NODE_GTM_SET_METHOD(tpl, "merge", merge);
-    NODE_GTM_SET_METHOD(tpl, "next", order);
-    NODE_GTM_SET_METHOD(tpl, "next_node", next_node);
-    NODE_GTM_SET_METHOD(tpl, "open", open);
-    NODE_GTM_SET_METHOD(tpl, "order", order);
-    NODE_GTM_SET_METHOD(tpl, "previous", previous);
-    NODE_GTM_SET_METHOD(tpl, "previous_node", previous_node);
-    NODE_GTM_SET_METHOD(tpl, "retrieve", retrieve);
-    NODE_GTM_SET_METHOD(tpl, "set", set);
-    NODE_GTM_SET_METHOD(tpl, "unlock", unlock);
-    NODE_GTM_SET_METHOD(tpl, "update", update);
-    NODE_GTM_SET_METHOD(tpl, "version", version);
-#undef NODE_GTM_SET_METHOD
+    Persistent<Function> PERSISTENT_FUNCTION(constructor, tpl->GetFunction());
 
-    Persistent<Function> constructor =
-        Persistent<Function>::New(tpl->GetFunction());
-
-    target->Set(String::NewSymbol("Gtm"), constructor);
+    target->Set(SYMBOL("Gtm"), CONSTRUCTOR(constructor, tpl));
 } //End of Gtm::Init
 
 
-Handle<Value> Gtm::New(const Arguments& args)
+RETURN_DECL Gtm::New(ARGUMENTS args)
 {
-    HandleScope scope;
+    ISOLATE_CURRENT;
+
+    SCOPE_HANDLE;
 
     Gtm* obj = new Gtm();
     obj->Wrap(args.This());
 
-    return args.This();
+    SCOPE_SET(args, args.This());
+    SCOPE_RETURN(args.This());
 } //End of Gtm::New
 
 

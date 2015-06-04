@@ -2,12 +2,12 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.5.0 - 2014 Oct 22
+Version 0.6.0 - 2015 Jun 4
 
 ## Copyright and License ##
 
 Addon Module written and maintained by David Wicksell <dlw@linux.com>  
-Copyright © 2012-2014 Fourth Watch Software, LC
+Copyright © 2012-2015 Fourth Watch Software LC
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License (AGPL)
@@ -95,26 +95,27 @@ issue; you can then skip the following step of copying a pre-built shared
 library to ~/nodem/lib/mumps.node.
 
 You might need to copy the correct version of mumps.node for your system
-architecture and version of Node.js, to ~/nodem/lib/mumps.node. The
+architecture and version of Node.js to ~/nodem/lib/mumps.node. The
 mumps.node pre-built modules, which you will find in ~/nodem/lib/, are named
-for the version of Node.js that they support, mumps10 for Node.js version
-0.10.x, and mumps8 for Node.js version 0.8.x (and 0.6.x). Each module will
-also end in _x8664 for 64-bit, or _i686 for 32-bit systems. By default there
-is a mumps.node already there, which is a copy of the 64-bit version for
-Node.js version 0.10.x. It is important to realize that the addon will not
-function unless it is called mumps.node, and a symbolic link won't work.
-E.g.
+for the version of Node.js that they support, mumps12 for Node.js version
+0.12.x, mumps10 for Node.js version 0.10.x, and mumps8 for Node.js version
+0.8.x. Each module will also end in _x8664 for 64-bit, or _i686 for 32-bit
+systems. By default there is a mumps.node already there, which is a copy of
+the 64-bit version for Node.js version 0.12.x. It is important to realize
+that the addon will not function unless it is called mumps.node, and a
+symbolic link won't work. E.g.
 
     $ cd ~/nodem/lib/
-    $ cp mumps10.node_x8664 mumps.node
+    $ cp mumps12.node_x8664 mumps.node
     $ cd -
 
-**NOTE:** The build file specifies a runtime linker path, which is also
-embedded in the pre-built library modules, that might match the path that
-GT.M is installed at on your system. It specifies the paths that are used
-with the Ubuntu fis-gtm package (/usr/lib/fis-gtm/V6.0-003_x86_64/) and the
-dEWDrop virtual machine image (/home/vista/lib/gtm/). If so, you can then
-skip the next step of copying libgtmshr.so or setting $LD_LIBRARY_PATH.
+**NOTE:** The build file specifies several runtime linker paths, which are
+also embedded in the pre-built modules. One of them might match the path
+that GT.M is installed at on your system. These include the paths that are
+used with the Ubuntu fis-gtm package, /usr/lib/fis-gtm/V6.0-003_x86_64/, and
+the dEWDrop virtual machine image, ${HOME}/lib/gtm/. If one of the paths
+match on your system, you can skip the next step of copying libgtmshr.so or
+setting $LD_LIBRARY_PATH.
 
 You might also have to move a copy of libgtmshr.so (GT.M shared runtime
 library) into a directory that will be searched by the dynamic linker/loader
@@ -160,13 +161,12 @@ from your own environment scripts or profile/login script. E.g.
     $ echo "source ~/nodem/resources/environ" >> ~/.profile
 
 If you did not install Nodem in your home directory, you will need to fix
-the paths in the environ file. If you don't source the environ file, than
+the paths in the environ file. If you don't source the environ file, then
 you will need to put a copy of v4wNode.m into a directory that is specified
-in your $gtmroutines routine path, so that the GT.M shared library can find
-it. It is located in the ~/nodem/resources/ directory. Again, if you don't
-source the environ file, than you will need to define the $GTMCI environment
-variable, and point it at the file nodem.ci, located in the
-~/nodem/resources/ directory. E.g.
+in your $gtmroutines routine path, so that GT.M can find it. It is located
+in the ~/nodem/src/ directory. Again, if you don't source the environ file,
+then you will need to define the $GTMCI environment variable, and point it
+at the file nodem.ci, located in the ~/nodem/resources/ directory. E.g.
 
     $ export GTMCI=~/nodem/resources/nodem.ci
 
@@ -191,10 +191,11 @@ running a version of GT.M that is older than V5.5-000, none of those options
 will work. This is because Nodem is using a GT.M API that didn't exist in
 older versions. In that case, you will have to build from source. First,
 open up the file binding.gyp (the build specification file) and edit line 36
-'GTM_VERSION=60' to the version of GT.M that you are running. You can find
+, 'GTM_VERSION=60', to the version of GT.M that you are running. You can find
 out what version of GT.M you are running by invoking GT.M in direct mode.
 E.g.
 
+    $ mumps -direct
     GTM>write $zversion
     GT.M V6.0-003 Linux x86_64
 
@@ -210,6 +211,8 @@ repository, run this command instead:
 
     $ node-gyp rebuild 2> builderror.log
 
+If there were any errors, they will show up in builderror.log.
+
 That's it, now Nodem should work with your older version of GT.M.
 
 I hope you enjoy the Nodem package. If you have any questions, feature
@@ -222,7 +225,7 @@ requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 [GT.M]: http://sourceforge.net/projects/fis-gtm/
 [Globals]: http://globalsdb.org/
 [Caché]: http://www.intersystems.com/cache/
-[Docs]: http://docs.intersystems.com/documentation/cache/20141/pdfs/BXJS.pdf
+[Docs]: http://docs.intersystems.com/documentation/cache/20151/pdfs/BXJS.pdf
 
 ### APIs ###
 
@@ -247,5 +250,3 @@ requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 * *set* - Set a global node to a new value
 * *unlock* - Unlock a global or global node incrementally, or release all locks
 * *update* - Not yet implemented
-
-[![githalytics.com alpha](https://cruel-carlota.pagodabox.com/a637d9ddd6ebc0e7f45f49ca0c2ea701 "githalytics.com")](http://githalytics.com/dlwicksell/nodem)

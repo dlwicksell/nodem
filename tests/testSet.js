@@ -2,7 +2,7 @@
  * testSet.js - Test the set API
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2014 Fourth Watch Software, LC
+ * Copyright © 2012-2015 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -41,7 +41,7 @@ for (i = 0; i < 1000000; i++) {
 
 db.close();
 
-if (ret.ok == 1) {
+if (ret.ok === 1) {
   console.log('Set a million nodes in ^dlw("testing"), ending at: ' + Date());
 } else {
   console.log('There was an error: ' + ret.errorCode + ' ' + ret.errorMessage);
