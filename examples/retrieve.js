@@ -1,5 +1,5 @@
 /*
- * testNodem.js - Test the Nodem APIs
+ * retrieve.js - Test the Nodem APIs
  *
  * Written by David Wicksell <dlw@linux.com>
  * Copyright © 2012-2015 Fourth Watch Software LC
@@ -21,25 +21,26 @@
 
 var gtm = require('../lib/nodem');
 var db = new gtm.Gtm();
+
 db.open();
 
 var node = {global: 'zewd', subscripts: ['config']};
 
-var retrieve = function (node) {
+var retrieve = function(node) {
   var global = node.global,
-    subscripts = JSON.stringify(node.subscripts),
-    obj,
-    retrieveData;
+      subscripts = JSON.stringify(node.subscripts),
+      obj,
+      retrieveData;
 
-  retrieveData = function (node) {
+  retrieveData = function(node) {
     console.log('in retrieveData: node = ' + JSON.stringify(node));
 
     var subs = '',
-      data,
-      value,
-      newNode,
-      subObj,
-      obj = {};
+        data,
+        value,
+        newNode,
+        subObj,
+        obj = {};
 
     node.subscripts.push(subs);
 
@@ -81,6 +82,7 @@ var retrieve = function (node) {
       global: global,
       subscripts: JSON.parse(subscripts)
     },
+
     object: obj
   };
 };

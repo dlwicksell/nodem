@@ -1,4 +1,4 @@
-v4wNode() ;; 2015-05-23  9:27 AM
+v4wNode() ;; 2015-09-20  6:20 PM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
@@ -120,6 +120,8 @@ parse:(subs,type) ;parse an argument list or list of subscripts
  ;
  ;
 data(glvn,subs) ;check if global node has data or children
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n defined,globalname
  ;
  s subs=$$parse($g(subs),"input")
@@ -130,6 +132,8 @@ data(glvn,subs) ;check if global node has data or children
  ;
  ;
 function(func,args,relink) ;call an arbitrary extrinsic function
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n function,result
  ;
  s args=$$parse($g(args),"input")
@@ -150,6 +154,8 @@ function(func,args,relink) ;call an arbitrary extrinsic function
  ;
  ;
 get(glvn,subs) ;get data from global node
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n data,defined,globalname,return
  ;
  s subs=$$parse($g(subs),"input")
@@ -168,6 +174,8 @@ get(glvn,subs) ;get data from global node
  ;
  ;
 globalDirectory(max,lo,hi) ;list the globals in a database, filtered or not
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n cnt,flag,global,return
  ;
  s max=$g(max,0)
@@ -200,6 +208,8 @@ globalDirectory(max,lo,hi) ;list the globals in a database, filtered or not
  ;
  ;
 increment(glvn,subs,incr) ;increment the number in a global node
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n globalname,increment
  ;
  s subs=$$parse($g(subs),"input")
@@ -211,6 +221,8 @@ increment(glvn,subs,incr) ;increment the number in a global node
  ;
  ;
 kill(glvn,subs) ;kill a global or global node
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n globalname
  ;
  s subs=$$parse($g(subs),"input")
@@ -222,6 +234,8 @@ kill(glvn,subs) ;kill a global or global node
  ;
  ;
 lock(glvn,subs) ;lock a global node, incrementally
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n globalname,result
  ;
  s subs=$$parse($g(subs),"input")
@@ -236,6 +250,8 @@ lock(glvn,subs) ;lock a global node, incrementally
  ;
  ;
 merge(fglvn,fsubs,tglvn,tsubs) ;merge an array node to another array node
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n fglobalname,fosubs,return,tglobalname,tosubs
  ;
  ;process for output without going through M
@@ -265,6 +281,8 @@ merge(fglvn,fsubs,tglvn,tsubs) ;merge an array node to another array node
  ;
  ;
 nextNode(glvn,subs) ;return the next global node, depth first
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n data,defined,globalname,nsubs,result,return
  ;
  s subs=$$parse($g(subs),"input")
@@ -309,6 +327,8 @@ nextNode(glvn,subs) ;return the next global node, depth first
  ;
  ;
 order(glvn,subs,order) ;return the next global node at the same level
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n globalname,result
  ;
  s subs=$$parse($g(subs),"input")
@@ -326,18 +346,26 @@ order(glvn,subs,order) ;return the next global node at the same level
  ;
  ;
 previous(glvn,subs) ;same as order, only in reverse
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  quit $$order(glvn,$g(subs),-1)
  ;
  ;
 previousNode(glvn,subs) ;same as nextNode, only in reverse
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  quit "{""status"": ""previous_node not yet implemented""}"
  ;
  ;
 retrieve() ;not yet implemented
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  quit "{""status"": ""retrieve not yet implemented""}"
  ;
  ;
 set(glvn,subs,data) ;set a global node
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n globalname
  ;
  s subs=$$parse($g(subs),"input")
@@ -354,6 +382,8 @@ set(glvn,subs,data) ;set a global node
  ;
  ;
 unlock(glvn,subs) ;unlock a global node, incrementally, or release all locks
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  n globalname
  ;
  s subs=$$parse($g(subs),"input")
@@ -366,9 +396,13 @@ unlock(glvn,subs) ;unlock a global node, incrementally, or release all locks
  ;
  ;
 update() ;not yet implemented
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
  quit "{""status"": ""update not yet implemented""}"
  ;
  ;
 version() ;return the version string
- quit "Node.js Adaptor for GT.M: Version: 0.6.0 (FWSLC); "_$zv
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
+ quit "Node.js Adaptor for GT.M: Version: 0.6.1 (FWSLC); "_$zv
  ;
