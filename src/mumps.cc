@@ -233,9 +233,9 @@ RETURN_DECL Gtm::version(ARGUMENTS args)
 
     if (gtm_is_open < 1) {
         SCOPE_SET(args,
-            STRING("Node.js Adaptor for GT.M: Version: 0.6.1 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.6.2 (FWSLC)"));
         SCOPE_RETURN(
-            STRING("Node.js Adaptor for GT.M: Version: 0.6.1 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.6.2 (FWSLC)"));
     }
 
     char str[] = "version";

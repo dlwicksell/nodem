@@ -31,13 +31,14 @@
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 6
-#define NODEM_PATCH_VERSION 0
+#define NODEM_PATCH_VERSION 2
 
 #define NODEM_VERSION_STRING NODEM_STRING(NODEM_MAJOR_VERSION) "." \
                              NODEM_STRING(NODEM_MINOR_VERSION) "." \
                              NODEM_STRING(NODEM_PATCH_VERSION)
 
-#if NODE_MAJOR_VERSION == 0 && NODE_MINOR_VERSION >= 12
+#if (NODE_MAJOR_VERSION == 0 && NODE_MINOR_VERSION >= 12) || \
+    (NODE_MAJOR_VERSION >= 1)
     #define ISOLATE          isolate
     #define ISOLATE_COMMA    isolate,
     #define ISOLATE_CURRENT  v8::Isolate* isolate = v8::Isolate::GetCurrent();

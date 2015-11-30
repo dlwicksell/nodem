@@ -1,0 +1,40 @@
+{
+  "author": {
+    "name": "David Wicksell",
+    "email": "dlw@linux.com",
+    "url": "http://www.fourthwatchsoftware.com/"
+  },
+  "name": "nodem",
+  "description": "Binding API and driver for the GT.M language and database.",
+  "version": "0.6.2",
+  "maintainers": "David Wicksell <dlw@linux.com>",
+  "homepage": "https://github.com/dlwicksell/nodem",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dlwicksell/nodem.git"
+  },
+  "bugs": {
+    "url": "https://github.com/dlwicksell/nodem/issues"
+  },
+  "os": [
+    "linux"
+  ],
+  "keywords": [
+    "databases",
+    "database",
+    "hierarchical database",
+    "GT.M",
+    "MUMPS",
+    "M",
+    "NoSQL"
+  ],
+  "scripts": {
+    "install": "(node-gyp rebuild 2> builderror.log) || (exit 0)",
+    "uninstall": "(rm -rf build builderror.log src/v4wNode.o) || (exit 0)"
+  },
+  "main": "./lib/nodem",
+  "license": "AGPL 3.0",
+  "engines": {
+    "node": ">=0.8.x"
+  }
+}
