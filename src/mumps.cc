@@ -2,7 +2,7 @@
  * mumps.cc - A GT.M database driver for Node.js
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2015 Fourth Watch Software LC
+ * Copyright © 2012-2016 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -32,6 +32,7 @@ extern "C" {
 }
 
 #include <string>
+#include <iostream>
 
 #include "mumps.hh"
 
@@ -54,7 +55,8 @@ struct sigaction n_signal;
 
 static int gtm_is_open = 0;
 
-static uint32_t auto_relink;
+static uint32_t auto_relink = 0;
+static uint32_t restore_term = 0;
 
 string db_error = "GT.M is not open";
 
@@ -63,8 +65,11 @@ static void catch_intr(int signum)
 {
     gtm_exit();
 
+    tp.c_iflag |= ICRNL;
+    tp.c_lflag |= (ICANON | ECHO);
+
     if (tcsetattr(STDIN_FILENO, TCSANOW, &tp) == -1)
-        strerror(errno);
+        std::cerr << strerror(errno) << std::endl;
 
     exit(EXIT_FAILURE);
 } //End of catch_intr
@@ -112,15 +117,10 @@ RETURN_DECL Gtm::open(ARGUMENTS args)
     char *chset;
     char *arelink;
 
-    auto_relink = 0;
-
     if (db_is_open() != 0) {
         SCOPE_SET(args, STRING(db_error.c_str()));
         SCOPE_RETURN(STRING(db_error.c_str()));
     }
-
-    if (tcgetattr(STDIN_FILENO, &tp) == -1)
-        strerror(errno);
 
     chset = getenv("gtm_chset");
 
@@ -136,9 +136,8 @@ RETURN_DECL Gtm::open(ARGUMENTS args)
 
     arelink = getenv("NODEM_AUTO_RELINK");
 
-    if (arelink != NULL) {
+    if (arelink != NULL)
         auto_relink = atoi(arelink);
-    }
 
     Local<Object> object = Local<Object>::Cast(args[0]);
 
@@ -147,11 +146,14 @@ RETURN_DECL Gtm::open(ARGUMENTS args)
 
         if (! nspace->IsUndefined()) {
             if (setenv("gtmgbldir", *String::Utf8Value(nspace), 1) == -1)
-                strerror(errno);
+                std::cerr << strerror(errno) << std::endl;
         }
 
         auto_relink = object->Get(STRING("autoRelink"))->Uint32Value();
     }
+
+    if (tcgetattr(STDIN_FILENO, &tp) == -1)
+        std::cerr << strerror(errno) << std::endl;
 
     status = gtm_init();
 
@@ -204,6 +206,11 @@ RETURN_DECL Gtm::close(ARGUMENTS args)
         SCOPE_RETURN(STRING(db_error.c_str()));
     }
 
+    Local<Object> object = Local<Object>::Cast(args[0]);
+
+    if (! object->IsUndefined())
+        restore_term = object->Get(STRING("restoreTerminal"))->Uint32Value();
+
     status = gtm_exit();
 
     if (status) {
@@ -217,8 +224,13 @@ RETURN_DECL Gtm::close(ARGUMENTS args)
 
     gtm_is_open = -1;
 
+    if (! restore_term) {
+        tp.c_iflag |= ICRNL;
+        tp.c_lflag |= (ICANON | ECHO);
+    }
+
     if (tcsetattr(STDIN_FILENO, TCSANOW, &tp) == -1)
-        strerror(errno);
+        std::cerr << strerror(errno) << std::endl;
 
     SCOPE_SET(args, STRING("1"));
     SCOPE_RETURN(STRING("1"));
@@ -233,9 +245,9 @@ RETURN_DECL Gtm::version(ARGUMENTS args)
 
     if (gtm_is_open < 1) {
         SCOPE_SET(args,
-            STRING("Node.js Adaptor for GT.M: Version: 0.6.2 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.6.3 (FWSLC)"));
         SCOPE_RETURN(
-            STRING("Node.js Adaptor for GT.M: Version: 0.6.2 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.6.3 (FWSLC)"));
     }
 
     char str[] = "version";
@@ -276,8 +288,7 @@ Handle<Value> parse_json(Handle<Value> json_string)
     Handle<Object> global = context->Global();
 
     Handle<Object> JSON = global->Get(STRING("JSON"))->ToObject();
-    Handle<Function> JSON_parse = Handle<Function>::
-                                  Cast(JSON->Get(STRING("parse")));
+    Handle<Function> JSON_parse = Handle<Function>::Cast(JSON->Get(STRING("parse")));
 
     return SCOPE_ESCAPE(JSON_parse->Call(JSON, 1, &json_string));
 } //End of parse_json
@@ -315,10 +326,8 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     Local<String> unlock = STRING("unlock");
     Local<String> merge = STRING("merge");
 
-    if (! test->Equals(global_directory) && ! test->Equals(unlock)
-                                             && args.Length() < 1) {
-        EXCEPTION(Exception::SyntaxError(STRING(
-                  "Argument must be specified")));
+    if (! test->Equals(global_directory) && ! test->Equals(unlock) && args.Length() < 1) {
+        EXCEPTION(Exception::SyntaxError(STRING("Argument must be specified")));
 
         SCOPE_SET(args, Undefined(ISOLATE));
         SCOPE_RETURN(Undefined(ISOLATE));
@@ -334,8 +343,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         arrays = object->Get(STRING("arguments"));
 
         if (object->Has(STRING("autoRelink"))) {
-            arelink = Local<Number>::Cast(object->Get
-                        (STRING("autoRelink")));
+            arelink = Local<Number>::Cast(object->Get(STRING("autoRelink")));
         } else {
             arelink = Local<Number>::New(ISOLATE_COMMA NUMBER(auto_relink));
         }
@@ -344,8 +352,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         from_arrays = object->Get(Undefined(ISOLATE));
 
         if (name->IsUndefined()) {
-            EXCEPTION(Exception::SyntaxError(STRING(
-                      "Need to supply a function property")));
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a function property")));
 
             SCOPE_SET(args, Undefined(ISOLATE));
             SCOPE_RETURN(Undefined(ISOLATE));
@@ -384,8 +391,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         from_arrays = object->Get(Undefined(ISOLATE));
 
         if (name->IsUndefined()) {
-            EXCEPTION(Exception::SyntaxError(STRING(
-                      "Need to supply a global property")));
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a global property")));
 
             SCOPE_SET(args, Undefined(ISOLATE));
             SCOPE_RETURN(Undefined(ISOLATE));
@@ -398,16 +404,14 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         data = object->Get(STRING("data"));
 
         if (data->IsUndefined()) {
-            EXCEPTION(Exception::SyntaxError(STRING(
-                      "Need to supply a data property")));
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a data property")));
 
             SCOPE_SET(args, Undefined(ISOLATE));
             SCOPE_RETURN(Undefined(ISOLATE));
         }
 
         if (object->Get(STRING("data"))->IsString()) {
-            data = String::Concat(STRING("\""), String::Concat
-                  (Local<String>::Cast(data), STRING("\"")));
+            data = String::Concat(STRING("\""), String::Concat(Local<String>::Cast(data), STRING("\"")));
         }
     }
 
@@ -429,9 +433,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
             if (array->Get(i)->IsString()) {
                 sprintf(buf, "%d:", length + 2);
 
-                Local<String> out_string = String::Concat
-                                         (STRING("\""), String::Concat
-                                         (str, STRING("\"")));
+                Local<String> out_string = String::Concat(STRING("\""), String::Concat(str, STRING("\"")));
 
                 Local<Value> out = String::Concat(STRING(buf), out_string);
                 temparg->Set(i, out);
@@ -452,25 +454,20 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
             char from_buf[WIDTH];
 
             for (uint32_t j = 0; j < from_array->Length(); j++) {
-                Local<String> from_str = Local<String>::Cast
-                                         (from_array->Get(j)->ToString());
+                Local<String> from_str = Local<String>::Cast(from_array->Get(j)->ToString());
 
                 int from_length = from_str->Length();
 
                 if (from_array->Get(j)->IsString()) {
                     sprintf(from_buf, "%d:", from_length + 2);
 
-                    Local<String> from_string = String::Concat
-                                             (STRING("\""), String::Concat
-                                             (from_str, STRING("\"")));
-                    Local<Value> from_out = String::Concat
-                                           (STRING(from_buf), from_string);
+                    Local<String> from_string = String::Concat(STRING("\""), String::Concat(from_str, STRING("\"")));
+                    Local<Value> from_out = String::Concat(STRING(from_buf), from_string);
                     from_temparg->Set(j, from_out);
                 } else {
                     sprintf(from_buf, "%d:", from_length);
 
-                    Local<Value> from_out = String::Concat
-                                           (STRING(from_buf), from_str);
+                    Local<Value> from_out = String::Concat(STRING(from_buf), from_str);
                     from_temparg->Set(j, from_out);
                 }
             }
@@ -487,25 +484,20 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
             char to_buf[WIDTH];
 
             for (uint32_t i = 0; i < to_array->Length(); i++) {
-                Local<String> to_str = Local<String>::Cast
-                                    (to_array->Get(i)->ToString());
+                Local<String> to_str = Local<String>::Cast(to_array->Get(i)->ToString());
 
                 int to_length = to_str->Length();
 
                 if (to_array->Get(i)->IsString()) {
                     sprintf(to_buf, "%d:", to_length + 2);
 
-                    Local<String> to_string = String::Concat
-                                             (STRING("\""), String::Concat
-                                             (to_str, STRING("\"")));
-                    Local<Value> to_out = String::Concat
-                                            (STRING(to_buf), to_string);
+                    Local<String> to_string = String::Concat(STRING("\""), String::Concat(to_str, STRING("\"")));
+                    Local<Value> to_out = String::Concat(STRING(to_buf), to_string);
                     to_temparg->Set(i, to_out);
                 } else {
                     sprintf(to_buf, "%d:", to_length);
 
-                    Local<Value> to_out = String::Concat
-                                         (STRING(to_buf), to_str);
+                    Local<Value> to_out = String::Concat(STRING(to_buf), to_str);
                     to_temparg->Set(i, to_out);
                 }
             }
@@ -535,29 +527,18 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     if (test->Equals(function)) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg),
-                            arelink->Uint32Value());
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value());
 #else
-            status = gtm_ci(*str, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg),
-                            arelink->Uint32Value());
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value());
 #endif
         } else {
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
 #if (GTM_VERSION > 54)
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_cip(&access, ret, ASCII_VALUE(name),
-                             ASCII_VALUE(arg), arelink->Uint32Value());
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), arelink->Uint32Value());
 #else
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_ci(*str, ret, ASCII_VALUE(name),
-                            ASCII_VALUE(arg), arelink->Uint32Value());
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), arelink->Uint32Value());
 #endif
         }
     } else if (test->Equals(global_directory)) {
@@ -572,29 +553,18 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            max->Uint32Value(),
-                            *String::Utf8Value(lo),
-                            *String::Utf8Value(hi));
+            status = gtm_cip(&access, ret, max->Uint32Value(), *String::Utf8Value(lo), *String::Utf8Value(hi));
 #else
-            status = gtm_ci(*str, ret,
-                            max->Uint32Value(),
-                            *String::Utf8Value(lo),
-                            *String::Utf8Value(hi));
+            status = gtm_ci(*str, ret, max->Uint32Value(), *String::Utf8Value(lo), *String::Utf8Value(hi));
 #endif
         } else {
+            ASCII_PROTO(lo);
+            ASCII_PROTO(hi);
+
 #if (GTM_VERSION > 54)
-            ASCII_PROTO(lo);
-            ASCII_PROTO(hi);
-
-            status = gtm_cip(&access, ret, max->Uint32Value(),
-                             ASCII_VALUE(lo), ASCII_VALUE(hi));
+            status = gtm_cip(&access, ret, max->Uint32Value(), ASCII_VALUE(lo), ASCII_VALUE(hi));
 #else
-            ASCII_PROTO(lo);
-            ASCII_PROTO(hi);
-
-            status = gtm_ci(*str, ret, max->Uint32Value(),
-                            ASCII_VALUE(lo), ASCII_VALUE(hi));
+            status = gtm_ci(*str, ret, max->Uint32Value(), ASCII_VALUE(lo), ASCII_VALUE(hi));
 #endif
         }
     } else if (test->Equals(increment)) {
@@ -603,95 +573,59 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg),
-                            number->NumberValue());
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), number->NumberValue());
 #else
-            status = gtm_ci(*str, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg),
-                            number->NumberValue());
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), number->NumberValue());
 #endif
         } else {
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
 #if (GTM_VERSION > 54)
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_cip(&access, ret, ASCII_VALUE(name),
-                             ASCII_VALUE(arg), number->NumberValue());
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), number->NumberValue());
 #else
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_ci(*str, ret, ASCII_VALUE(name),
-                            ASCII_VALUE(arg), number->NumberValue());
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), number->NumberValue());
 #endif
         }
     } else if (test->Equals(merge)) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::Utf8Value(from_name),
-                            *String::Utf8Value(from_arg),
-                            *String::Utf8Value(to_name),
-                            *String::Utf8Value(to_arg));
+            status = gtm_cip(&access, ret, *String::Utf8Value(from_name), *String::Utf8Value(from_arg),
+                             *String::Utf8Value(to_name), *String::Utf8Value(to_arg));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::Utf8Value(from_name),
-                            *String::Utf8Value(from_arg),
-                            *String::Utf8Value(to_name),
-                            *String::Utf8Value(to_arg));
+            status = gtm_ci(*str, ret, *String::Utf8Value(from_name), *String::Utf8Value(from_arg),
+                            *String::Utf8Value(to_name), *String::Utf8Value(to_arg));
 #endif
         } else {
-#if (GTM_VERSION > 54)
             ASCII_PROTO(from_name);
             ASCII_PROTO(from_arg);
             ASCII_PROTO(to_name);
             ASCII_PROTO(to_arg);
 
-            status = gtm_cip(&access, ret, ASCII_VALUE(from_name),
-                             ASCII_VALUE(from_arg),
+#if (GTM_VERSION > 54)
+            status = gtm_cip(&access, ret, ASCII_VALUE(from_name), ASCII_VALUE(from_arg),
                              ASCII_VALUE(to_name), ASCII_VALUE(to_arg));
 #else
-            ASCII_PROTO(from_name);
-            ASCII_PROTO(from_arg);
-            ASCII_PROTO(to_name);
-            ASCII_PROTO(to_arg);
-
-            status = gtm_ci(*str, ret, ASCII_VALUE(from_name),
-                            ASCII_VALUE(from_arg),
+            status = gtm_ci(*str, ret, ASCII_VALUE(from_name), ASCII_VALUE(from_arg),
                             ASCII_VALUE(to_name), ASCII_VALUE(to_arg));
 #endif
         }
     } else if (test->Equals(set)) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg),
-                            *String::Utf8Value(data));
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), *String::Utf8Value(data));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg),
-                            *String::Utf8Value(data));
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), *String::Utf8Value(data));
 #endif
         } else {
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+            ASCII_PROTO(data);
+
 #if (GTM_VERSION > 54)
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-            ASCII_PROTO(data);
-
-            status = gtm_cip(&access, ret, ASCII_VALUE(name),
-                             ASCII_VALUE(arg), ASCII_VALUE(data));
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), ASCII_VALUE(data));
 #else
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-            ASCII_PROTO(data);
-
-            status = gtm_ci(*str, ret, ASCII_VALUE(name),
-                            ASCII_VALUE(arg), ASCII_VALUE(data));
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), ASCII_VALUE(data));
 #endif
         }
     } else if (test->Equals(unlock)) {
@@ -703,53 +637,35 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg));
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg));
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
 #endif
         } else {
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
 #if (GTM_VERSION > 54)
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_cip(&access, ret, ASCII_VALUE(name),
-                             ASCII_VALUE(arg));
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
 #else
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_ci(*str, ret, ASCII_VALUE(name),
-                            ASCII_VALUE(arg));
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
 #endif
         }
     } else {
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg));
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
 #else
-            status = gtm_ci(*str, ret,
-                            *String::Utf8Value(name),
-                            *String::Utf8Value(arg));
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
 #endif
         } else {
+            ASCII_PROTO(name);
+            ASCII_PROTO(arg);
+
 #if (GTM_VERSION > 54)
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_cip(&access, ret, ASCII_VALUE(name),
-                             ASCII_VALUE(arg));
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
 #else
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-            status = gtm_ci(*str, ret, ASCII_VALUE(name),
-                            ASCII_VALUE(arg));
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
 #endif
         }
     }
@@ -763,7 +679,13 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         SCOPE_RETURN(result);
     }
 
-    Local<String> nstring = STRING(ret);
+    Local<String> nstring;
+
+    if (is_utf) {
+        nstring = STRING(ret);
+    } else {
+        ASCII_NAME(nstring, ret);
+    }
 
     if (nstring->Length() < 1) {
         EXCEPTION(Exception::RangeError(STRING("No JSON string present")));
@@ -796,8 +718,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         Local<Array> array = Local<Array>::Cast(arrays);
 
         if (retobject->Get(STRING("errorCode"))->IsUndefined()) {
-            array->Set(NUMBER(array->Length() - 1),
-                       retobject->Get(STRING("result")));
+            array->Set(NUMBER(array->Length() - 1), retobject->Get(STRING("result")));
 
             retobject->Set(STRING("subscripts"), array);
         }
@@ -983,7 +904,7 @@ Gtm::Gtm() {}
 Gtm::~Gtm() {}
 
 
-void Gtm::Init(Handle<Object> target)
+void Gtm::Init(Handle<Object> exports)
 {
     ISOLATE_CURRENT;
 
@@ -1017,7 +938,7 @@ void Gtm::Init(Handle<Object> target)
 
     Persistent<Function> PERSISTENT_FUNCTION(constructor, tpl->GetFunction());
 
-    target->Set(SYMBOL("Gtm"), CONSTRUCTOR(constructor, tpl));
+    exports->Set(SYMBOL("Gtm"), CONSTRUCTOR(constructor, tpl));
 } //End of Gtm::Init
 
 

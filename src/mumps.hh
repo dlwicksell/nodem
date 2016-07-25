@@ -2,8 +2,7 @@
  * mumps.hh - A MUMPS driver for Node.js
  *
  * Written by David Wicksell <dlw@linux.com>
- *
- * Copyright © 2015 Fourth Watch Software LC
+ * Copyright © 2015,2016 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -29,79 +28,80 @@
 #define NODEM_STRING(num)    NODEM_STRINGIFY(num)
 #define NODEM_STRINGIFY(num) #num
 
-#define NODEM_MAJOR_VERSION 0
-#define NODEM_MINOR_VERSION 6
-#define NODEM_PATCH_VERSION 2
+#define NODEM_MAJOR_VERSION  0
+#define NODEM_MINOR_VERSION  6
+#define NODEM_PATCH_VERSION  3
 
 #define NODEM_VERSION_STRING NODEM_STRING(NODEM_MAJOR_VERSION) "." \
                              NODEM_STRING(NODEM_MINOR_VERSION) "." \
                              NODEM_STRING(NODEM_PATCH_VERSION)
 
-#if (NODE_MAJOR_VERSION == 0 && NODE_MINOR_VERSION >= 12) || \
-    (NODE_MAJOR_VERSION >= 1)
-    #define ISOLATE          isolate
-    #define ISOLATE_COMMA    isolate,
-    #define ISOLATE_CURRENT  v8::Isolate* isolate = v8::Isolate::GetCurrent();
-    #define CONTEXT_CURRENT  isolate->GetCurrentContext();
-    #define EXCEPTION(arg)   isolate->ThrowException(arg)
+#if (NODE_MAJOR_VERSION == 0 && NODE_MINOR_VERSION >= 12) || (NODE_MAJOR_VERSION >= 1)
+    #define ISOLATE                         isolate
+    #define ISOLATE_COMMA                   isolate,
+    #define ISOLATE_CURRENT                 v8::Isolate* isolate = v8::Isolate::GetCurrent();
+    #define CONTEXT_CURRENT                 isolate->GetCurrentContext();
+    #define EXCEPTION(arg)                  isolate->ThrowException(arg)
 
-    #define CAST(name, type) (type) name
+    #define CAST(name, type)                (type) name
 
-    #define RETURN_DECL void
-    #define ARGUMENTS   const v8::FunctionCallbackInfo<v8::Value>&
+    #define RETURN_DECL                     void
+    #define ARGUMENTS                       const v8::FunctionCallbackInfo<v8::Value>&
     #define RETURN
 
-    #define SYMBOL(str) v8::String::NewFromUtf8(isolate, str)
-    #define STRING(str) v8::String::NewFromUtf8(isolate, str)
-    #define NUMBER(num) v8::Number::New(isolate, num)
+    #define SYMBOL(str)                     v8::String::NewFromUtf8(isolate, str)
+    #define STRING(str)                     v8::String::NewFromUtf8(isolate, str)
+    #define NUMBER(num)                     v8::Number::New(isolate, num)
 
-    #define ASCII_STRING(name, str) \
-        uint8_t* name = new uint8_t[str->Length() + 1]; str->WriteOneByte(name)
-    #define ASCII_PROTO(name) \
-        Local<String> name##_str = name->ToString(); \
-        uint8_t* name##_buf = new uint8_t[name##_str->Length() + 1]; \
-        name##_str->WriteOneByte(name##_buf, 0, \
-        name##_str->Length() + 1)
-    #define ASCII_VALUE(name) (gtm_char_t*) name##_buf
+    #define ASCII_STRING(name, str)         uint8_t* name = new uint8_t[str->Length() + 1]; str->WriteOneByte(name)
+    #define ASCII_PROTO(name)               v8::Local<v8::String> name##_str = name->ToString(); \
+                                            uint8_t* name##_buf = new uint8_t[name##_str->Length() + 1]; \
+                                            name##_str->WriteOneByte(name##_buf, 0, \
+                                            name##_str->Length() + 1)
+    #define ASCII_VALUE(name)               (gtm_char_t*) name##_buf
+
+    #define ASCII_NAME(name, ret)           const uint8_t* bytes = reinterpret_cast<const uint8_t*>(ret); \
+                                            name = v8::String::NewFromOneByte(isolate, bytes)
 
     #define PERSISTENT_FUNCTION(name, func) name; name.Reset(isolate, func)
     #define CONSTRUCTOR(cons, tpl)          tpl->GetFunction()
 
-    #define SCOPE_HANDLE          v8::EscapableHandleScope scope(isolate)
-    #define SCOPE_ESCAPE(args)    scope.Escape(args)
-    #define SCOPE_RESET(name)     name.Reset()
-    #define SCOPE_SET(name, args) name.GetReturnValue().Set(args)
-    #define SCOPE_RETURN(args)    return
+    #define SCOPE_HANDLE                    v8::EscapableHandleScope scope(isolate)
+    #define SCOPE_ESCAPE(args)              scope.Escape(args)
+    #define SCOPE_RESET(name)               name.Reset()
+    #define SCOPE_SET(name, args)           name.GetReturnValue().Set(args)
+    #define SCOPE_RETURN(args)              return
 #else
     #define ISOLATE
     #define ISOLATE_COMMA
     #define ISOLATE_CURRENT
-    #define CONTEXT_CURRENT v8::Context::GetCurrent()
-    #define EXCEPTION(arg)  v8::ThrowException(arg)
+    #define CONTEXT_CURRENT                 v8::Context::GetCurrent()
+    #define EXCEPTION(arg)                  v8::ThrowException(arg)
 
-    #define CAST(name, type) *name
+    #define CAST(name, type)                *name
 
-    #define RETURN_DECL v8::Handle<v8::Value>
-    #define ARGUMENTS   const v8::Arguments&
-    #define RETURN      return
+    #define RETURN_DECL                     v8::Handle<v8::Value>
+    #define ARGUMENTS                       const v8::Arguments&
+    #define RETURN                          return
 
-    #define SYMBOL(str) v8::String::NewSymbol(str)
-    #define STRING(str) v8::String::New(str)
-    #define NUMBER(num) v8::Number::New(num)
+    #define SYMBOL(str)                     v8::String::NewSymbol(str)
+    #define STRING(str)                     v8::String::New(str)
+    #define NUMBER(num)                     v8::Number::New(num)
 
-    #define ASCII_STRING(name, str) v8::String::AsciiValue name(str);
+    #define ASCII_STRING(name, str)         v8::String::AsciiValue name(str)
     #define ASCII_PROTO(name)
-    #define ASCII_VALUE(name)       *v8::String::AsciiValue(name)
+    #define ASCII_VALUE(name)               *v8::String::AsciiValue(name)
 
-    #define PERSISTENT_FUNCTION(name, func) \
-        name = v8::Persistent<v8::Function>::New(func)
-    #define CONSTRUCTOR(cons, tpl) cons
+    #define ASCII_NAME(name, ret)           name = v8::String::New(ret)
 
-    #define SCOPE_HANDLE          v8::HandleScope scope
-    #define SCOPE_ESCAPE(args)    scope.Close(args)
-    #define SCOPE_RESET(name)     name.Dispose(); name.Clear()
+    #define PERSISTENT_FUNCTION(name, func) name = v8::Persistent<v8::Function>::New(func)
+    #define CONSTRUCTOR(cons, tpl)          cons
+
+    #define SCOPE_HANDLE                    v8::HandleScope scope
+    #define SCOPE_ESCAPE(args)              scope.Close(args)
+    #define SCOPE_RESET(name)               name.Dispose(); name.Clear()
     #define SCOPE_SET(name, args) 
-    #define SCOPE_RETURN(args)    return scope.Close(args) 
+    #define SCOPE_RETURN(args)              return scope.Close(args)
 #endif
 
 

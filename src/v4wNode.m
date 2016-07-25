@@ -1,8 +1,8 @@
-v4wNode() ;; 2015-11-29  7:03 PM
+v4wNode() ;; 2016-07-23  4:05 PM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2015 Fourth Watch Software LC
+ ; Copyright © 2012-2016 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
@@ -404,5 +404,5 @@ update() ;not yet implemented
 version() ;return the version string
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.6.2 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.6.3 (FWSLC); "_$zv
  ;

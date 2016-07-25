@@ -2,7 +2,7 @@
 # binding.gyp - Nodem build script
 #
 # Nodem written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2015 Fourth Watch Software LC
+# Copyright © 2012-2016 Fourth Watch Software LC
 #
 
 {
@@ -51,7 +51,7 @@
         '-lgtmshr'
       ],
       'defines': [
-        'GTM_VERSION=62'
+        'GTM_VERSION=63'
       ],
       'ldflags': [
         '-Wl,-rpath,<(gtm_dist),--enable-new-dtags',

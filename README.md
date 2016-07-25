@@ -2,74 +2,74 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.6.2 - 2015 Nov 29
+Version 0.6.3 - 2016 July 24
 
 ## Copyright and License ##
 
 Addon Module written and maintained by David Wicksell <dlw@linux.com>  
-Copyright © 2012-2015 Fourth Watch Software LC
+Copyright © 2012-2016 Fourth Watch Software LC
 
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU Affero General Public License (AGPL)
-as published by the Free Software Foundation, either version 3 of
-the License, or (at your option) any later version.
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License (AGPL) as published by the
+Free Software Foundation, either version 3 of the License, or (at your option)
+any later version.
 
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-GNU Affero General Public License for more details.
+This program is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 
-You should have received a copy of the GNU Affero General Public License
-along with this program. If not, see <http://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Affero General Public License along
+with this program. If not, see <http://www.gnu.org/licenses/>.
 
 ***
 
 ## Disclaimer ##
 
-Nodem is still in development and its interface may change in future
-versions. Use in production at your own risk.
+Nodem is still in development and its interface may change in future versions.
+Use in production at your own risk.
 
 ## Summary and Info ##
 
-Nodem is an open source addon module for Node.js that integrates Node.js
-with the [GT.M][] database, providing in-process access to GT.M's database
-from Javascript, via GT.M's C call-in interface. From Node.js you can
-perform the basic primitive global database handling operations and also
-invoke GT.M/Mumps functions. Although designed exclusively for use with
-GT.M, Nodem aims to be API-compatible with the in-process Node.js
-interface for [Globals][] and [Caché][], at least for the APIs that have
-been implemented in Nodem. As such, please refer to the Caché Node.js
-[API documentation][Docs] for further details on how to use those APIs.
+Nodem is an open source addon module for Node.js that integrates Node.js with
+the [GT.M][] database, providing in-process access to GT.M's database from
+Javascript, via GT.M's C call-in interface. From Node.js you can perform the
+basic primitive global database handling operations and also invoke GT.M/Mumps
+functions. Although designed exclusively for use with GT.M, Nodem aims to be
+API-compatible with the in-process Node.js interface for [Globals][] and
+[Caché][], at least for the APIs that have been implemented in Nodem. As such,
+please refer to the Caché Node.js [API documentation][Docs] for further details
+on how to use those APIs.
 
-Currently only the synchronous and extrinsic versions of the Nodem APIs
-are available. The open() call works slightly differently than the
-Caché/Globals version. It does not require any arguments, and it will
+Currently only the synchronous versions of the Nodem APIs are fully
+implemented, and their arguments have to be passed in JavaScript objects.
+However, the asynchronous versions of the APIs, and the ability to also pass
+arguments by position, is coming soon. The open() call works a bit different
+than the Caché/Globals version; it does not require any arguments, and it will
 default to using the database specified in the environment variable,
-$gtmgbldir. If you have more than one database and would like to connect
-to a different one than $gtmgbldir points to, you can define an object,
-with a property called namespace, defined as the path to your global
-directory file for that database. E.g.
+$gtmgbldir. If you have more than one database and would like to connect to a
+different one than $gtmgbldir points to, you can define an object, with a
+property called namespace, defined as the path to your global directory file
+for that database. E.g.
 
     > db.open({namespace: '/home/dlw/g/db_utf.gld'});
 
-Nodem supports a feature called auto-relink, which will automatically
-relink a routine object containing any function called by the function
-API. By default auto-relink is off. You can enable it in one of three
-ways. First, you can pass it as a property in the object parameter, passed
-to the function API directly, with a value of true, or any non-zero
-number. This will turn on auto-relink just for that call. You can also
-disable it, by setting autoRelink to false, or 0, if it was already
-enabled by one of the global settings. E.g.
+Nodem supports a feature called auto-relink, which will automatically relink a
+routine object containing any function called by the function API. By default
+auto-relink is off. You can enable it in one of three ways. First, you can pass
+it as a property of the JavaScript object argument which is passed to the
+function API directly, with a value of true, or any non-zero number. This will
+turn on auto-relink just for that call. You can also disable it, by setting
+autoRelink to false, or 0, if it was already enabled by one of the global
+settings. E.g.
 
     > db.function({function: 'version^v4wNode', autoRelink: true});
 
 Second, you can enable it globally, for every call to the function API, by
-setting the same configuration property in an object passed to the open
-API. E.g.
+setting the same property in a JavaScript object passed to the open API. E.g.
 
     > db.open({autoRelink: true});
 
-Third, you can enable it globally, by setting the environment variable
+Third, you can also enable it globally, by setting the environment variable
 NODEM_AUTO_RELINK to 1, or any other non-zero number. E.g.
 
     $ export NODEM_AUTO_RELINK=1
@@ -77,16 +77,25 @@ NODEM_AUTO_RELINK to 1, or any other non-zero number. E.g.
     or
     $ NODEM_AUTO_RELINK=1 node examples/set.js
 
+GT.M changes some settings of its controlling terminal device, and Nodem has to
+reset them when it closes the database connection. By default, Nodem will reset
+the terminal device to typically sane settings. Normally this is the desired
+option, however, if you wish to restore the terminal to the state it was in
+when the open() call was invoked, the close() call allows this by setting the
+restoreTerminal property to true, or any non-zero number. E.g.
+
+    > db.close({restoreTerminal: true});
+
 ## Installation ##
 
-There are a few things to be aware of in order to use the Nodem addon.
-You will need to have GT.M installed and configured correctly, including
-setting up your environment with the required GT.M environment variables.
-You will also need to have Node.js installed and working.
+There are a few things to be aware of in order to use the Nodem addon. You will
+need to have GT.M installed and configured correctly, including setting up your
+environment with the required GT.M environment variables. You will also need to
+have Node.js installed and working.
 
-**ATTENTION:** These instructions assume that the nodem repository has
-been installed in your home directory. The paths will likely be different
-if you have installed this with npm.
+**ATTENTION:** These instructions assume that the nodem repository has been
+installed in your home directory. The paths will likely be different if you
+have installed this with npm.
 
 **NOTE:** If you have installed Nodem using npm, it will attempt to build
 mumps.node during installation. If there is a file in the nodem/ directory
@@ -95,104 +104,106 @@ issue; you can then skip the following step of copying a pre-built shared
 library to ~/nodem/lib/mumps.node.
 
 You might need to copy the correct version of mumps.node for your system
-architecture and version of Node.js to ~/nodem/lib/mumps.node. The
-mumps.node pre-built modules, which you will find in ~/nodem/lib/, are
-named for the version of Node.js that they support, as well as which
-system architecture they are built for (i686 for 32-bit and x8664 for
-64-bit). E.g.
+architecture and version of Node.js to ~/nodem/lib/mumps.node. The mumps.node
+pre-built modules, which you will find in ~/nodem/lib/, are named for the
+version of Node.js that they support, as well as which system architecture they
+are built for (i686 for 32-bit and x8664 for 64-bit). E.g.
 
-* *mumps0.8.node_{i686,x8664}* - Node.js v0.8.x
+* *mumps0.8.node_{i686,x8664}*  - Node.js v0.8.x
 * *mumps0.10.node_{i686,x8664}* - Node.js v0.10.x
 * *mumps0.12.node_{i686,x8664}* - Node.js v0.12.x
-* *mumps1.8.node_{i686,x8664}* - IO.js v1.8.x
-* *mumps2.5.node_{i686,x8664}* - IO.js v2.5.x
-* *mumps3.3.node_{i686,x8664}* - IO.js v3.3.x
-* *mumps4.2.node_{i686,x8664}* - Node.js v4.2.x
-* *mumps5.1.node_{i686,x8664}* - Node.js v5.1.x
+* *mumps1.8.node_{i686,x8664}*  - IO.js v1.8.x
+* *mumps2.5.node_{i686,x8664}*  - IO.js v2.5.x
+* *mumps3.3.node_{i686,x8664}*  - IO.js v3.3.x
+* *mumps4.4.node_{i686,x8664}*  - Node.js v4.4.x
+* *mumps5.12.node_{i686,x8664}* - Node.js v5.12.x
+* *mumps6.3.node_{i686,x8664}*  - Node.js v6.3.x
 
-IO.js was a fork of Node.js, and as of version 4.0.0, has been merged back
-in to Node.js. Nodem should run on every version of Node.js starting with
-version 0.8.0, as well as every version of IO.js. However, in the future,
-both Node.js and the V8 JavaScript engine at its core, could change their
-APIs in a non-backwards-compatible way, which might break Nodem for that
-version. There are pre-built modules for the latest versions of each major
-release, such as v5.1.x for version 5.x.x. In most cases, these should run
-fine on any version that matches the major version number. For example,
-the mumps4.2.node_x8664 module should run fine on Node.js versions 4.0.0,
-4.1.0, 4.1.1, 4.1.2, 4.2.0, 4.2.1, and 4.2.2. But not every version has
-been tested, so that might not apply to every one. They were built against
-the latest major release version available. For example,
-mumps3.3.node_x8664 was built on IO.js v3.3.1.
 
-By default there is a mumps.node already in ~/nodem/lib/, which is a copy
-of the 64-bit module for Node.js version 5.1.x. It is important to realize
-that the addon will not function unless it is called mumps.node, and a
-symbolic link won't work. E.g.
+IO.js was a fork of Node.js, and as of version 4.0.0, has been merged back in
+to Node.js. Nodem should run on every version of Node.js starting with version
+0.8.0, as well as every version of IO.js. However, in the future, both Node.js
+and the V8 JavaScript engine at its core, could change their APIs in a
+non-backwards-compatible way, which might break Nodem for that version. There
+are pre-built modules for the latest versions of each major release, such as
+v6.3.x for version 6.x.x. In most cases, these should run fine on any version
+that matches the major version number. For example, the mumps4.4.node_x8664
+module should run fine on all Node.js 4.x.x versions. But not every version has
+been tested, so that might not apply to every one. They were built against the
+latest release version available. For example, mumps3.3.node_x8664 was built on
+IO.js v3.3.1. However, if you are running a different, and incompatible,
+version of the C standard library on your system, than the one they were built
+against, you will need to build Nodem from source.
+
+By default there is a mumps.node already in ~/nodem/lib/, which is a copy of
+the 64-bit module for Node.js version 4.4.x. It is important to realize that
+the addon will not function unless it is called mumps.node, and a symbolic link
+won't work. E.g.
 
     $ cd ~/nodem/lib/
-    $ cp mumps5.1.node_x8664 mumps.node
+    $ cp mumps4.4.node_x8664 mumps.node
     $ cd -
 
-**NOTE:** The build file specifies several runtime linker paths, which are
-also embedded in the pre-built modules. One of them might match the path
-that GT.M is installed at on your system. These include the paths that are
-used with the latest fis-gtm package for Ubuntu 15.10 (64-bit), Ubuntu
-14.04 (32-bit), and the dEWDrop virtual machine image infrastructure link.
-If one of the paths match on your system, you can skip the next step of
-copying libgtmshr.so or setting $LD_LIBRARY_PATH.
+**NOTE:** The build file specifies several runtime linker paths, which are also
+embedded in the pre-built modules. One of them might match the path that GT.M
+is installed at on your system. These include the paths that are used with the
+latest fis-gtm package for Ubuntu 16.04 (64-bit), Ubuntu 14.04 (32-bit), and
+the dEWDrop virtual machine image infrastructure link, as well as the path that
+is defined in the $gtm_dist environment variable, if it is defined when Nodem
+is built. If one of the paths match on your system, you can skip the next step
+of copying libgtmshr.so or setting $LD_LIBRARY_PATH.
 
 You might also have to move a copy of libgtmshr.so (GT.M shared runtime
-library) into a directory that will be searched by the dynamic
-linker/loader when mumps.node is loaded at runtime, if it isn't already
-located in one. You will find libgtmshr.so bundled with GT.M wherever you
-have installed it. There are a couple of things you can do at this point.
-You can move libgtmshr.so to a standard directory that is searched by the
-loader, such as lib/, or /usr/lib/, or on some systems, /usr/local/lib/.
-Then you will have to run ldconfig as root to rebuild the linker's cache.
-You could also create a symbolic link to it if you choose. E.g.
+library) into a directory that will be searched by the dynamic linker/loader
+when mumps.node is loaded at runtime, if it isn't already located in one. You
+will find libgtmshr.so bundled with GT.M wherever you have installed it. There
+are a couple of things you can do at this point. You can move libgtmshr.so to a
+standard directory that is searched by the loader, such as lib/, or /usr/lib/,
+or on some systems, /usr/local/lib/. Then you will have to run ldconfig as root
+to rebuild the linker's cache. You could also create a symbolic link to it if
+you choose. E.g.
 
     $ sudo -i
     # cd /usr/local/lib/
-    # ln -s /opt/lsb-fis/gtm/6.2-002A_x8664/libgtmshr.so
+    # ln -s /opt/lsb-fis/gtm/V6.3-000_x86_64/libgtmshr.so
     # ldconfig
     # exit
 
-You may have to add the /usr/local/lib/ directory to /etc/ld.so.conf or
-create an /etc/ld.so.conf.d/libc.conf file and add it there, and then run
-ldconfig as root. If you go this route, you should consider giving the
-library a real linker name and soname link, based on its version. Instead,
-you can avoid having to copy or link to the library by setting the
-environment variable, $LD_LIBRARY_PATH, to point to it, as the loader will
-search there first. It is usually advisable not to export $LD_LIBRARY_PATH
-into your environment, so you might want to define it right before calling
-node. E.g.
+You may have to add the /usr/local/lib/ directory to /etc/ld.so.conf or create
+an /etc/ld.so.conf.d/libc.conf file and add it there, and then run ldconfig as
+root. If you go this route, you should consider giving the library a real
+linker name and soname link, based on its version. Instead, you can avoid
+having to copy or link to the library by setting the environment variable,
+$LD_LIBRARY_PATH, to point to it, as the loader will search there first. It is
+usually advisable not to export $LD_LIBRARY_PATH into your environment, so you
+might want to define it right before calling node. E.g.
 
     $ LD_LIBRARY_PATH=${gtm_dist} node
     or
     $ LD_LIBRARY_PATH=${gtm_dist} node examples/set.js
 
-In addition you will need to set a few environment variables in order for
-GT.M to find the call-in table and the MUMPS routine that it maps to. The
-Nodem package supplies a sample environment file, called environ. It has a
-commented out command to set $LD_LIBRARY_PATH to $gtm_dist, which you will
-need to uncomment if you need it. It is located in ~/nodem/resources/ and
-can simply be sourced into your working environment, either directly, or
-from your own environment scripts or profile/login script. E.g.
+In addition you will need to set a few environment variables in order for GT.M
+to find the call-in table and the MUMPS routine that it maps to. The Nodem
+package supplies a sample environment file, called environ. It has a commented
+out command to set $LD_LIBRARY_PATH to $gtm_dist, which you will need to
+uncomment if you need it. It is located in ~/nodem/resources/ and can simply be
+sourced into your working environment, either directly, or from your own
+environment scripts or profile/login script. E.g.
 
     $ cd ~/nodem/resources/
     $ source environ
     or
     $ echo "source ~/nodem/resources/environ" >> ~/.profile
 
-The environ file defaults to using the paths that exist if you installed
-Nodem via npm in your home directory. If you did not install Nodem with
-npm in your home directory, you will probably need to fix the paths in the
-environ file. If you don't source the environ file, then you will need to
-put a copy of v4wNode.m into a directory that is specified in your
-$gtmroutines routine path, so that GT.M can find it. It is located in the
-~/nodem/src/ directory. Again, if you don't source the environ file, then
-you will need to define the $GTMCI environment variable, and point it at
-the file nodem.ci, located in the ~/nodem/resources/ directory. E.g.
+The environ file defaults to using the paths that exist if you installed Nodem
+via npm in your home directory. If you did not install Nodem with npm in your
+home directory, you will probably need to fix the paths in the environ file. If
+you don't source the environ file, then you will need to put a copy of
+v4wNode.m into a directory that is specified in your $gtmroutines routine path,
+so that GT.M can find it. It is located in the ~/nodem/src/ directory. Again,
+if you don't source the environ file, then you will need to define the $GTMCI
+environment variable, and point it at the file nodem.ci, located in the
+~/nodem/resources/ directory. E.g.
 
     $ export GTMCI=~/nodem/resources/nodem.ci
 
@@ -210,26 +221,24 @@ You can update to the latest version with this command..
 
 ## Building from source ##
 
-Normally you do not need to build Nodem from source. You can either use
-one of the pre-built shared library objects, or if you installed Nodem via
-npm, it will build the library for you automatically. But if you happen to
-be running a version of GT.M that is older than V5.5-000, none of those
-options will work. This is because Nodem is using a GT.M API that didn't
-exist in older versions. In that case, you will have to build from source.
-First, open up the file binding.gyp (the build specification file), and
-edit the line that contains the string, GTM_VERSION, to the version of
-GT.M that you are running. You can find out what version of GT.M you are
-running by invoking GT.M in direct mode. E.g.
+Normally you do not need to build Nodem from source. You can either use one of
+the pre-built shared library objects, or if you installed Nodem via npm, it
+will build the library for you automatically. But if you happen to be running a
+version of GT.M that is older than V5.5-000, none of those options will work.
+This is because Nodem is using a GT.M API that didn't exist in older versions.
+In that case, you will have to build from source. First, open up the file
+binding.gyp (the build specification file), and edit the line that contains the
+string, GTM_VERSION, to the version of GT.M that you are running. You can find
+out what version of GT.M you are running by invoking GT.M in direct mode. E.g.
 
     $ mumps -direct
     GTM>write $zversion
-    GT.M V6.2-002A Linux x86_64
+    GT.M V6.3-000A Linux x86_64
 
-Then take the first two numbers in the version string, in this example,
-6.2, and drop the decimal point and that is what you would set GTM_VERSION
-to in binding.gyp. That would be 'GTM_VERSION=62' in this case. Next, if
-you have installed Nodem via npm, while in the root of the repository, run
-this command:
+Then take the first two numbers in the version string, in this example, 6.3,
+and drop the decimal point and that is what you would set GTM_VERSION to in
+binding.gyp. That would be 'GTM_VERSION=63' in this case. Next, if you have
+installed Nodem via npm, while in the root of the repository, run this command:
 
     $ npm run install
 
@@ -238,12 +247,11 @@ repository, run this command instead:
 
     $ node-gyp rebuild 2> builderror.log
 
-If there were any errors, they will show up in builderror.log.
+If there were any errors, they will show up in builderror.log. That's it, now
+Nodem should work with your older version of GT.M.
 
-That's it, now Nodem should work with your older version of GT.M.
-
-I hope you enjoy the Nodem package. If you have any questions, feature
-requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
+If you have any questions, feature requests, or bugs to report, please contact
+David Wicksell <dlw@linux.com>
 
 ### See Also ###
 
@@ -252,7 +260,7 @@ requests, or bugs to report, please contact David Wicksell <dlw@linux.com>
 [GT.M]: http://sourceforge.net/projects/fis-gtm/
 [Globals]: http://globalsdb.org/
 [Caché]: http://www.intersystems.com/cache/
-[Docs]: http://docs.intersystems.com/documentation/cache/20152/pdfs/BXJS.pdf
+[Docs]: http://docs.intersystems.com/documentation/cache/20161/pdfs/BXJS.pdf
 
 ### APIs ###
 

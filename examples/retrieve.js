@@ -26,13 +26,15 @@ db.open();
 
 var node = {global: 'zewd', subscripts: ['config']};
 
-var retrieve = function(node) {
+var retrieve = function (node) {
+  "use strict";
+
   var global = node.global,
       subscripts = JSON.stringify(node.subscripts),
       obj,
       retrieveData;
 
-  retrieveData = function(node) {
+  retrieveData = function (node) {
     console.log('in retrieveData: node = ' + JSON.stringify(node));
 
     var subs = '',
