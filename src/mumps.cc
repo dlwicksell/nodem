@@ -60,6 +60,7 @@ static uint32_t restore_term = 0;
 
 string db_error = "GT.M is not open";
 
+Persistent<Function> constructor;
 
 static void catch_intr(int signum)
 {
@@ -226,7 +227,7 @@ RETURN_DECL Gtm::close(ARGUMENTS args)
 
     if (! restore_term) {
         tp.c_iflag |= ICRNL;
-        tp.c_lflag |= (ICANON | ECHO);
+        tp.c_lflag |= (ISIG | ECHO);
     }
 
     if (tcsetattr(STDIN_FILENO, TCSANOW, &tp) == -1)
@@ -245,9 +246,9 @@ RETURN_DECL Gtm::version(ARGUMENTS args)
 
     if (gtm_is_open < 1) {
         SCOPE_SET(args,
-            STRING("Node.js Adaptor for GT.M: Version: 0.6.3 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.7.0 (FWSLC)"));
         SCOPE_RETURN(
-            STRING("Node.js Adaptor for GT.M: Version: 0.6.3 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.7.0 (FWSLC)"));
     }
 
     char str[] = "version";
@@ -317,6 +318,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     Local<String> test = String::Cast(*cmd)->ToString();
 
     Local<String> function = STRING("function");
+    Local<String> procedure = STRING("procedure");
     Local<String> global_directory = STRING("global_directory");
     Local<String> increment = STRING("increment");
     Local<String> next_node = STRING("next_node");
@@ -353,6 +355,25 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
         if (name->IsUndefined()) {
             EXCEPTION(Exception::SyntaxError(STRING("Need to supply a function property")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
+    } else if (test->Equals(procedure)) {
+        name = object->Get(STRING("procedure"));
+        arrays = object->Get(STRING("arguments"));
+
+        if (object->Has(STRING("autoRelink"))) {
+            arelink = Local<Number>::Cast(object->Get(STRING("autoRelink")));
+        } else {
+            arelink = Local<Number>::New(ISOLATE_COMMA NUMBER(auto_relink));
+        }
+
+        to_arrays = object->Get(Undefined(ISOLATE));
+        from_arrays = object->Get(Undefined(ISOLATE));
+
+        if (name->IsUndefined()) {
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a procedure property")));
 
             SCOPE_SET(args, Undefined(ISOLATE));
             SCOPE_RETURN(Undefined(ISOLATE));
@@ -524,7 +545,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     access.handle = NULL;
 #endif
 
-    if (test->Equals(function)) {
+    if ((test->Equals(function)) || (test->Equals(procedure))) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value());
@@ -706,7 +727,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     if (arrays->IsUndefined()) {
         SCOPE_SET(args, retobject);
         SCOPE_RETURN(retobject);
-    } else if (test->Equals(function)) {
+    } else if ((test->Equals(function)) || (test->Equals(procedure))) {
         Local<Array> array = Local<Array>::Cast(arrays);
 
         if (retobject->Get(STRING("errorCode"))->IsUndefined())
@@ -860,6 +881,16 @@ RETURN_DECL Gtm::previous_node(ARGUMENTS args)
 } //End of Gtm::previous_node
 
 
+RETURN_DECL Gtm::procedure(ARGUMENTS args)
+{
+    ISOLATE_CURRENT;
+
+    Local<Value> cmd = STRING("procedure");
+
+    RETURN call_gtm(cmd, args);
+} //End of Gtm::procedure
+
+
 RETURN_DECL Gtm::retrieve(ARGUMENTS args)
 {
     ISOLATE_CURRENT;
@@ -918,6 +949,7 @@ void Gtm::Init(Handle<Object> exports)
     NODE_SET_PROTOTYPE_METHOD(tpl, "close", close);
     NODE_SET_PROTOTYPE_METHOD(tpl, "data", data);
     NODE_SET_PROTOTYPE_METHOD(tpl, "function", function);
+    NODE_SET_PROTOTYPE_METHOD(tpl, "procedure", procedure);
     NODE_SET_PROTOTYPE_METHOD(tpl, "get", get);
     NODE_SET_PROTOTYPE_METHOD(tpl, "global_directory", global_directory);
     NODE_SET_PROTOTYPE_METHOD(tpl, "increment", increment);
@@ -936,7 +968,7 @@ void Gtm::Init(Handle<Object> exports)
     NODE_SET_PROTOTYPE_METHOD(tpl, "update", update);
     NODE_SET_PROTOTYPE_METHOD(tpl, "version", version);
 
-    Persistent<Function> PERSISTENT_FUNCTION(constructor, tpl->GetFunction());
+    PERSISTENT_FUNCTION(constructor, tpl->GetFunction());
 
     exports->Set(SYMBOL("Gtm"), CONSTRUCTOR(constructor, tpl));
 } //End of Gtm::Init
@@ -948,11 +980,18 @@ RETURN_DECL Gtm::New(ARGUMENTS args)
 
     SCOPE_HANDLE;
 
-    Gtm* obj = new Gtm();
-    obj->Wrap(args.This());
+    if (args.IsConstructCall()) {
+        Gtm* obj = new Gtm();
+        obj->Wrap(args.This());
 
-    SCOPE_SET(args, args.This());
-    SCOPE_RETURN(args.This());
+        SCOPE_SET(args, args.This());
+        SCOPE_RETURN(args.This());
+    } else {
+        Local<Function> cons = Local<Function>::New(ISOLATE_COMMA constructor);
+
+        SCOPE_SET(args, cons->NewInstance());
+        SCOPE_RETURN(cons->NewInstance());
+    }
 } //End of Gtm::New
 
 

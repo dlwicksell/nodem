@@ -29,8 +29,8 @@
 #define NODEM_STRINGIFY(num) #num
 
 #define NODEM_MAJOR_VERSION  0
-#define NODEM_MINOR_VERSION  6
-#define NODEM_PATCH_VERSION  3
+#define NODEM_MINOR_VERSION  7
+#define NODEM_PATCH_VERSION  0
 
 #define NODEM_VERSION_STRING NODEM_STRING(NODEM_MAJOR_VERSION) "." \
                              NODEM_STRING(NODEM_MINOR_VERSION) "." \
@@ -63,7 +63,7 @@
     #define ASCII_NAME(name, ret)           const uint8_t* bytes = reinterpret_cast<const uint8_t*>(ret); \
                                             name = v8::String::NewFromOneByte(isolate, bytes)
 
-    #define PERSISTENT_FUNCTION(name, func) name; name.Reset(isolate, func)
+    #define PERSISTENT_FUNCTION(name, func) name.Reset(isolate, func)
     #define CONSTRUCTOR(cons, tpl)          tpl->GetFunction()
 
     #define SCOPE_HANDLE                    v8::EscapableHandleScope scope(isolate)
@@ -128,6 +128,7 @@ class Gtm: public node::ObjectWrap
         static RETURN_DECL order(ARGUMENTS);
         static RETURN_DECL previous(ARGUMENTS);
         static RETURN_DECL previous_node(ARGUMENTS);
+        static RETURN_DECL procedure(ARGUMENTS);
         static RETURN_DECL retrieve(ARGUMENTS);
         static RETURN_DECL set(ARGUMENTS);
         static RETURN_DECL unlock(ARGUMENTS);

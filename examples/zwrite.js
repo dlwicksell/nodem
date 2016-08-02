@@ -2,7 +2,7 @@
  * zwrite.js - A ZWRITE clone
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2015 Fourth Watch Software LC
+ * Copyright © 2012-2016 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -35,6 +35,8 @@ if (process.argv[2] === undefined) {
 var mumps = require('../lib/nodem');
 var db = new mumps.Gtm();
 
+var global, fs, ret, fd, code, node;
+
 db.open();
 
 process.on('uncaughtException', function(err) {
@@ -45,26 +47,35 @@ process.on('uncaughtException', function(err) {
   process.exit(1);
 });
 
-var global = process.argv[2];
+if (process.argv[2] === '-f' || process.argv[3] === '-f') {
+  if (process.argv[2] === '-f') {
+    global = process.argv[3];
+  } else {
+    global = process.argv[2];
+  }
 
-if (global[0] === '-') {
-  var fs = require('fs'),
-      ret,
-      fd,
-      code = 'zwr(glvn) s:$e(glvn)\'="^" glvn="^"_glvn zwr @glvn q ""';
+  fs = require('fs');
+  code = 'zwr(glvn) s:$e(glvn)\'="^" glvn="^"_glvn zwr @glvn q ""';
 
   fd = fs.openSync('v4wTest.m', 'w');
   fs.writeSync(fd, code);
 
   process.env.gtmroutines = process.env.gtmroutines + ' .';
 
-  db.function({function: 'zwr^v4wTest', arguments: [global.slice(1)]});
+  db.function({function: 'zwr^v4wTest', arguments: [global]});
 
   fs.closeSync(fd);
   fs.unlinkSync('v4wTest.m');
   fs.unlinkSync('v4wTest.o');
 } else {
-  var node = {};
+  global = process.argv[2];
+  node = {};
+
+  if (db.data({global: global}).defined % 2) {
+    node = db.get({global: global});
+
+    console.log('^' + global + '=' + JSON.stringify(node.data));
+  }
 
   while (true) {
     node = db.next_node({global: global, subscripts: node.subscripts});

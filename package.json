@@ -6,7 +6,7 @@
   },
   "name": "nodem",
   "description": "Binding API and driver for the GT.M language and database.",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "maintainers": "David Wicksell <dlw@linux.com>",
   "homepage": "https://github.com/dlwicksell/nodem",
   "repository": {
@@ -29,7 +29,8 @@
     "NoSQL"
   ],
   "scripts": {
-    "install": "node-gyp rebuild 3>&1 1>&2 2>&3 3>&- | tee builderror.log",
+    "preinstall": "node ./lib/preinstall 3>&1 1>&2 2>&3 3>&- | tee builderror.log",
+    "install": "node-gyp rebuild 3>&1 1>&2 2>&3 3>&- | tee -a builderror.log",
     "uninstall": "rm -rf build builderror.log src/v4wNode.o",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

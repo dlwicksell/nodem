@@ -1,5 +1,6 @@
 data      :gtm_char_t* data^v4wNode(I:gtm_char_t*, I:gtm_char_t*)
 function  :gtm_char_t* function^v4wNode(I:gtm_char_t*, I:gtm_char_t*, I:gtm_uint_t)
+procedure :gtm_char_t* procedure^v4wNode(I:gtm_char_t*, I:gtm_char_t*, I:gtm_uint_t)
 get       :gtm_char_t* get^v4wNode(I:gtm_char_t*, I:gtm_char_t*)
 global_directory :gtm_char_t* globalDirectory^v4wNode(I:gtm_uint_t, I:gtm_char_t*, I:gtm_char_t*)
 increment :gtm_char_t* increment^v4wNode(I:gtm_char_t*, I:gtm_char_t*, I:gtm_double_t)

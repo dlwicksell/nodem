@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.6.3 - 2016 July 24
+Version 0.7.0 - 2016 Aug 1
 
 ## Copyright and License ##
 
@@ -54,18 +54,19 @@ for that database. E.g.
     > db.open({namespace: '/home/dlw/g/db_utf.gld'});
 
 Nodem supports a feature called auto-relink, which will automatically relink a
-routine object containing any function called by the function API. By default
-auto-relink is off. You can enable it in one of three ways. First, you can pass
-it as a property of the JavaScript object argument which is passed to the
-function API directly, with a value of true, or any non-zero number. This will
-turn on auto-relink just for that call. You can also disable it, by setting
-autoRelink to false, or 0, if it was already enabled by one of the global
-settings. E.g.
+routine object containing any function (or procedure) called by the function
+(or procedure) API. By default auto-relink is off. You can enable it in one of
+three ways. First, you can pass it as a property of the JavaScript object
+argument which is passed to the function (or procedure) API directly, with a
+value of true, or any non-zero number. This will turn on auto-relink just for
+that call. You can also disable it, by setting autoRelink to false, or 0, if it
+was already enabled by one of the global settings. E.g.
 
     > db.function({function: 'version^v4wNode', autoRelink: true});
 
-Second, you can enable it globally, for every call to the function API, by
-setting the same property in a JavaScript object passed to the open API. E.g.
+Second, you can enable it globally, for every call to the function (or
+procedure) API, by setting the same property in a JavaScript object passed to
+the open API. E.g.
 
     > db.open({autoRelink: true});
 
@@ -86,6 +87,15 @@ restoreTerminal property to true, or any non-zero number. E.g.
 
     > db.close({restoreTerminal: true});
 
+Nodem has a new procedure API, which is similar to the function API, except
+that it is used to call M procedures or subroutines, which do not return any
+values. The procedure API accepts one argument, a JavaScript object. The object
+must contain the required procedure property, set to the name of the procedure
+or subroutine. It may also contain an optional property, called arguments,
+which is an array of arguments to pass to the procedure. E.g.
+
+    > db.procedure({procedure: 'set^node', arguments: ['dlw', 5]});
+
 ## Installation ##
 
 There are a few things to be aware of in order to use the Nodem addon. You will
@@ -99,50 +109,22 @@ have installed this with npm.
 
 **NOTE:** If you have installed Nodem using npm, it will attempt to build
 mumps.node during installation. If there is a file in the nodem/ directory
-called builderror.log, and if that file is empty, mumps.node built without
-issue; you can then skip the following step of copying a pre-built shared
-library to ~/nodem/lib/mumps.node.
+called builderror.log, and if that file contains no build errors, mumps.node
+built without issue. If you downloaded Nodem any other way, including cloning
+it from its github repository, then you'll have to build it from source. While
+in the root of the Nodem repository, you simply run the 'npm run install'
+command. E.g.
 
-You might need to copy the correct version of mumps.node for your system
-architecture and version of Node.js to ~/nodem/lib/mumps.node. The mumps.node
-pre-built modules, which you will find in ~/nodem/lib/, are named for the
-version of Node.js that they support, as well as which system architecture they
-are built for (i686 for 32-bit and x8664 for 64-bit). E.g.
-
-* *mumps0.8.node_{i686,x8664}*  - Node.js v0.8.x
-* *mumps0.10.node_{i686,x8664}* - Node.js v0.10.x
-* *mumps0.12.node_{i686,x8664}* - Node.js v0.12.x
-* *mumps1.8.node_{i686,x8664}*  - IO.js v1.8.x
-* *mumps2.5.node_{i686,x8664}*  - IO.js v2.5.x
-* *mumps3.3.node_{i686,x8664}*  - IO.js v3.3.x
-* *mumps4.4.node_{i686,x8664}*  - Node.js v4.4.x
-* *mumps5.12.node_{i686,x8664}* - Node.js v5.12.x
-* *mumps6.3.node_{i686,x8664}*  - Node.js v6.3.x
-
+    $ cd ~/nodem
+    $ npm run install
+    or
+    $ npm install
 
 IO.js was a fork of Node.js, and as of version 4.0.0, has been merged back in
 to Node.js. Nodem should run on every version of Node.js starting with version
 0.8.0, as well as every version of IO.js. However, in the future, both Node.js
 and the V8 JavaScript engine at its core, could change their APIs in a
-non-backwards-compatible way, which might break Nodem for that version. There
-are pre-built modules for the latest versions of each major release, such as
-v6.3.x for version 6.x.x. In most cases, these should run fine on any version
-that matches the major version number. For example, the mumps4.4.node_x8664
-module should run fine on all Node.js 4.x.x versions. But not every version has
-been tested, so that might not apply to every one. They were built against the
-latest release version available. For example, mumps3.3.node_x8664 was built on
-IO.js v3.3.1. However, if you are running a different, and incompatible,
-version of the C standard library on your system, than the one they were built
-against, you will need to build Nodem from source.
-
-By default there is a mumps.node already in ~/nodem/lib/, which is a copy of
-the 64-bit module for Node.js version 4.4.x. It is important to realize that
-the addon will not function unless it is called mumps.node, and a symbolic link
-won't work. E.g.
-
-    $ cd ~/nodem/lib/
-    $ cp mumps4.4.node_x8664 mumps.node
-    $ cd -
+non-backwards-compatible way, which might break Nodem for that version.
 
 **NOTE:** The build file specifies several runtime linker paths, which are also
 embedded in the pre-built modules. One of them might match the path that GT.M
@@ -265,21 +247,22 @@ David Wicksell <dlw@linux.com>
 ### APIs ###
 
 * *about* or *version* - Display version information
-* *close* - Close the database
-* *data* - Call the $DATA intrinsic function
-* *function* - Call an extrinisic function
-* *get* - Call the $GET intrinsic function
-* *global_directory* - List the names of the globals in the database
-* *increment* - Call the $INCREMENT intrinsic function
-* *kill* - Delete a global node, and all of its children
-* *lock* - Lock a global or global node incrementally
-* *merge* - Merge a global or a global node, to a global or a global node
-* *next* or *order* - Call the $ORDER intrinsic function
-* *next_node* - Call the $QUERY intrinsic function
-* *open* - Open the database
-* *previous* - Call the $ORDER intrinsic function in reverse
-* *previous_node* - Not yet implemented
-* *retrieve* - Not yet implemented
-* *set* - Set a global node to a new value
-* *unlock* - Unlock a global or global node incrementally, or release all locks
-* *update* - Not yet implemented
+* *close*              - Close the database
+* *data*               - Call the $DATA intrinsic function
+* *function*           - Call an extrinsic function
+* *get*                - Call the $GET intrinsic function
+* *global_directory*   - List the names of the globals in the database
+* *increment*          - Call the $INCREMENT intrinsic function
+* *kill*               - Delete a global node, and all of its children
+* *lock*               - Lock a global or global node incrementally
+* *merge*              - Merge a global or a global node, to a global or a global node
+* *next* or *order*    - Call the $ORDER intrinsic function
+* *next_node*          - Call the $QUERY intrinsic function
+* *open*               - Open the database
+* *previous*           - Call the $ORDER intrinsic function in reverse
+* *previous_node*      - Not yet implemented
+* *procedure*          - Call a procedure/subroutine
+* *retrieve*           - Not yet implemented
+* *set*                - Set a global node to a new value
+* *unlock*             - Unlock a global or global node incrementally, or release all locks
+* *update*             - Not yet implemented

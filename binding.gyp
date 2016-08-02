@@ -1,9 +1,23 @@
 #
 # binding.gyp - Nodem build script
 #
-# Nodem written by David Wicksell <dlw@linux.com>
+# Written by David Wicksell <dlw@linux.com>
 # Copyright © 2012-2016 Fourth Watch Software LC
 #
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License (AGPL)
+# as published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see http://www.gnu.org/licenses/.
+#
+
 
 {
   'targets': [
@@ -20,13 +34,13 @@
       'conditions': [
         ['target_arch == "x64"', {
           'variables': {
-            'gtm_build%': '/usr/lib/x86_64-linux-gnu/fis-gtm/V6.2-002A_x86_64/',
-            'gtm_opt%': '/opt/lsb-fis/gtm/6.2-002A_x8664'
+            'gtm_build%': '/usr/lib/x86_64-linux-gnu/fis-gtm/V6.2-002A-2build1_x86_64',
+            'gtm_opt%': '/opt/lsb-fis/gtm/V6.3-000_x86_64'
           }
         }, {
           'variables': {
             'gtm_build%': '/usr/lib/fis-gtm/V6.0-003_i686',
-            'gtm_opt%': '/opt/lsb-fis/gtm/6.0-003_i686'
+            'gtm_opt%': '/opt/lsb-fis/gtm/V6.0-003_i686'
           }
         }]
       ],
@@ -51,7 +65,7 @@
         '-lgtmshr'
       ],
       'defines': [
-        'GTM_VERSION=63'
+        'GTM_VERSION=62'
       ],
       'ldflags': [
         '-Wl,-rpath,<(gtm_dist),--enable-new-dtags',

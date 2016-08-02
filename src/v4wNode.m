@@ -1,4 +1,4 @@
-v4wNode() ;; 2016-07-23  4:05 PM
+v4wNode() ;; 2016-07-31  9:24 PM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
@@ -357,6 +357,27 @@ previousNode(glvn,subs) ;same as nextNode, only in reverse
  quit "{""status"": ""previous_node not yet implemented""}"
  ;
  ;
+procedure(proc,args,relink) ;call an arbitrary procedure/subroutine
+ u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
+ ;
+ n procedure,result
+ ;
+ s args=$$parse($g(args),"input")
+ ;
+ ;link latest routine image containing procedure/subroutine in auto-relinking mode
+ i relink zl $tr($s(proc["^":$p(proc,"^",2),1:proc),"%","_")
+ ;
+ s procedure=proc_$s(args'="":"("_args_")",1:"")
+ ;
+ i procedure'["^" s procedure="^"_procedure
+ ;
+ d @procedure
+ ;
+ s return="{""ok"": 1, ""procedure"": """_proc_"""}"
+ ;
+ quit return
+ ;
+ ;
 retrieve() ;not yet implemented
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
@@ -404,5 +425,5 @@ update() ;not yet implemented
 version() ;return the version string
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.6.3 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.7.0 (FWSLC); "_$zv
  ;
