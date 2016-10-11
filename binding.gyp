@@ -35,7 +35,7 @@
         ['target_arch == "x64"', {
           'variables': {
             'gtm_build%': '/usr/lib/x86_64-linux-gnu/fis-gtm/V6.2-002A-2build1_x86_64',
-            'gtm_opt%': '/opt/lsb-fis/gtm/V6.3-000_x86_64'
+            'gtm_opt%': '/opt/lsb-fis/gtm/V6.3-000A_x86_64'
           }
         }, {
           'variables': {
@@ -65,7 +65,7 @@
         '-lgtmshr'
       ],
       'defines': [
-        'GTM_VERSION=62'
+        'GTM_VERSION=63'
       ],
       'ldflags': [
         '-Wl,-rpath,<(gtm_dist),--enable-new-dtags',

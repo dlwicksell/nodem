@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.7.0 - 2016 Aug 1
+Version 0.8.0 - 2016 Oct 11
 
 ## Copyright and License ##
 
@@ -21,6 +21,7 @@ PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 You should have received a copy of the GNU Affero General Public License along
 with this program. If not, see <http://www.gnu.org/licenses/>.
 
+Contact me if you are interested in using Nodem with a different license.
 ***
 
 ## Disclaimer ##
@@ -33,7 +34,7 @@ Use in production at your own risk.
 Nodem is an open source addon module for Node.js that integrates Node.js with
 the [GT.M][] database, providing in-process access to GT.M's database from
 Javascript, via GT.M's C call-in interface. From Node.js you can perform the
-basic primitive global database handling operations and also invoke GT.M/Mumps
+basic primitive global database handling operations and also invoke GT.M/MUMPS
 functions. Although designed exclusively for use with GT.M, Nodem aims to be
 API-compatible with the in-process Node.js interface for [Globals][] and
 [Caché][], at least for the APIs that have been implemented in Nodem. As such,
@@ -41,40 +42,79 @@ please refer to the Caché Node.js [API documentation][Docs] for further details
 on how to use those APIs.
 
 Currently only the synchronous versions of the Nodem APIs are fully
-implemented, and their arguments have to be passed in JavaScript objects.
+implemented, and their arguments have to be passed in Javascript objects.
 However, the asynchronous versions of the APIs, and the ability to also pass
-arguments by position, is coming soon. The open() call works a bit different
-than the Caché/Globals version; it does not require any arguments, and it will
-default to using the database specified in the environment variable,
-$gtmgbldir. If you have more than one database and would like to connect to a
-different one than $gtmgbldir points to, you can define an object, with a
-property called namespace, defined as the path to your global directory file
-for that database. E.g.
+arguments by position, is coming soon.
 
-    > db.open({namespace: '/home/dlw/g/db_utf.gld'});
+The open() call works a bit differently than the Caché/Globals version; it does
+not require any arguments, and it will default to using the database specified
+in the environment variable, $gtmgbldir. If you have more than one database and
+would like to connect to a different one than $gtmgbldir points to, you can
+define an object, with a property called namespace, defined as the path to your
+global directory file for that database, e.g.
+
+    > gtm.open({namespace: '/home/dlw/g/db_utf.gld'});
+
+Also, if you have more than one version of GT.M installed and would like to
+connect to a different one than $gtm_dist points to, you can define an object,
+with a property called path, passed to the open() call, defined as the path to
+your GT.M installation root that you would like to connect to, e.g.
+
+    > gtm.open({path: '/usr/lib/fis-gtm/V6.2-002A_x86_64/'});
+
+Nodem supports setting a [GT.CM][] client to allow for remote connections
+across a network interface, using GT.M's built-in GT.CM functionality. In the
+open() method, you can set a host and/or a port property, and Nodem will set up
+the environment to connect with a GT.M database on a remote server that already
+has a GT.CM server running on that host and port. If only host or port is
+defined, the other one will be set with a default value; 127.0.0.1 for host, or
+6879 for port. Nodem will then set the $GTCM_NODEM environment variable, for
+that Nodem process only, with the host and port you set in the open() call. You
+will also need to create a global directory file that maps one or more database
+segments to a data file on the remote server you want to connect with, noting
+that the prefix to the -file argument in the example below must be NODEM, in
+order to match the $GTCM_NODEM environment variable name that Nodem sets up for
+you, e.g.
+
+    $ mumps -r GDE
+    GDE> change -segment DEFAULT -file=NODEM:/home/dlw/g/gtcm-server.dat
+
+Then on the server you are connecting to, make sure you have the data file set
+up at the same path that you set the '-file=' option to in the global directory
+of your GT.CM client configuration, and have started the GT.CM server on the
+same host and port that you configured in the open() call in Nodem, e.g.
+
+    $ $gtm_dist/gtcm_gnp_server -log=gtcm.log -service=127.0.0.1:6879
+
+Nodem allows you to set the data mode you want to use. Currently mode can be
+set to either 'canonical,' or 'strict.' The default is canonical, and interprets
+data using MUMPS' canonical representation. I.e. Numbers will be represented
+numerically, etc. Strict mode interprets all data as strings, stricly following
+the convention set with InterSystems' Node.js driver, e.g.
+
+    > gtm.open({mode: 'strict'});
 
 Nodem supports a feature called auto-relink, which will automatically relink a
 routine object containing any function (or procedure) called by the function
 (or procedure) API. By default auto-relink is off. You can enable it in one of
-three ways. First, you can pass it as a property of the JavaScript object
+three ways. First, you can pass it as a property of the Javascript object
 argument which is passed to the function (or procedure) API directly, with a
 value of true, or any non-zero number. This will turn on auto-relink just for
 that call. You can also disable it, by setting autoRelink to false, or 0, if it
-was already enabled by one of the global settings. E.g.
+was already enabled by one of the global settings, e.g.
 
-    > db.function({function: 'version^v4wNode', autoRelink: true});
-
+    > gtm.function({function: 'version^v4wNode', autoRelink: true});
 Second, you can enable it globally, for every call to the function (or
-procedure) API, by setting the same property in a JavaScript object passed to
-the open API. E.g.
+procedure) API, by setting the same property in a Javascript object passed to
+the open API, e.g.
 
-    > db.open({autoRelink: true});
+    > gtm.open({autoRelink: true});
 
 Third, you can also enable it globally, by setting the environment variable
-NODEM_AUTO_RELINK to 1, or any other non-zero number. E.g.
+NODEM_AUTO_RELINK to 1, or any other non-zero number, e.g.
 
     $ export NODEM_AUTO_RELINK=1
-    $ node examples/set.js 
+    $ node examples/set.js
     or
     $ NODEM_AUTO_RELINK=1 node examples/set.js
 
@@ -83,18 +123,18 @@ reset them when it closes the database connection. By default, Nodem will reset
 the terminal device to typically sane settings. Normally this is the desired
 option, however, if you wish to restore the terminal to the state it was in
 when the open() call was invoked, the close() call allows this by setting the
-restoreTerminal property to true, or any non-zero number. E.g.
+restoreTerminal property to true, or any non-zero number, e.g.
 
-    > db.close({restoreTerminal: true});
+    > gtm.close({restoreTerminal: true});
 
 Nodem has a new procedure API, which is similar to the function API, except
 that it is used to call M procedures or subroutines, which do not return any
-values. The procedure API accepts one argument, a JavaScript object. The object
+values. The procedure API accepts one argument, a Javascript object. The object
 must contain the required procedure property, set to the name of the procedure
 or subroutine. It may also contain an optional property, called arguments,
-which is an array of arguments to pass to the procedure. E.g.
+which is an array of arguments to pass to the procedure, e.g.
 
-    > db.procedure({procedure: 'set^node', arguments: ['dlw', 5]});
+    > gtm.procedure({procedure: 'set^node', arguments: ['dlw', 5]});
 
 ## Installation ##
 
@@ -113,7 +153,7 @@ called builderror.log, and if that file contains no build errors, mumps.node
 built without issue. If you downloaded Nodem any other way, including cloning
 it from its github repository, then you'll have to build it from source. While
 in the root of the Nodem repository, you simply run the 'npm run install'
-command. E.g.
+command, e.g.
 
     $ cd ~/nodem
     $ npm run install
@@ -123,7 +163,7 @@ command. E.g.
 IO.js was a fork of Node.js, and as of version 4.0.0, has been merged back in
 to Node.js. Nodem should run on every version of Node.js starting with version
 0.8.0, as well as every version of IO.js. However, in the future, both Node.js
-and the V8 JavaScript engine at its core, could change their APIs in a
+and the V8 Javascript engine at its core, could change their APIs in a
 non-backwards-compatible way, which might break Nodem for that version.
 
 **NOTE:** The build file specifies several runtime linker paths, which are also
@@ -143,7 +183,7 @@ are a couple of things you can do at this point. You can move libgtmshr.so to a
 standard directory that is searched by the loader, such as lib/, or /usr/lib/,
 or on some systems, /usr/local/lib/. Then you will have to run ldconfig as root
 to rebuild the linker's cache. You could also create a symbolic link to it if
-you choose. E.g.
+you choose, e.g.
 
     $ sudo -i
     # cd /usr/local/lib/
@@ -158,7 +198,7 @@ linker name and soname link, based on its version. Instead, you can avoid
 having to copy or link to the library by setting the environment variable,
 $LD_LIBRARY_PATH, to point to it, as the loader will search there first. It is
 usually advisable not to export $LD_LIBRARY_PATH into your environment, so you
-might want to define it right before calling node. E.g.
+might want to define it right before calling node, e.g.
 
     $ LD_LIBRARY_PATH=${gtm_dist} node
     or
@@ -170,7 +210,7 @@ package supplies a sample environment file, called environ. It has a commented
 out command to set $LD_LIBRARY_PATH to $gtm_dist, which you will need to
 uncomment if you need it. It is located in ~/nodem/resources/ and can simply be
 sourced into your working environment, either directly, or from your own
-environment scripts or profile/login script. E.g.
+environment scripts or profile/login script, e.g.
 
     $ cd ~/nodem/resources/
     $ source environ
@@ -185,7 +225,7 @@ v4wNode.m into a directory that is specified in your $gtmroutines routine path,
 so that GT.M can find it. It is located in the ~/nodem/src/ directory. Again,
 if you don't source the environ file, then you will need to define the $GTMCI
 environment variable, and point it at the file nodem.ci, located in the
-~/nodem/resources/ directory. E.g.
+~/nodem/resources/ directory, e.g.
 
     $ export GTMCI=~/nodem/resources/nodem.ci
 
@@ -211,7 +251,7 @@ This is because Nodem is using a GT.M API that didn't exist in older versions.
 In that case, you will have to build from source. First, open up the file
 binding.gyp (the build specification file), and edit the line that contains the
 string, GTM_VERSION, to the version of GT.M that you are running. You can find
-out what version of GT.M you are running by invoking GT.M in direct mode. E.g.
+out what version of GT.M you are running by invoking GT.M in direct mode, e.g.
 
     $ mumps -direct
     GTM>write $zversion
@@ -243,11 +283,12 @@ David Wicksell <dlw@linux.com>
 [Globals]: http://globalsdb.org/
 [Caché]: http://www.intersystems.com/cache/
 [Docs]: http://docs.intersystems.com/documentation/cache/20161/pdfs/BXJS.pdf
+[GT.CM]: http://tinco.pair.com/bhaskar/gtm/doc/books/ao/UNIX_manual/webhelp/content/ch13.html
 
 ### APIs ###
 
 * *about* or *version* - Display version information
-* *close*              - Close the database
+* *close*              - Close the database connection
 * *data*               - Call the $DATA intrinsic function
 * *function*           - Call an extrinsic function
 * *get*                - Call the $GET intrinsic function
@@ -258,7 +299,7 @@ David Wicksell <dlw@linux.com>
 * *merge*              - Merge a global or a global node, to a global or a global node
 * *next* or *order*    - Call the $ORDER intrinsic function
 * *next_node*          - Call the $QUERY intrinsic function
-* *open*               - Open the database
+* *open*               - Open the database connection
 * *previous*           - Call the $ORDER intrinsic function in reverse
 * *previous_node*      - Not yet implemented
 * *procedure*          - Call a procedure/subroutine

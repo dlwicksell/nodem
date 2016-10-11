@@ -44,6 +44,9 @@ using namespace node;
 #define RET_LEN ((1024 * 1024) + 1)
 #define WIDTH 9
 
+#define CANONICAL 0
+#define STRICT 1
+
 gtm_char_t msgbuf[BUF_LEN];
 gtm_char_t ret[RET_LEN];
 gtm_status_t status;
@@ -54,6 +57,8 @@ struct termios tp;
 struct sigaction n_signal;
 
 static int gtm_is_open = 0;
+
+static gtm_uint_t mode = CANONICAL;
 
 static uint32_t auto_relink = 0;
 static uint32_t restore_term = 0;
@@ -117,6 +122,7 @@ RETURN_DECL Gtm::open(ARGUMENTS args)
 
     char *chset;
     char *arelink;
+    Local<Object> object;
 
     if (db_is_open() != 0) {
         SCOPE_SET(args, STRING(db_error.c_str()));
@@ -140,9 +146,16 @@ RETURN_DECL Gtm::open(ARGUMENTS args)
     if (arelink != NULL)
         auto_relink = atoi(arelink);
 
-    Local<Object> object = Local<Object>::Cast(args[0]);
+    object = Local<Object>::Cast(args[0]);
 
     if (! object->IsUndefined()) {
+        Local<Value> path = object->Get(STRING("path"));
+
+        if (! path->IsUndefined()) {
+            if (setenv("gtm_dist", *String::Utf8Value(path), 1) == -1)
+                std::cerr << strerror(errno) << std::endl;
+        }
+
         Local<Value> nspace = object->Get(STRING("namespace"));
 
         if (! nspace->IsUndefined()) {
@@ -150,7 +163,39 @@ RETURN_DECL Gtm::open(ARGUMENTS args)
                 std::cerr << strerror(errno) << std::endl;
         }
 
+        Local<Value> host = object->Get(STRING("host"));
+        Local<Value> port = object->Get(STRING("port"));
+
+        if (! host->IsUndefined() || ! port->IsUndefined()) {
+            Local<Value> gtcm_nodem;
+
+            if (host->IsUndefined())
+                host = Local<Value>::New(ISOLATE_COMMA STRING("127.0.0.1"));
+
+            if (port->IsUndefined())
+                port = Local<Value>::New(ISOLATE_COMMA STRING("6789"));
+
+            if (port->IsString()) {
+                gtcm_nodem = String::Concat(Local<String>::Cast(host), String::Concat(STRING(":"), Local<String>::Cast(port)));
+            } else if (port->IsNumber()) {
+                gtcm_nodem = String::Concat(Local<String>::Cast(host), String::Concat(STRING(":"), port->ToString()));
+            } else {
+                EXCEPTION(Exception::Error(STRING("port must be a number or a string")));
+
+                SCOPE_SET(args, Undefined(ISOLATE));
+                SCOPE_RETURN(Undefined(ISOLATE));
+            }
+
+            if (setenv("GTCM_NODEM", *String::Utf8Value(gtcm_nodem), 1) == -1)
+                std::cerr << strerror(errno) << std::endl;
+        }
+
         auto_relink = object->Get(STRING("autoRelink"))->Uint32Value();
+
+        String::Utf8Value data_mode(object->Get(STRING("mode")));
+
+        if (strcmp(*data_mode, "strict") == 0)
+            mode = STRICT;
     }
 
     if (tcgetattr(STDIN_FILENO, &tp) == -1)
@@ -246,9 +291,9 @@ RETURN_DECL Gtm::version(ARGUMENTS args)
 
     if (gtm_is_open < 1) {
         SCOPE_SET(args,
-            STRING("Node.js Adaptor for GT.M: Version: 0.7.0 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.8.0 (FWSLC)"));
         SCOPE_RETURN(
-            STRING("Node.js Adaptor for GT.M: Version: 0.7.0 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.8.0 (FWSLC)"));
     }
 
     char str[] = "version";
@@ -548,18 +593,18 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     if ((test->Equals(function)) || (test->Equals(procedure))) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value());
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value(), mode);
 #else
-            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value());
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value(), mode);
 #endif
         } else {
             ASCII_PROTO(name);
             ASCII_PROTO(arg);
 
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), arelink->Uint32Value());
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), arelink->Uint32Value(), mode);
 #else
-            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), arelink->Uint32Value());
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), arelink->Uint32Value(), mode);
 #endif
         }
     } else if (test->Equals(global_directory)) {
@@ -594,28 +639,28 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), number->NumberValue());
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), number->NumberValue(), mode);
 #else
-            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), number->NumberValue());
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), number->NumberValue(), mode);
 #endif
         } else {
             ASCII_PROTO(name);
             ASCII_PROTO(arg);
 
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), number->NumberValue());
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), number->NumberValue(), mode);
 #else
-            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), number->NumberValue());
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), number->NumberValue(), mode);
 #endif
         }
     } else if (test->Equals(merge)) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret, *String::Utf8Value(from_name), *String::Utf8Value(from_arg),
-                             *String::Utf8Value(to_name), *String::Utf8Value(to_arg));
+                             *String::Utf8Value(to_name), *String::Utf8Value(to_arg), mode);
 #else
             status = gtm_ci(*str, ret, *String::Utf8Value(from_name), *String::Utf8Value(from_arg),
-                            *String::Utf8Value(to_name), *String::Utf8Value(to_arg));
+                            *String::Utf8Value(to_name), *String::Utf8Value(to_arg), mode);
 #endif
         } else {
             ASCII_PROTO(from_name);
@@ -625,18 +670,18 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
 #if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret, ASCII_VALUE(from_name), ASCII_VALUE(from_arg),
-                             ASCII_VALUE(to_name), ASCII_VALUE(to_arg));
+                             ASCII_VALUE(to_name), ASCII_VALUE(to_arg), mode);
 #else
             status = gtm_ci(*str, ret, ASCII_VALUE(from_name), ASCII_VALUE(from_arg),
-                            ASCII_VALUE(to_name), ASCII_VALUE(to_arg));
+                            ASCII_VALUE(to_name), ASCII_VALUE(to_arg), mode);
 #endif
         }
     } else if (test->Equals(set)) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), *String::Utf8Value(data));
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), *String::Utf8Value(data), mode);
 #else
-            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), *String::Utf8Value(data));
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), *String::Utf8Value(data), mode);
 #endif
         } else {
             ASCII_PROTO(name);
@@ -644,9 +689,9 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
             ASCII_PROTO(data);
 
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), ASCII_VALUE(data));
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), ASCII_VALUE(data), mode);
 #else
-            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), ASCII_VALUE(data));
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), ASCII_VALUE(data), mode);
 #endif
         }
     } else if (test->Equals(unlock)) {
@@ -658,35 +703,35 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), mode);
 #else
-            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), mode);
 #endif
         } else {
             ASCII_PROTO(name);
             ASCII_PROTO(arg);
 
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), mode);
 #else
-            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), mode);
 #endif
         }
     } else {
         if (is_utf) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
+            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), mode);
 #else
-            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg));
+            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), mode);
 #endif
         } else {
             ASCII_PROTO(name);
             ASCII_PROTO(arg);
 
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
+            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), mode);
 #else
-            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg));
+            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), mode);
 #endif
         }
     }

@@ -1,4 +1,4 @@
-v4wNode() ;; 2016-07-31  9:24 PM
+v4wNode() ;; 2016-09-26  8:22 PM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
@@ -25,14 +25,11 @@ construct:(glvn,subs) ;construct a global reference
  quit "^"_glvn_$s(subs'="":"("_subs_")",1:"")
  ;
  ;
-iconvert:(data) ;convert for input
- n ndata
+iconvert:(data,mode) ;convert for input
+ i '$g(mode) d
+ . i $e(data,1,2)="0.",$l(data)<19,$e(data,2,$l(data))=+$e(data,2,$l(data)) s $e(data)=""
  ;
- i $e(data,1,2)="0.",$e(data,2,$l(data))=+$e(data,2,$l(data)) s $e(data)=""
- ;
- s ndata=data
- ;
- q ndata
+ q data
  ;
  ;
 iescape:(data) ;unescape quotes within a string
@@ -55,10 +52,10 @@ iescape:(data) ;unescape quotes within a string
  quit ndata
  ;
  ;
-oconvert:(data) ;convert for output
+oconvert:(data,mode) ;convert for output
  n ndata
  ;
- i $l(data)<19,data=+data d
+ i '$g(mode),$l(data)<19,data=+data d
  . i $e(data)="." s ndata=0_data
  . e  s ndata=data
  e  s ndata=""""_data_""""
@@ -86,7 +83,7 @@ oescape:(data) ;escape quotes or control characters within a string
  quit ndata
  ;
  ;
-parse:(subs,type) ;parse an argument list or list of subscripts
+parse:(subs,type,mode) ;parse an argument list or list of subscripts
  s subs=$g(subs)
  ;
  i subs'="" d
@@ -101,16 +98,16 @@ parse:(subs,type) ;parse an argument list or list of subscripts
  . . ;
  . . i type="input" d
  . . . s sub=$$iescape(sub)
- . . . s sub=$$iconvert(sub)_","
+ . . . s sub=$$iconvert(sub,mode)_","
  . . e  i type="output" d
  . . . s sub=$$oescape(sub)
- . . . s sub=$$oconvert(sub)_","
+ . . . s sub=$$oconvert(sub,mode)_","
  . . e  i type="pass" d
  . . . s $e(sub)=$tr($e(sub),"""","")
  . . . s $e(sub,$l(sub))=$tr($e(sub,$l(sub)),"""","")
  . . . ;
  . . . s sub=$$oescape(sub)
- . . . s sub=$$oconvert(sub)_","
+ . . . s sub=$$oconvert(sub,mode)_","
  . . s tmp=tmp_sub
  . . s $e(subs,1,num+1)=""
  . s subs=tmp
@@ -119,24 +116,24 @@ parse:(subs,type) ;parse an argument list or list of subscripts
  quit subs
  ;
  ;
-data(glvn,subs) ;check if global node has data or children
+data(glvn,subs,mode) ;check if global node has data or children
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n defined,globalname
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  s defined=$d(@globalname)
  ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""defined"": "_defined_"}"
  ;
  ;
-function(func,args,relink) ;call an arbitrary extrinsic function
+function(func,args,relink,mode) ;call an arbitrary extrinsic function
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n function,result
  ;
- s args=$$parse($g(args),"input")
+ s args=$$parse($g(args),"input",mode)
  ;
  ;link latest routine image containing function in auto-relinking mode
  i relink zl $tr($s(func["^":$p(func,"^",2),1:func),"%","_")
@@ -145,25 +142,26 @@ function(func,args,relink) ;call an arbitrary extrinsic function
  ;
  i function'["^" s function="^"_function
  ;
- s @("result=$$"_function)
+ d
+ . n func s @("result=$$"_function)
  ;
  s result=$$oescape(result)
- s result=$$oconvert(result)
+ s result=$$oconvert(result,mode)
  ;
  quit "{""ok"": 1, ""function"": """_func_""", ""result"": "_result_"}"
  ;
  ;
-get(glvn,subs) ;get data from global node
+get(glvn,subs,mode) ;get data from global node
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n data,defined,globalname,return
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  s data=$g(@globalname)
  ;
  s data=$$oescape(data)
- s data=$$oconvert(data)
+ s data=$$oconvert(data,mode)
  ;
  s defined=$d(@globalname)#10
  ;
@@ -207,12 +205,12 @@ globalDirectory(max,lo,hi) ;list the globals in a database, filtered or not
  quit return
  ;
  ;
-increment(glvn,subs,incr) ;increment the number in a global node
+increment(glvn,subs,incr,mode) ;increment the number in a global node
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname,increment
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
  s increment=$i(@globalname,$g(incr,1))
@@ -220,12 +218,12 @@ increment(glvn,subs,incr) ;increment the number in a global node
  quit "{""ok"": 1, ""global"": """_glvn_""", ""data"": "_increment_"}"
  ;
  ;
-kill(glvn,subs) ;kill a global or global node
+kill(glvn,subs,mode) ;kill a global or global node
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
  k @globalname
@@ -233,12 +231,12 @@ kill(glvn,subs) ;kill a global or global node
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": ""0""}"
  ;
  ;
-lock(glvn,subs) ;lock a global node, incrementally
+lock(glvn,subs,mode) ;lock a global node, incrementally
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname,result
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
  l +@globalname:0
@@ -249,19 +247,19 @@ lock(glvn,subs) ;lock a global node, incrementally
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": """_result_"""}"
  ;
  ;
-merge(fglvn,fsubs,tglvn,tsubs) ;merge an array node to another array node
+merge(fglvn,fsubs,tglvn,tsubs,mode) ;merge an array node to another array node
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n fglobalname,fosubs,return,tglobalname,tosubs
  ;
  ;process for output without going through M
- s fosubs=$$parse(fsubs,"pass")
- s tosubs=$$parse(tsubs,"pass")
+ s fosubs=$$parse(fsubs,"pass",mode)
+ s tosubs=$$parse(tsubs,"pass",mode)
  ;
- s fsubs=$$parse(fsubs,"input")
+ s fsubs=$$parse(fsubs,"input",mode)
  s fglobalname=$$construct(fglvn,fsubs)
  ;
- s tsubs=$$parse(tsubs,"input")
+ s tsubs=$$parse(tsubs,"input",mode)
  s tglobalname=$$construct(tglvn,tsubs)
  ;
  m @tglobalname=@fglobalname
@@ -280,12 +278,12 @@ merge(fglvn,fsubs,tglvn,tsubs) ;merge an array node to another array node
  quit return
  ;
  ;
-nextNode(glvn,subs) ;return the next global node, depth first
+nextNode(glvn,subs,mode) ;return the next global node, depth first
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n data,defined,globalname,nsubs,result,return
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
  s result=$q(@globalname)
@@ -299,7 +297,7 @@ nextNode(glvn,subs) ;return the next global node, depth first
  . s data=@result
  . ;
  . s data=$$oescape(data)
- . s data=$$oconvert(data)
+ . s data=$$oconvert(data,mode)
  . ;
  . i $e(result)="^" s $e(result)=""
  . ;
@@ -307,7 +305,7 @@ nextNode(glvn,subs) ;return the next global node, depth first
  . ;
  . f i=1:1:$ql(result) d
  . . s sub=$$oescape($qs(result,i))
- . . s sub=$$oconvert(sub)
+ . . s sub=$$oconvert(sub,mode)
  . . ;
  . . s nsubs=nsubs_", "_sub
  . ;
@@ -326,12 +324,12 @@ nextNode(glvn,subs) ;return the next global node, depth first
  quit return
  ;
  ;
-order(glvn,subs,order) ;return the next global node at the same level
+order(glvn,subs,order,mode) ;return the next global node at the same level
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname,result
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
  i $g(order)=-1 s result=$o(@globalname,-1)
@@ -340,7 +338,7 @@ order(glvn,subs,order) ;return the next global node at the same level
  i subs="",$e(result)="^" s $e(result)=""
  ;
  s result=$$oescape(result)
- s result=$$oconvert(result)
+ s result=$$oconvert(result,mode)
  ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": "_result_"}"
  ;
@@ -357,12 +355,12 @@ previousNode(glvn,subs) ;same as nextNode, only in reverse
  quit "{""status"": ""previous_node not yet implemented""}"
  ;
  ;
-procedure(proc,args,relink) ;call an arbitrary procedure/subroutine
+procedure(proc,args,relink,mode) ;call an arbitrary procedure/subroutine
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n procedure,result
  ;
- s args=$$parse($g(args),"input")
+ s args=$$parse($g(args),"input",mode)
  ;
  ;link latest routine image containing procedure/subroutine in auto-relinking mode
  i relink zl $tr($s(proc["^":$p(proc,"^",2),1:proc),"%","_")
@@ -371,7 +369,8 @@ procedure(proc,args,relink) ;call an arbitrary procedure/subroutine
  ;
  i procedure'["^" s procedure="^"_procedure
  ;
- d @procedure
+ d
+ . n proc d @procedure
  ;
  s return="{""ok"": 1, ""procedure"": """_proc_"""}"
  ;
@@ -384,15 +383,15 @@ retrieve() ;not yet implemented
  quit "{""status"": ""retrieve not yet implemented""}"
  ;
  ;
-set(glvn,subs,data) ;set a global node
+set(glvn,subs,data,mode) ;set a global node
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
- s data=$$iconvert(data)
+ s data=$$iconvert(data,mode)
  ;
  s $e(data)=$tr($e(data),"""","")
  s $e(data,$l(data))=$tr($e(data,$l(data)),"""","")
@@ -402,12 +401,12 @@ set(glvn,subs,data) ;set a global node
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": ""0""}"
  ;
  ;
-unlock(glvn,subs) ;unlock a global node, incrementally, or release all locks
+unlock(glvn,subs,mode) ;unlock a global node, incrementally, or release all locks
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname
  ;
- s subs=$$parse($g(subs),"input")
+ s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
  i glvn=""&(subs="") l  quit """0"""
@@ -425,5 +424,5 @@ update() ;not yet implemented
 version() ;return the version string
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.7.0 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.8.0 (FWSLC); "_$zv
  ;
