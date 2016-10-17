@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.8.0 - 2016 Oct 11
+Version 0.8.1 - 2016 Oct 16
 
 ## Copyright and License ##
 
@@ -104,6 +104,7 @@ that call. You can also disable it, by setting autoRelink to false, or 0, if it
 was already enabled by one of the global settings, e.g.
 
     > gtm.function({function: 'version^v4wNode', autoRelink: true});
+
 Second, you can enable it globally, for every call to the function (or
 procedure) API, by setting the same property in a Javascript object passed to
 the open API, e.g.

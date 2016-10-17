@@ -291,9 +291,9 @@ RETURN_DECL Gtm::version(ARGUMENTS args)
 
     if (gtm_is_open < 1) {
         SCOPE_SET(args,
-            STRING("Node.js Adaptor for GT.M: Version: 0.8.0 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.8.1 (FWSLC)"));
         SCOPE_RETURN(
-            STRING("Node.js Adaptor for GT.M: Version: 0.8.0 (FWSLC)"));
+            STRING("Node.js Adaptor for GT.M: Version: 0.8.1 (FWSLC)"));
     }
 
     char str[] = "version";
@@ -363,17 +363,21 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     Local<String> test = String::Cast(*cmd)->ToString();
 
     Local<String> function = STRING("function");
-    Local<String> procedure = STRING("procedure");
     Local<String> global_directory = STRING("global_directory");
     Local<String> increment = STRING("increment");
+    Local<String> merge = STRING("merge");
     Local<String> next_node = STRING("next_node");
     Local<String> order = STRING("order");
     Local<String> previous = STRING("previous");
+    Local<String> previous_node = STRING("previous_node");
+    Local<String> procedure = STRING("procedure");
+    Local<String> retrieve = STRING("retrieve");
     Local<String> set = STRING("set");
     Local<String> unlock = STRING("unlock");
-    Local<String> merge = STRING("merge");
+    Local<String> update = STRING("update");
 
-    if (! test->Equals(global_directory) && ! test->Equals(unlock) && args.Length() < 1) {
+    if (! test->Equals(global_directory) && ! test->Equals(unlock) && ! test->Equals(previous_node) &&
+            ! test->Equals(retrieve) && ! test->Equals(update) && args.Length() < 1) {
         EXCEPTION(Exception::SyntaxError(STRING("Argument must be specified")));
 
         SCOPE_SET(args, Undefined(ISOLATE));
@@ -382,8 +386,14 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
     Local<Object> object = Local<Object>::Cast(args[0]);
 
-    if (object->IsUndefined())
+    if (object->IsUndefined()) {
         object = object->New(ISOLATE);
+    } else if (! object->IsObject()) {
+        EXCEPTION(Exception::SyntaxError(STRING("Argument must be an object")));
+
+        SCOPE_SET(args, Undefined(ISOLATE));
+        SCOPE_RETURN(Undefined(ISOLATE));
+    }
 
     if (test->Equals(function)) {
         name = object->Get(STRING("function"));
@@ -399,26 +409,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         from_arrays = object->Get(Undefined(ISOLATE));
 
         if (name->IsUndefined()) {
-            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a function property")));
-
-            SCOPE_SET(args, Undefined(ISOLATE));
-            SCOPE_RETURN(Undefined(ISOLATE));
-        }
-    } else if (test->Equals(procedure)) {
-        name = object->Get(STRING("procedure"));
-        arrays = object->Get(STRING("arguments"));
-
-        if (object->Has(STRING("autoRelink"))) {
-            arelink = Local<Number>::Cast(object->Get(STRING("autoRelink")));
-        } else {
-            arelink = Local<Number>::New(ISOLATE_COMMA NUMBER(auto_relink));
-        }
-
-        to_arrays = object->Get(Undefined(ISOLATE));
-        from_arrays = object->Get(Undefined(ISOLATE));
-
-        if (name->IsUndefined()) {
-            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a procedure property")));
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'function' property")));
 
             SCOPE_SET(args, Undefined(ISOLATE));
             SCOPE_RETURN(Undefined(ISOLATE));
@@ -434,18 +425,88 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         from_arrays = object->Get(Undefined(ISOLATE));
     } else if (test->Equals(merge)) {
         to_object = Local<Object>::Cast(object->Get(STRING("to")));
+
+        if (to_object->IsUndefined()) {
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'to' property")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
+
+        if (! to_object->IsObject()) {
+            EXCEPTION(Exception::SyntaxError(STRING("'to' property must be an object")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
+
         from_object = Local<Object>::Cast(object->Get(STRING("from")));
 
+        if (from_object->IsUndefined()) {
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'from' property")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
+
+        if (! from_object->IsObject()) {
+            EXCEPTION(Exception::SyntaxError(STRING("'from' property must be an object")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
+
         to_name = to_object->Get(STRING("global"));
+
+        if (to_name->IsUndefined()) {
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'global' property in your 'to' object")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
+
         to_arrays = to_object->Get(STRING("subscripts"));
 
         from_name = from_object->Get(STRING("global"));
+
+        if (from_name->IsUndefined()) {
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'global' property in your 'from' object")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
+
         from_arrays = from_object->Get(STRING("subscripts"));
 
         arrays = object->Get(Undefined(ISOLATE));
+    } else if (test->Equals(procedure)) {
+        name = object->Get(STRING("procedure"));
+        arrays = object->Get(STRING("arguments"));
+
+        if (object->Has(STRING("autoRelink"))) {
+            arelink = Local<Number>::Cast(object->Get(STRING("autoRelink")));
+        } else {
+            arelink = Local<Number>::New(ISOLATE_COMMA NUMBER(auto_relink));
+        }
+
+        to_arrays = object->Get(Undefined(ISOLATE));
+        from_arrays = object->Get(Undefined(ISOLATE));
+
+        if (name->IsUndefined()) {
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'procedure' property")));
+
+            SCOPE_SET(args, Undefined(ISOLATE));
+            SCOPE_RETURN(Undefined(ISOLATE));
+        }
     } else if (test->Equals(unlock)) {
         name = object->Get(STRING("global"));
         arrays = object->Get(STRING("subscripts"));
+
+        to_arrays = object->Get(Undefined(ISOLATE));
+        from_arrays = object->Get(Undefined(ISOLATE));
+    } else if (test->Equals(previous_node) || test->Equals(retrieve) || test->Equals(update)) {
+        name = object->Get(Undefined(ISOLATE));
+        arrays = object->Get(Undefined(ISOLATE));
 
         to_arrays = object->Get(Undefined(ISOLATE));
         from_arrays = object->Get(Undefined(ISOLATE));
@@ -457,7 +518,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         from_arrays = object->Get(Undefined(ISOLATE));
 
         if (name->IsUndefined()) {
-            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a global property")));
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'global' property")));
 
             SCOPE_SET(args, Undefined(ISOLATE));
             SCOPE_RETURN(Undefined(ISOLATE));
@@ -470,7 +531,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
         data = object->Get(STRING("data"));
 
         if (data->IsUndefined()) {
-            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a data property")));
+            EXCEPTION(Exception::SyntaxError(STRING("Need to supply a 'data' property")));
 
             SCOPE_SET(args, Undefined(ISOLATE));
             SCOPE_RETURN(Undefined(ISOLATE));
@@ -590,7 +651,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     access.handle = NULL;
 #endif
 
-    if ((test->Equals(function)) || (test->Equals(procedure))) {
+    if (test->Equals(function) || test->Equals(procedure)) {
         if (is_utf) {
 #if (GTM_VERSION > 54)
             status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), arelink->Uint32Value(), mode);
@@ -694,29 +755,12 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
             status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), ASCII_VALUE(data), mode);
 #endif
         }
-    } else if (test->Equals(unlock)) {
-        if (name->IsUndefined())
-            name = String::Empty(ISOLATE);
-
-        if (arg->IsUndefined())
-            arg = String::Empty(ISOLATE);
-
-        if (is_utf) {
+    } else if (test->Equals(previous_node) || test->Equals(retrieve) || test->Equals(update)) {
 #if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, *String::Utf8Value(name), *String::Utf8Value(arg), mode);
+            status = gtm_cip(&access, ret);
 #else
-            status = gtm_ci(*str, ret, *String::Utf8Value(name), *String::Utf8Value(arg), mode);
+            status = gtm_ci(*str, ret);
 #endif
-        } else {
-            ASCII_PROTO(name);
-            ASCII_PROTO(arg);
-
-#if (GTM_VERSION > 54)
-            status = gtm_cip(&access, ret, ASCII_VALUE(name), ASCII_VALUE(arg), mode);
-#else
-            status = gtm_ci(*str, ret, ASCII_VALUE(name), ASCII_VALUE(arg), mode);
-#endif
-        }
     } else {
         if (is_utf) {
 #if (GTM_VERSION > 54)
@@ -772,7 +816,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
     if (arrays->IsUndefined()) {
         SCOPE_SET(args, retobject);
         SCOPE_RETURN(retobject);
-    } else if ((test->Equals(function)) || (test->Equals(procedure))) {
+    } else if (test->Equals(function) || test->Equals(procedure)) {
         Local<Array> array = Local<Array>::Cast(arrays);
 
         if (retobject->Get(STRING("errorCode"))->IsUndefined())
@@ -780,7 +824,7 @@ RETURN_DECL call_gtm(Local<Value> cmd, ARGUMENTS args)
 
         SCOPE_SET(args, retobject);
         SCOPE_RETURN(retobject);
-    } else if ((test->Equals(order)) || (test->Equals(previous))) {
+    } else if (test->Equals(order) || test->Equals(previous)) {
         Local<Array> array = Local<Array>::Cast(arrays);
 
         if (retobject->Get(STRING("errorCode"))->IsUndefined()) {

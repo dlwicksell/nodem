@@ -1,4 +1,4 @@
-v4wNode() ;; 2016-09-26  8:22 PM
+v4wNode() ;; 2016-10-16  6:20 PM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
@@ -26,8 +26,9 @@ construct:(glvn,subs) ;construct a global reference
  ;
  ;
 iconvert:(data,mode) ;convert for input
- i '$g(mode) d
- . i $e(data,1,2)="0.",$l(data)<19,$e(data,2,$l(data))=+$e(data,2,$l(data)) s $e(data)=""
+ i '$g(mode),$l(data)<19 d
+ . i $e(data,1,2)="0.",$e(data,2,$l(data))=+$e(data,2,$l(data)) s $e(data)=""
+ . e  i $e(data,1,3)="-0.",$e(data,3,$l(data))=+$e(data,3,$l(data)) s $e(data,2)=""
  ;
  q data
  ;
@@ -57,6 +58,7 @@ oconvert:(data,mode) ;convert for output
  ;
  i '$g(mode),$l(data)<19,data=+data d
  . i $e(data)="." s ndata=0_data
+ . e  i $e(data,1,2)="-." s $e(data)="",ndata="-0"_data
  . e  s ndata=data
  e  s ndata=""""_data_""""
  ;
@@ -215,6 +217,9 @@ increment(glvn,subs,incr,mode) ;increment the number in a global node
  ;
  s increment=$i(@globalname,$g(incr,1))
  ;
+ s increment=$$oescape(increment)
+ s increment=$$oconvert(increment,mode)
+ ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""data"": "_increment_"}"
  ;
  ;
@@ -324,7 +329,7 @@ nextNode(glvn,subs,mode) ;return the next global node, depth first
  quit return
  ;
  ;
-order(glvn,subs,order,mode) ;return the next global node at the same level
+order(glvn,subs,mode,order) ;return the next global node at the same level
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname,result
@@ -343,13 +348,13 @@ order(glvn,subs,order,mode) ;return the next global node at the same level
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": "_result_"}"
  ;
  ;
-previous(glvn,subs) ;same as order, only in reverse
+previous(glvn,subs,mode) ;same as order, only in reverse
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
- quit $$order(glvn,$g(subs),-1)
+ quit $$order(glvn,$g(subs),mode,-1)
  ;
  ;
-previousNode(glvn,subs) ;same as nextNode, only in reverse
+previousNode() ;same as nextNode, only in reverse
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  quit "{""status"": ""previous_node not yet implemented""}"
@@ -424,5 +429,5 @@ update() ;not yet implemented
 version() ;return the version string
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.8.0 (FWSLC); "_$zv
+ quit "Node.js Adaptor for GT.M: Version: 0.8.1 (FWSLC); "_$zv
  ;
