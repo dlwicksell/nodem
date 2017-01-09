@@ -1,8 +1,8 @@
-v4wNode() ;; 2016-10-16  6:20 PM
+v4wNode() ;; 2017-01-08  12:18 PM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2016 Fourth Watch Software LC
+ ; Copyright © 2012-2017 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
@@ -22,7 +22,7 @@ v4wNode() ;; 2016-10-16  6:20 PM
  ;
  ;
 construct:(glvn,subs) ;construct a global reference
- quit "^"_glvn_$s(subs'="":"("_subs_")",1:"")
+ quit $s($e(glvn)="^":"",1:"^")_glvn_$s(subs'="":"("_subs_")",1:"")
  ;
  ;
 iconvert:(data,mode) ;convert for input
@@ -54,15 +54,12 @@ iescape:(data) ;unescape quotes within a string
  ;
  ;
 oconvert:(data,mode) ;convert for output
- n ndata
- ;
  i '$g(mode),$l(data)<19,data=+data d
- . i $e(data)="." s ndata=0_data
- . e  i $e(data,1,2)="-." s $e(data)="",ndata="-0"_data
- . e  s ndata=data
- e  s ndata=""""_data_""""
+ . i $e(data)="." s data=0_data
+ . e  i $e(data,1,2)="-." s $e(data)="",data="-0"_data
+ e  s data=""""_data_""""
  ;
- q ndata
+ q data
  ;
  ;
 oescape:(data) ;escape quotes or control characters within a string
@@ -127,6 +124,8 @@ data(glvn,subs,mode) ;check if global node has data or children
  s globalname=$$construct(glvn,subs)
  s defined=$d(@globalname)
  ;
+ s glvn=$$oescape(glvn) ;for extended references
+ ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""defined"": "_defined_"}"
  ;
  ;
@@ -145,7 +144,7 @@ function(func,args,relink,mode) ;call an arbitrary extrinsic function
  i function'["^" s function="^"_function
  ;
  d
- . n func s @("result=$$"_function)
+ . n func,mode s @("result=$$"_function)
  ;
  s result=$$oescape(result)
  s result=$$oconvert(result,mode)
@@ -164,6 +163,7 @@ get(glvn,subs,mode) ;get data from global node
  ;
  s data=$$oescape(data)
  s data=$$oconvert(data,mode)
+ s glvn=$$oescape(glvn) ;for extended references
  ;
  s defined=$d(@globalname)#10
  ;
@@ -193,8 +193,7 @@ globalDirectory(max,lo,hi) ;list the globals in a database, filtered or not
  . s return=return_""""_$e(global,2,$l(global))_""", "
  . ;
  . i max=1 s flag=1 q
- . ;
- . s:max>1 max=max-1
+ . i max>1 s max=max-1
  ;
  f  s global=$o(@global) q:flag!(global="")!(global]]hi&(hi]""))  d
  . s return=return_""""_$e(global,2,$l(global))_""", "
@@ -219,6 +218,7 @@ increment(glvn,subs,incr,mode) ;increment the number in a global node
  ;
  s increment=$$oescape(increment)
  s increment=$$oconvert(increment,mode)
+ s glvn=$$oescape(glvn) ;for extended references
  ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""data"": "_increment_"}"
  ;
@@ -231,12 +231,14 @@ kill(glvn,subs,mode) ;kill a global or global node
  s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
+ s glvn=$$oescape(glvn) ;for extended references
+ ;
  k @globalname
  ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": ""0""}"
  ;
  ;
-lock(glvn,subs,mode) ;lock a global node, incrementally
+lock(glvn,subs,timeout,mode) ;lock a global node, incrementally
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
  n globalname,result
@@ -244,10 +246,16 @@ lock(glvn,subs,mode) ;lock a global node, incrementally
  s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
- l +@globalname:0
+ s result="0"
  ;
- i $t s result="1"
- e  s result="0"
+ i timeout=-1 d  ;if no timeout is passed by user, a -1 is passed
+ . l +@globalname
+ . i $t s result="1"
+ e  d
+ . l +@globalname:timeout
+ . i $t s result="1"
+ ;
+ s glvn=$$oescape(glvn) ;for extended references
  ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": """_result_"""}"
  ;
@@ -268,6 +276,9 @@ merge(fglvn,fsubs,tglvn,tsubs,mode) ;merge an array node to another array node
  s tglobalname=$$construct(tglvn,tsubs)
  ;
  m @tglobalname=@fglobalname
+ ;
+ s fglvn=$$oescape(fglvn) ;for extended references
+ s tglvn=$$oescape(tglvn) ;for extended references
  ;
  s return="{""ok"": 1, ""global"": """_fglvn_""","
  ;
@@ -316,6 +327,8 @@ nextNode(glvn,subs,mode) ;return the next global node, depth first
  . ;
  . s $e(nsubs,1,2)=""
  ;
+ s glvn=$$oescape(glvn) ;for extended references
+ ;
  s return="{""ok"": 1, ""global"": """_glvn_""","
  ;
  i defined,nsubs'="" s return=return_" ""subscripts"": ["_nsubs_"],"
@@ -344,6 +357,7 @@ order(glvn,subs,mode,order) ;return the next global node at the same level
  ;
  s result=$$oescape(result)
  s result=$$oconvert(result,mode)
+ s glvn=$$oescape(glvn) ;for extended references
  ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": "_result_"}"
  ;
@@ -396,6 +410,7 @@ set(glvn,subs,data,mode) ;set a global node
  s subs=$$parse($g(subs),"input",mode)
  s globalname=$$construct(glvn,subs)
  ;
+ s data=$$iescape(data)
  s data=$$iconvert(data,mode)
  ;
  s $e(data)=$tr($e(data),"""","")
@@ -403,7 +418,11 @@ set(glvn,subs,data,mode) ;set a global node
  ;
  s @globalname=data
  ;
- quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": ""0""}"
+ s data=$$oescape(data)
+ s data=$$oconvert(data,mode)
+ s glvn=$$oescape(glvn) ;for extended references
+ ;
+ quit "{""ok"": 1, ""global"": """_glvn_""", ""data"": "_data_", ""result"": ""0""}"
  ;
  ;
 unlock(glvn,subs,mode) ;unlock a global node, incrementally, or release all locks
@@ -417,6 +436,8 @@ unlock(glvn,subs,mode) ;unlock a global node, incrementally, or release all lock
  i glvn=""&(subs="") l  quit """0"""
  e  l -@globalname
  ;
+ s glvn=$$oescape(glvn) ;for extended references
+ ;
  quit "{""ok"": 1, ""global"": """_glvn_""", ""result"": ""0""}"
  ;
  ;
@@ -429,5 +450,10 @@ update() ;not yet implemented
 version() ;return the version string
  u $p:ctrap="$c(3)" ;handle a Ctrl-C/SIGINT, while in GT.M, in a clean manner
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.8.1 (FWSLC); "_$zv
+ n version
+ ;
+ s version=$zv
+ s $p(version," ")=""
+ ;
+ quit "Node.js Adaptor for GT.M: Version: 0.9.0 (FWSLC); GT.M version:"_version
  ;

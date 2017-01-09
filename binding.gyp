@@ -29,7 +29,8 @@
       ],
       'cflags': [
         '-ansi',
-        '-pedantic'
+        '-pedantic',
+        '-Wno-deprecated-declarations'
       ],
       'conditions': [
         ['target_arch == "x64"', {

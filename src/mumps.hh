@@ -2,7 +2,7 @@
  * mumps.hh - A MUMPS driver for Node.js
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2015,2016 Fourth Watch Software LC
+ * Copyright © 2015-2017 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -29,8 +29,8 @@
 #define NODEM_STRINGIFY(num) #num
 
 #define NODEM_MAJOR_VERSION  0
-#define NODEM_MINOR_VERSION  8
-#define NODEM_PATCH_VERSION  1
+#define NODEM_MINOR_VERSION  9
+#define NODEM_PATCH_VERSION  0
 
 #define NODEM_VERSION_STRING NODEM_STRING(NODEM_MAJOR_VERSION) "." \
                              NODEM_STRING(NODEM_MINOR_VERSION) "." \
@@ -60,7 +60,7 @@
                                             name##_str->Length() + 1)
     #define ASCII_VALUE(name)               (gtm_char_t*) name##_buf
 
-    #define ASCII_NAME(name, ret)           const uint8_t* bytes = reinterpret_cast<const uint8_t*>(ret); \
+    #define ASCII_NAME(name, str)           const uint8_t* bytes = reinterpret_cast<const uint8_t*>(str); \
                                             name = v8::String::NewFromOneByte(isolate, bytes)
 
     #define PERSISTENT_FUNCTION(name, func) name.Reset(isolate, func)
@@ -92,7 +92,7 @@
     #define ASCII_PROTO(name)
     #define ASCII_VALUE(name)               *v8::String::AsciiValue(name)
 
-    #define ASCII_NAME(name, ret)           name = v8::String::New(ret)
+    #define ASCII_NAME(name, str)           name = v8::String::New(str)
 
     #define PERSISTENT_FUNCTION(name, func) name = v8::Persistent<v8::Function>::New(func)
     #define CONSTRUCTOR(cons, tpl)          cons
