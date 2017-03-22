@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the GT.M language and database ##
 
-Version 0.9.0 - 2017 Jan 8
+Version 0.9.1 - 2017 Mar 22
 
 ## Copyright and License ##
 

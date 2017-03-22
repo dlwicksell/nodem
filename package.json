@@ -6,7 +6,7 @@
   },
   "name": "nodem",
   "description": "Binding API and driver for the GT.M language and database.",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "maintainers": "David Wicksell <dlw@linux.com>",
   "homepage": "https://github.com/dlwicksell/nodem",
   "repository": {
