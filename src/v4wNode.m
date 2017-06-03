@@ -1,4 +1,4 @@
-v4wNode() ;; 2017-03-22  6:17 AM
+v4wNode() ;; 2017-06-03  1:39 PM
  ; A GT.M database driver for Node.js
  ;
  ; Written by David Wicksell <dlw@linux.com>
@@ -27,8 +27,8 @@ construct:(glvn,subs) ;construct a global reference
  ;
 iconvert:(data) ;convert decimals for input
  i $l(data)<19 d
- . i $e(data,1,2)="0.",$e(data,2,$l(data))=+$e(data,2,$l(data)) s $e(data)=""
- . e  i $e(data,1,3)="-0.",$e(data,3,$l(data))=+$e(data,3,$l(data)) s $e(data,2)=""
+ . i $e(data,1,2)="0.",$e(data,2,$l(data))=+$p($e(data,2,$l(data)),"E") s $e(data)=""
+ . e  i $e(data,1,3)="-0.",$e(data,3,$l(data))=+$p($e(data,3,$l(data)),"E") s $e(data,2)=""
  ;
  q data
  ;
@@ -54,7 +54,7 @@ iescape:(data) ;convert quotes for input
  ;
  ;
 oconvert:(data,mode) ;convert decimals and strings for output
- i '$g(mode),$l(data)<19,data=+data d
+ i '$g(mode),$l(data)<19,data=+$p(data,"E") d
  . i $e(data)="." s data=0_data
  . e  i $e(data,1,2)="-." s $e(data)="",data="-0"_data
  e  s data=""""_data_""""
@@ -469,5 +469,5 @@ version() ;return the version string
  s version=$zv
  s $p(version," ")=""
  ;
- quit "Node.js Adaptor for GT.M: Version: 0.9.1 (FWSLC); GT.M version:"_version
+ quit "Node.js Adaptor for GT.M: Version: 0.9.2 (FWSLC); GT.M version:"_version
  ;
