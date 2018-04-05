@@ -1,12 +1,12 @@
 {
+  "name": "nodem",
+  "description": "Database driver and binding API for the YottaDB and GT.M database and language",
+  "version": "0.10.0",
   "author": {
     "name": "David Wicksell",
     "email": "dlw@linux.com",
     "url": "http://www.fourthwatchsoftware.com/"
   },
-  "name": "nodem",
-  "description": "Binding API and driver for the GT.M language and database.",
-  "version": "0.9.2",
   "maintainers": "David Wicksell <dlw@linux.com>",
   "homepage": "https://github.com/dlwicksell/nodem",
   "repository": {
@@ -16,27 +16,31 @@
   "bugs": {
     "url": "https://github.com/dlwicksell/nodem/issues"
   },
-  "os": [
-    "linux"
-  ],
   "keywords": [
-    "databases",
     "database",
+    "databases",
     "hierarchical database",
     "GT.M",
-    "MUMPS",
     "M",
-    "NoSQL"
+    "MUMPS",
+    "NoSQL",
+    "YottaDB"
   ],
-  "scripts": {
-    "preinstall": "node ./lib/preinstall 3>&1 1>&2 2>&3 3>&- | tee builderror.log",
-    "install": "node-gyp rebuild 3>&1 1>&2 2>&3 3>&- | tee -a builderror.log",
-    "uninstall": "rm -rf build builderror.log src/v4wNode.o",
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "main": "./lib/nodem",
   "license": "AGPL-3.0",
   "engines": {
-    "node": ">=0.8.x"
+    "node": ">=0.12.2"
+  },
+  "os": [
+    "linux"
+  ],
+  "gypfile": true,
+  "scripts": {
+    "debug": "bash -o pipefail -c \"node-gyp rebuild -d 3>&1 1>&2 2>&3 3>&- | tee builderror.log\"",
+    "preinstall": "bash -o pipefail -c \"node lib/preinstall 3>&1 1>&2 2>&3 3>&- | tee builderror.log\"",
+    "install": "bash -o pipefail -c \"node-gyp rebuild 3>&1 1>&2 2>&3 3>&- | tee -a builderror.log\"",
+    "postinstall": "bash -o pipefail -c \"node lib/postinstall 3>&1 1>&2 2>&3 3>&- | tee -a builderror.log\"",
+    "uninstall": "rm -rf build builderror.log src/v4wNode.o",
+    "test": "echo \"Error: No test specified\" && exit 1"
   }
 }

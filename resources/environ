@@ -1,37 +1,65 @@
 #
 # environ - Nodem environment script
 #
-# Nodem written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2015 Fourth Watch Software LC
+# Written by David Wicksell <dlw@linux.com>
+# Copyright © 2012-2015,2018 Fourth Watch Software LC
 #
-# Make sure the following environment variables are using the correct paths
-# for your system, if you are planning to source this file from your
-# .profile/.bash_profile startup file (see README.md). Below are common
-# paths if you have installed via the below commented methods. I.e. Via
-# Github in your home directory, via NPM in your home directory, or via NPM,
-# as an EWD.js dependency.
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License (AGPL)
+# as published by the Free Software Foundation, either version 3 of
+# the License, or (at your option) any later version.
 #
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program. If not, see http://www.gnu.org/licenses/.
+#
+# This is just an example script to get started, if you don't already have a
+# YottaDB/GT.M environment configured.
+#
+# *** NOTE ***
+# This environment script will only work if you are running the BASH shell
+#
+# In order to use this environment script, you would typically add a line to
+# your ~/.profile or ~/.bash_profile login script, to source it in your current
+# environment, e.g.
+#
+#     source $HOME/node_modules/nodem/resources/environ
+#
+# You want to make sure that path is correct, based on where you installed Nodem
+# on your system. No matter where you installed it, the following environment
+# variables should be set up correctly, without change, to be able to use it.
+#
+# You also need to have the $gtm_dist environment variable set correctly, in
+# order to compile, link, and use Nodem. You also need the $gtmgbldir
+# environment variable set correctly, pointing to your global directory file, in
+# order to connect to the YottaDB/GT.M database with Nodem APIs. The following
+# environment variables are also needed; $GTMCI points to the call-in table, and
+# $gtmroutines must contain the path to the v4wNode.m source file, or v4wNode.o
+# object file.
+#
+# Since $gtm_dist needs to correctly point to your YottaDB/GT.M installation
+# root directory, in order to compile Nodem in the first place, you likely will
+# not need to set up LD_LIBRARY_PATH, as the path in $gtm_dist is embedded as a
+# RUNPATH directly in the Nodem library, so the dynamic linker should be able to
+# load the YottaDB/GT.M shared library at runtime without having to set it.
+# However, if you compile Nodem in one environment, and want to run it in a
+# different environment, which has YottaDB or GT.M installed in a different
+# location, you will need to either set LD_LIBRARY_PATH to the distribution
+# root, or else add that directory to the ldcache, as discussed in the README.md
+# file.
 
+DIR=$(pwd)/$(dirname $(dirname $BASH_SOURCE))
+DIR=${DIR%/.}
+[[ $(basename $DIR) == "resources" ]] && DIR=${DIR%/resources}
 
-# Github
-#export GTMCI=${HOME}/nodem/resources/nodem.ci
-
-# NPM
-export GTMCI=${HOME}/node_modules/nodem/resources/nodem.ci
-
-# EWD.js
-#export GTMCI=${HOME}/ewdjs/node_modules/nodem/resources/nodem.ci
-
-
-# Github
-#export gtmroutines="${HOME}/nodem/src ${gtmroutines}"
-
-# NPM
-export gtmroutines="${HOME}/node_modules/nodem/src ${gtmroutines}"
-
-# EWD.js
-#export gtmroutines="${HOME}/ewdjs/node_modules/nodem/src ${gtmroutines}"
-
+# GT.M Call-in table
+export GTMCI="$DIR/resources/nodem.ci"
+# GT.M routines path
+export gtmroutines="$DIR/src ${gtmroutines}"
 
 # Runtime loader path for GT.M shared library, if necessary (see README.md)
 #export LD_LIBRARY_PATH=${gtm_dist}:${LD_LIBRARY_PATH}

@@ -1,8 +1,8 @@
 /*
- * zwrite.js - A ZWRITE clone
+ * zwrite.js - A zwrite clone
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2016 Fourth Watch Software LC
+ * Copyright © 2012-2016,2018 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -17,77 +17,112 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see http://www.gnu.org/licenses/.
  *
- * Pass the name of your global as the first argument and it will dump
- * the entire contents of the global. If you add a - to the beginning of
- * the global name, it will create a temporary GT.M routine and call into
- * the routine (which will also dump the entire contents of the global),
- * and then clean up after itself. Calling it this way will execute much
- * faster than the default JavaScript implementation.
+ * Dumps the contents of a full global in a similar format to the zwrite command
+ * in YottaDB/Gt.M.
+ *
+ * Pass the name of the global you want to dump, or don't pass any argument and
+ * it will use a default of ^v4wTest. You can optionally supply the following
+ * arguments, in any order, before or after the global name.
+ *
+ * -f [fast mode] - <on> - Creates a temporary GT.M routine and calls into the
+ *    routine (which will also dump the entire contents of the global), and then
+ *    cleans up after itself. Calling it this way will execute much faster than
+ *    the default JavaScript implementation.
+ *
+ * -m [data mode] - <canonical>|strict - The operating mode, which controls the way
+ *    data is formatted, and a few other aspects of the API. Strict mode follows
+ *    the cache.node API as closely as possible, including treating all data as
+ *    a string.
+ *
+ * -c [character set encoding] - <utf-8>|m - The character encoding of the data
+ *
+ * -d [debug mode] - <on> - Turns on debug mode, which provides debug tracing data
  */
 
-
-if (process.argv[2] === undefined) {
-  console.error('You must pass the name of the global you want to dump.');
-
-  process.exit(1);
-}
-
-var mumps = require('../lib/nodem');
-var db = new mumps.Gtm();
-
-var global, fs, ret, fd, code, node;
-
-db.open();
-
 process.on('uncaughtException', function(err) {
-  db.close();
-
-  console.trace('Uncaught Exception:\n', err);
-
-  process.exit(1);
+    gtm.close();
+    console.trace('Uncaught Exception:\n', err);
+    process.exit(1);
 });
 
-if (process.argv[2] === '-f' || process.argv[3] === '-f') {
-  if (process.argv[2] === '-f') {
-    global = process.argv[3];
-  } else {
-    global = process.argv[2];
-  }
+var gtm = require('../lib/nodem').Gtm();
 
-  fs = require('fs');
-  code = 'zwr(glvn) s:$e(glvn)\'="^" glvn="^"_glvn zwr @glvn q ""';
+var charset = 'utf-8',
+    command,
+    debug = false,
+    fast = false,
+    global = 'v4wTest',
+    mode = 'canonical',
+    node = {};
 
-  fd = fs.openSync('v4wTest.m', 'w');
-  fs.writeSync(fd, code);
+process.argv.forEach(function(argument) {
+    if (process.argv[0] === argument || process.argv[1] === argument) return;
 
-  process.env.gtmroutines = process.env.gtmroutines + ' .';
+    if (command === '-m') {
+        mode = argument;
+        command = '';
+        return;
+    } else if (command === '-c') {
+        charset = argument;
+        command = '';
+        return;
+    }
 
-  db.function({function: 'zwr^v4wTest', arguments: [global]});
+    if (argument === '-f') {
+        fast = true;
+        return;
+    } else if (argument === '-d') {
+        debug = true;
+        return;
+    } else if (argument === '-m') {
+        command = '-m';
+        return;
+    } else if (argument === '-c') {
+        command = '-c';
+        return;
+    } else {
+        global = argument;
+    }
+});
 
-  fs.closeSync(fd);
-  fs.unlinkSync('v4wTest.m');
-  fs.unlinkSync('v4wTest.o');
-} else {
-  global = process.argv[2];
-  node = {};
+gtm.open({mode: mode, charset: charset, debug: debug});
 
-  if (db.data({global: global}).defined % 2) {
-    node = db.get({global: global});
+process.env.gtmroutines = '. ' + process.env.gtmroutines;
+var version = gtm.version();
 
-    console.log('^' + global + '=' + JSON.stringify(node.data));
-  }
-
-  while (true) {
-    node = db.next_node({global: global, subscripts: node.subscripts});
-
-    if (node.subscripts === undefined) break;
-
-    console.log('^' + global + '(' +
-                JSON.stringify(node.subscripts)
-                .replace('[', '')
-                .replace(']', '') +
-                ')=' + JSON.stringify(node.data));
-  }
+if (typeof version === 'object') {
+    gtm.close();
+    console.log(version.ErrorMessage || version.errorMessage);
+    process.exit(1);
 }
 
-db.close();
+if (fast) {
+    var fs = require('fs');
+    var code = 'zwrite(glvn) set:$extract(glvn)\'="^" glvn="^"_glvn zwrite @glvn quit ""';
+    var fd = fs.openSync('v4wTest.m', 'w');
+
+    fs.writeSync(fd, code);
+    gtm.function({function: 'zwrite^v4wTest', arguments: [global]});
+
+    fs.closeSync(fd);
+    fs.unlinkSync('v4wTest.m');
+    fs.unlinkSync('v4wTest.o');
+} else {
+    if (charset === 'm') process.stdout.setDefaultEncoding('binary');
+
+    if (gtm.data({global: global}).defined % 2) {
+        node = gtm.get({global: global});
+        console.log('^' + global + '=' + JSON.stringify(node.data));
+    }
+
+    while (true) {
+        node = gtm.next_node({global: global, subscripts: node.subscripts});
+
+        if (node.subscripts === undefined) break;
+
+        console.log('^' + global + '(' + JSON.stringify(node.subscripts).slice(1, -1) + ')=' + JSON.stringify(node.data));
+    }
+}
+
+gtm.close();
+process.exit(0);

@@ -2,7 +2,7 @@
  * set.js - Test the set API
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2015 Fourth Watch Software LC
+ * Copyright © 2012-2015,2018 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -16,33 +16,88 @@
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see http://www.gnu.org/licenses/.
+ *
+ * Store nodes of data in the database (^v4wTest) or symbol table (test), while
+ * providing performance timing information.
+ *
+ * Pass, in any order, the string 'global' or 'local' to test storing in to the
+ * database, or local symbol table.
+ *
+ * Pass, in any order, the number of nodes you want to store data in to.
  */
 
+process.on('uncaughtException', function(err) {
+    gtm.close();
+    console.trace('Uncaught Exception:\n', err);
+    process.exit(1);
+});
 
-var gtm = require('../lib/nodem');
-var db = new gtm.Gtm();
-db.open();
+var type = 'global';
+var name = 'v4wTest';
 
-var node;
-var ret;
-var i;
+if (process.argv[2] === 'global' || process.argv[2] === 'local') {
+    type = process.argv[2];
+} else if (process.argv[3] === 'global' || process.argv[3] === 'local') {
+    type = process.argv[3];
+}
+
+if (type === 'local') {
+    name = 'test';
+}
+
+var nodes = 100000;
+
+if (!isNaN(parseInt(process.argv[2]))) {
+    nodes = process.argv[2];
+} else if (!isNaN(parseInt(process.argv[3]))) {
+    nodes = process.argv[3];
+}
+
+var gtm = require('../lib/nodem').Gtm();
+gtm.open();
+
+if (type === 'global') {
+    if (gtm.data({global: name, subscripts: ['testing']}).defined !== 0) {
+        console.error('^' + name + '("testing") already contains data, aborting...');
+        gtm.close();
+        process.exit(1);
+    }
+}
 
 console.log('Testing the set command, starting at: ' + Date());
+var start = process.hrtime(), ret;
 
-for (i = 0; i < 1000000; i++) {
-  node = {global: 'dlw', subscripts: ['testing', i], data: 'record ' + i};
+if (type === 'global') {
+    for (var i = 0; i < nodes; i++) {
+        ret = gtm.set({global: name, subscripts: ['testing', i], data: 'record ' + i});
 
-  ret = db.set(node);
-
-  if (ret.ok === 0) {
-    break;
-  }
-}
-
-db.close();
-
-if (ret.ok === 1) {
-  console.log('Set a million nodes in ^dlw("testing"), ending at: ' + Date());
+        if (!ret.ok) break;
+    }
 } else {
-  console.log('There was an error: ' + ret.errorCode + ' ' + ret.errorMessage);
+    for (var i = 0; i < nodes; i++) {
+        ret = gtm.set({local: name, subscripts: ['testing', i], data: 'record ' + i});
+
+        if (!ret.ok) break;
+    }
 }
+
+var end = process.hrtime(start);
+
+if (ret.ok) {
+    if (type === 'global') {
+        console.log('Set ' + nodes + ' nodes in ^' + name + '("testing"), ending at: ' + Date());
+    } else {
+        console.log('Set ' + nodes + ' nodes in ' + name + '("testing"), ending at: ' + Date());
+    }
+
+    console.log('You set approximately', Math.round(nodes / (end[0] + end[1] / 1e+9)), 'nodes per second');
+} else {
+    console.log('There was an error: ' + ret.errorCode + ' ' + ret.errorMessage);
+}
+
+if (type === 'global') {
+    console.log('Killing ^' + name + '("testing") now...');
+    gtm.kill({global: name, subscripts: ['testing']});
+}
+
+gtm.close();
