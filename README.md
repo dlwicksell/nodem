@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the YottaDB/GT.M language and database ##
 
-Version 0.10.0 - 2018 Apr 5
+Version 0.10.1 - 2018 Apr 8
 
 ## Copyright and License ##
 
@@ -52,6 +52,11 @@ The current implementation relies upon the YottaDB and GT.M C call-in interface.
 Recently, YottaDB has released a new, lower-level database access API in C,
 known as the Simple API, which provides faster access to the underlying database
 operations. Support for YottaDB's new Simple API will be coming soon.
+
+Nodem now provides a built-in API usage help menu. By calling the help method
+without an argument, Nodem will display a list of APIs and a short description
+of what they do. Calling the help method with an argument string of one of those
+APIs will display more in-depth usage information for that method.
 
 Nodem now supports full local symbol table manipulation with the current
 database APIs. In order to use it, insteading of defining a 'global' property in
@@ -232,6 +237,41 @@ if the lock is not available, simply pass a timeout argument of 0, e.g.
     > gtm.lock({global: 'dlw'}, 0);
     or
     > gtm.lock({global: 'dlw', timeout: 5});
+
+## Example Usage ##
+
+Here is a short example of how to use Nodem in the Node.js REPL:
+
+    > var nodem = require('nodem');
+      undefined
+    > var gtm = new nodem.Gtm();
+      undefined
+    > gtm.open();
+      { ok: true, result: 1, gtm_pid: 6162 }
+    > gtm.version();
+      'Node.js Adaptor for GT.M: Version: 0.10.1 (FWS); GT.M version: 6.3-003A'
+    > gtm.help();
+      NodeM: Gtm class help menu - methods:
+      ... <List of Nodem methods> ...
+    > gtm.get({global: 'test', subscripts: [5, 'five']});
+      { ok: true,
+        global: 'test',
+        subscripts: [ 5, 'five' ],
+        data: 'A test',
+        defined: 1 }
+    > gtm.set({local: 'test', subscripts: [5, 'five'], data: 'Example'});
+      { ok: true,
+        local: 'test',
+        subscripts: [ 5, 'five' ],
+        data: 'Example',
+        result: 0 }
+    > gtm.localDirectory();
+      [ 'test' ]
+    > gtm.close();
+      1
+
+Nodem Developer API and User Guide coming soon. In the meantime, please refer
+to the Caché Node.js [API documentation][BXJS] for further details.
 
 ## Installation ##
 

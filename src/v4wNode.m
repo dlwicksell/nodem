@@ -1,4 +1,4 @@
-v4wNode() ;; 2018-04-05  4:45 PM
+v4wNode() ;; 2018-04-08  2:19 PM
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -527,7 +527,7 @@ lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  set v4wMode=$get(v4wMode,1)
  if $get(v4wDebug,0)>1 write !,"DEBUG>> lock enter:",! zwrite v4wGlvn,v4wSubs,v4wTimeout,v4wMode
  ;
- new v4wInputSubsv4wName,v4wResult,v4wReturn
+ new v4wInputSubs,v4wName,v4wResult,v4wReturn
  set v4wInputSubs=$$process(v4wSubs,"input",v4wMode)
  set v4wName=$$construct(v4wGlvn,v4wInputSubs)
  ;

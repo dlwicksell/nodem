@@ -29,6 +29,10 @@
 
 namespace nodem {
 
+#define NODEM_MAJOR_VERSION  0
+#define NODEM_MINOR_VERSION  10
+#define NODEM_PATCH_VERSION  1
+
 #ifdef LIBYOTTADB_TYPES_H
     #define NODEM_DB "YottaDB"
 #else
@@ -37,10 +41,6 @@ namespace nodem {
 
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
-
-#define NODEM_MAJOR_VERSION  0
-#define NODEM_MINOR_VERSION  10
-#define NODEM_PATCH_VERSION  0
 
 #define NODEM_VERSION NODEM_STRING(NODEM_MAJOR_VERSION) "." NODEM_STRING(NODEM_MINOR_VERSION) "." NODEM_STRING(NODEM_PATCH_VERSION)
 

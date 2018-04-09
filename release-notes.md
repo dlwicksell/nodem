@@ -1,5 +1,14 @@
 # NodeM Release Notes #
 
+## v0.10.1 - 2018 Apr 8 ##
+
+- Make a few updates to v0.10.0 that were missed
+- Increase combined length limit of arguments in the function and procedure methods from 8 KiB to nearly 1 MiB (added in v0.10.0)
+- Allow passing more data types in the subscripts and arguments array, and convert them to strings, in mumps.cc
+- Add information about the new help method from v0.10.0 to README.md
+- Add an example of using Nodem to README.md
+- Fix scoping bug in v4wNode.m
+
 ## v0.10.0 - 2018 Apr 5 ##
 
 - Refactor Nodem for future maintainability

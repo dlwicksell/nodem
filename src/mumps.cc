@@ -128,24 +128,23 @@ inline static Local<Value> encode_arguments(const Local<Value> arguments)
     Local<Array> encoded_array = Array::New(isolate);
 
     for (unsigned int i = 0; i < argument_array->Length(); i++) {
-        Local<String> data = argument_array->Get(i)->ToString();
+        Local<Value> data_test = argument_array->Get(i);
+        Local<String> data = data_test->ToString();
         Local<String> colon = String::NewFromUtf8(isolate, ":");
         Local<String> length;
         Local<Value> new_data = Undefined(isolate);
 
-        if (argument_array->Get(i)->IsString()) {
+        if (data_test->IsUndefined()) {
+            new_data = String::NewFromUtf8(isolate, "0:");
+        } else if (data_test->IsSymbol() || data_test->IsSymbolObject()) {
+            return Undefined(isolate);
+        } else if (data_test->IsString()) {
             length = Number::New(isolate, data->Length() + 2)->ToString();
-
             Local<String> quote = String::NewFromUtf8(isolate, "\"");
-
             new_data = String::Concat(String::Concat(length, String::Concat(colon, quote)), String::Concat(data, quote));
-        } else if (argument_array->Get(i)->IsNumber()) {
+        } else {
             length = Number::New(isolate, data->Length())->ToString();
             new_data = String::Concat(length, String::Concat(colon, data));
-        } else if (argument_array->Get(i)->IsUndefined()) {
-            new_data = String::NewFromUtf8(isolate, "0:");
-        } else {
-            return Undefined(isolate);
         }
 
         encoded_array->Set(i, new_data);
@@ -494,7 +493,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -686,7 +685,7 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
         arg = encode_arguments(arguments);
 
         if (arg->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'arguments' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'arguments' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -869,7 +868,7 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -1713,7 +1712,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -1922,7 +1921,7 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -2248,7 +2247,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -2511,7 +2510,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         from_subs = encode_arguments(from_subscripts);
 
         if (from_subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' in 'from' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' in 'from' object contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -2529,7 +2528,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         to_subs = encode_arguments(to_subscripts);
 
         if (to_subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' in 'to' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' in 'to' object contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -2772,7 +2771,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -3227,7 +3226,7 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -3446,7 +3445,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -3665,7 +3664,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -3880,7 +3879,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
         arg = encode_arguments(arguments);
 
         if (arg->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'arguments' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'arguments' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -4151,7 +4150,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
@@ -4173,8 +4172,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
     Local<Value> data_node = encode_arguments(data_array);
 
     if (data_node->IsUndefined()) {
-        Local<String> error_message = String::NewFromUtf8(isolate, "Property 'data' must contain a string or a number");
-
+        Local<String> error_message = String::NewFromUtf8(isolate, "Property 'data' contains invalid data");
         isolate->ThrowException(Exception::SyntaxError(error_message));
         return;
     }
@@ -4351,7 +4349,7 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' must contain strings or numbers");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
