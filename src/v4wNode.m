@@ -1,4 +1,4 @@
-v4wNode() ;; 2018-04-08  2:19 PM
+v4wNode() ;; 2018-04-10  12:38 PM
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -62,11 +62,11 @@ constructFunction:(func,args,tempArgs)
 inputConvert:(data,mode,node)
  if $get(v4wDebug,0)>2 write !,"DEBUG>>> inputConvert enter:",! zwrite data,mode,node
  ;
- if mode,$$isNumber(data,"input") do
+ if mode,'$$isString(data,"input") do
  . if $zextract(data,1,2)="0." set $zextract(data)=""
  . else  if $zextract(data,1,3)="-0." set $zextract(data,2)=""
- else  if node,$$isString(data,"input")=2 set $zextract(data)="",$zextract(data,$zlength(data))=""
- else  if 'node,$$isString(data,"input")'=2,data'="" set data=""""_data_""""
+ else  if node,$$isString(data,"input")=3 set $zextract(data)="",$zextract(data,$zlength(data))=""
+ else  if 'node,$$isString(data,"input")<2,data'="" set data=""""_data_""""
  ;
  if $get(v4wDebug,0)>2 write !,"DEBUG>>> inputConvert exit:",! zwrite data
  quit data
@@ -87,7 +87,7 @@ inputEscape:(data,node)
  . for i=2:1:$zlength(data)-1 do
  . . if $zextract(data,i)="""" set newData=newData_""""_$zextract(data,i)
  . . else  set newData=newData_$zextract(data,i)
- . set data=""""_newData_""""
+ . set data=$zextract(data)_newData_$zextract(data,$zlength(data))
  ;
  if $get(v4wDebug,0)>2 write !,"DEBUG>>> inputEscape exit:",! zwrite data
  quit data
@@ -99,17 +99,9 @@ inputEscape:(data,node)
  ;; @param {string} direction (input|output) - Processing control direction
  ;; @returns {number} (0|1) - Return code representing data type
 isNumber:(data,direction)
- ; YottaDB/GT.M approximate (using number of digits, rather than number value) number limits:
- ;   - 47 digits before overflow (resulting in an overflow error)
- ;   - 18 digits of precision
- ; Node.js/JavaScript approximate (using number of digits, rather than number value) number limits:
- ;   - 309 digits before overflow (represented as the Infinity primitive)
- ;   - 21 digits before conversion to exponent notation
- ;   - 16 digits of precision
  if $get(v4wDebug,0)>2 write !,"DEBUG>>> isNumber enter:",! zwrite data,direction
  ;
- if $zlength(data)>15 write:$get(v4wDebug,0)>2 "DEBUG>>> isNumber: 0",! quit 0
- else  if data'["E",data=+data write:$get(v4wDebug,0)>2 "DEBUG>>> isNumber: 1",! quit 1
+ if data'["E",data=+data write:$get(v4wDebug,0)>2 "DEBUG>>> isNumber: 1",! quit 1
  else  if direction="input",data?.1"-"1"0"1"."1.N  write:$get(v4wDebug,0)>2 "DEBUG>>> isNumber: 1",! quit 1
  else  write:$get(v4wDebug,0)>2 "DEBUG>>> isNumber: 0",! quit 0
  ;; @end isNumber
@@ -120,11 +112,21 @@ isNumber:(data,direction)
  ;; @param {string} direction (input|output) - Processing control direction
  ;; @returns {number} (0|1|2) - Return code representing data type
 isString:(data,direction)
+ ; YottaDB/GT.M approximate (using number of digits, rather than number value) number limits:
+ ;   - 47 digits before overflow (resulting in an overflow error)
+ ;   - 18 digits of precision
+ ; Node.js/JavaScript approximate (using number of digits, rather than number value) number limits:
+ ;   - 309 digits before overflow (represented as the Infinity primitive)
+ ;   - 21 digits before conversion to exponent notation
+ ;   - 16 digits of precision
+ ; This is why anything over 15 characters needs to be treated as a string
  if $get(v4wDebug,0)>2 write !,"DEBUG>>> isString enter:",! zwrite data,direction
  ;
- if ($zextract(data)="""")&($zextract(data,$zlength(data))="""") write:$get(v4wDebug,0)>2 "isString: 2",! quit 2
+ if ($zextract(data)="""")&($zextract(data,$zlength(data))="""") write:$get(v4wDebug,0)>2 "isString: 3",! quit 3
+ else  if $zlength(data)>15 write:$get(v4wDebug,0)>2 "DEBUG>>> isString: 1",! quit 1
+ else  if direction="input",data["e+" write:$get(v4wDebug,0)>2 "DEBUG>>> isString: 1",! quit 1
  else  if $$isNumber(data,direction) write:$get(v4wDebug,0)>2 "isString: 0",! quit 0
- else  write:$get(v4wDebug,0)>2 "isString: 1",! quit 1
+ else  write:$get(v4wDebug,0)>2 "isString: 2",! quit 2
  ;; @end isString
  ;
  ;; @function {private} outputConvert
@@ -135,7 +137,7 @@ isString:(data,direction)
 outputConvert:(data,mode)
  if $get(v4wDebug,0)>2 write !,"DEBUG>>> outputConvert enter:",! zwrite data,mode
  ;
- if mode,$$isNumber(data,"output") do
+ if mode,'$$isString(data,"output") do
  . if $zextract(data)="." set data=0_data
  . else  if $zextract(data,1,2)="-." set $zextract(data)="",data="-0"_data
  else  set data=""""_data_""""

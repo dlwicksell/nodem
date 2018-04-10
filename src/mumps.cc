@@ -112,81 +112,6 @@ inline void catch_interrupt(const int signal_num)
 } // @end catch_interrupt function
 
 /*
- * @function {private} encode_arguments
- * @summary Encode an array of arguments for parsing in v4wNode.m
- * @param {Local<Value>} arguments - The array of subscripts or arguments to be encoded
- * @returns {Local<Value>} [Undefined|encoded_array] - The encoded array of subscripts or arguments, or Undefined if it has bad data
- */
-inline static Local<Value> encode_arguments(const Local<Value> arguments)
-{
-    Isolate* isolate = Isolate::GetCurrent();
-    EscapableHandleScope scope(isolate);
-
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> encode_arguments enter: " << *String::Utf8Value(arguments) << "\n";
-
-    Local<Array> argument_array = Local<Array>::Cast(arguments);
-    Local<Array> encoded_array = Array::New(isolate);
-
-    for (unsigned int i = 0; i < argument_array->Length(); i++) {
-        Local<Value> data_test = argument_array->Get(i);
-        Local<String> data = data_test->ToString();
-        Local<String> colon = String::NewFromUtf8(isolate, ":");
-        Local<String> length;
-        Local<Value> new_data = Undefined(isolate);
-
-        if (data_test->IsUndefined()) {
-            new_data = String::NewFromUtf8(isolate, "0:");
-        } else if (data_test->IsSymbol() || data_test->IsSymbolObject()) {
-            return Undefined(isolate);
-        } else if (data_test->IsString()) {
-            length = Number::New(isolate, data->Length() + 2)->ToString();
-            Local<String> quote = String::NewFromUtf8(isolate, "\"");
-            new_data = String::Concat(String::Concat(length, String::Concat(colon, quote)), String::Concat(data, quote));
-        } else {
-            length = Number::New(isolate, data->Length())->ToString();
-            new_data = String::Concat(length, String::Concat(colon, data));
-        }
-
-        encoded_array->Set(i, new_data);
-    }
-
-    if (debug_g > MEDIUM) cout << "DEBUG>>> encode_arguments exit: " << *String::Utf8Value(encoded_array) << "\n";
-
-    return scope.Escape(encoded_array);
-} // @end encode_arguments function
-
-/*
- * @function {private} globalize_name
- * @summary If a name doesn't start with the optional '^' character, add it for output
- * @param {Local<Value>} name - The name to be normalized for output
- * @returns {Local<Value>} [new_name|name] - A string containing the normalized name
- */
-inline static Local<Value> globalize_name(const Local<Value> name)
-{
-    Isolate* isolate = Isolate::GetCurrent();
-    EscapableHandleScope scope(isolate);
-
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> globalize_name enter: " << *String::Utf8Value(name) << "\n";
-
-    String::Utf8Value data_string(name);
-
-    const gtm_char_t *data_name = *data_string;
-    const gtm_char_t *char_ptr = strchr(data_name, '^');
-
-    if (char_ptr == NULL) {
-        Local<Value> new_name = String::Concat(String::NewFromUtf8(isolate, "^"), name->ToString());
-
-        if (debug_g > MEDIUM) cout << "DEBUG>>> globalize_name exit: " << *String::Utf8Value(new_name) << "\n";
-
-        return scope.Escape(new_name);
-    }
-
-    if (debug_g > MEDIUM) cout << "DEBUG>>> globalize_name exit: " << *String::Utf8Value(name) << "\n";
-
-    return scope.Escape(name);
-} // @end globalize_name function
-
-/*
  * @function {private} gtm_status
  * @summary Handle an error from the YottaDB/GT.M runtime
  * @param {gtm_char_t*} msg_buffer_g - A character string representing the YottaDB/GT.M runtime error
@@ -230,16 +155,35 @@ inline static Local<Object> gtm_status(gtm_char_t *msg_buffer_g)
 } // @end gtm_status function
 
 /*
- * @function {private} invalid_name
+ * @function {private} invalid_local
  * @summary If a local name starts with v4w, it is not valid, and cannot be manipulated
  * @param {char*} name - The name to test against
  * @returns {bool} - Whether the local name is invalid
+ */
+inline static bool invalid_local(const char *name)
+{
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> invalid_local enter: " << name << "\n";
+
+    if (strncmp(name, "v4w", 3) == 0) {
+        if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_local exit: " << true << "\n";
+        return true;
+    }
+
+    if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_local exit: " << false << "\n";
+    return false;
+} // @end invalid_local function
+
+/*
+ * @function {private} invalid_name
+ * @summary If a name contains subscripts, it is not valid, and cannot be used
+ * @param {char*} name - The name to test against
+ * @returns {bool} - Whether the name is invalid
  */
 inline static bool invalid_name(const char *name)
 {
     if (debug_g > MEDIUM) cout << "\nDEBUG>>> invalid_name enter: " << name << "\n";
 
-    if (strncmp(name, "v4w", 3) == 0) {
+    if (strchr(name, '(') != NULL || strchr(name, ')') != NULL) {
         if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_name exit: " << true << "\n";
         return true;
     }
@@ -247,6 +191,37 @@ inline static bool invalid_name(const char *name)
     if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_name exit: " << false << "\n";
     return false;
 } // @end invalid_name function
+
+/*
+ * @function {private} globalize_name
+ * @summary If a name doesn't start with the optional '^' character, add it for output
+ * @param {Local<Value>} name - The name to be normalized for output
+ * @returns {Local<Value>} [new_name|name] - A string containing the normalized name
+ */
+inline static Local<Value> globalize_name(const Local<Value> name)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> globalize_name enter: " << *String::Utf8Value(name) << "\n";
+
+    String::Utf8Value data_string(name);
+
+    const gtm_char_t *data_name = *data_string;
+    const gtm_char_t *char_ptr = strchr(data_name, '^');
+
+    if (char_ptr == NULL) {
+        Local<Value> new_name = String::Concat(String::NewFromUtf8(isolate, "^"), name->ToString());
+
+        if (debug_g > MEDIUM) cout << "DEBUG>>> globalize_name exit: " << *String::Utf8Value(new_name) << "\n";
+
+        return scope.Escape(new_name);
+    }
+
+    if (debug_g > MEDIUM) cout << "DEBUG>>> globalize_name exit: " << *String::Utf8Value(name) << "\n";
+
+    return scope.Escape(name);
+} // @end globalize_name function
 
 /*
  * @function {private} localize_name
@@ -299,6 +274,93 @@ inline static Local<Value> json_method(Local<Value> data, const string type)
 
     return scope.Escape(JSON_method->Call(JSON, 1, &data));
 } // @end json_method function
+
+/*
+ * @function {private} encode_arguments
+ * @summary Encode an array of arguments for parsing in v4wNode.m
+ * @param {Local<Value>} arguments - The array of subscripts or arguments to be encoded
+ * @returns {Local<Value>} [Undefined|encoded_array] - The encoded array of subscripts or arguments, or Undefined if it has bad data
+ */
+inline static Local<Value> encode_arguments(const Local<Value> arguments)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> encode_arguments enter: " << *String::Utf8Value(arguments) << "\n";
+
+    Local<Array> argument_array = Local<Array>::Cast(arguments);
+    Local<Array> encoded_array = Array::New(isolate);
+
+    for (unsigned int i = 0; i < argument_array->Length(); i++) {
+        Local<Value> data_test = argument_array->Get(i);
+        Local<String> data = data_test->ToString();
+        Local<String> colon = String::NewFromUtf8(isolate, ":");
+        Local<String> length;
+        Local<Value> new_data = Undefined(isolate);
+
+        if (data_test->IsUndefined()) {
+            new_data = String::NewFromUtf8(isolate, "0:");
+        } else if (data_test->IsSymbol() || data_test->IsSymbolObject()) {
+            return Undefined(isolate);
+        } else if (data_test->IsNumber()) {
+            length = Number::New(isolate, data->Length())->ToString();
+            new_data = String::Concat(length, String::Concat(colon, data));
+        } else if (data_test->IsObject()) {
+            Local<Object> object = data_test->ToObject();
+            Local<Value> type = object->Get(String::NewFromUtf8(isolate, "type"));
+            Local<Value> value_test = object->Get(String::NewFromUtf8(isolate, "value"));
+            Local<String> value = value_test->ToString();
+
+            if (value_test->IsSymbol() || value_test->IsSymbolObject()) {
+                return Undefined(isolate);
+            } else if (type->StrictEquals(String::NewFromUtf8(isolate, "reference"))) {
+                if (!value_test->IsString()) return Undefined(isolate);
+                if (invalid_local(*String::Utf8Value(value))) return Undefined(isolate);
+                if (invalid_name(*String::Utf8Value(value))) return Undefined(isolate);
+
+                Local<String> new_value = localize_name(value)->ToString();
+                Local<String> dot = String::NewFromUtf8(isolate, ".");
+                length = Number::New(isolate, new_value->Length() + 1)->ToString();
+                new_data = String::Concat(length, String::Concat(colon, String::Concat(dot, new_value)));
+            } else if (type->StrictEquals(String::NewFromUtf8(isolate, "variable"))) {
+                if (!value_test->IsString()) return Undefined(isolate);
+                if (invalid_local(*String::Utf8Value(value))) return Undefined(isolate);
+                if (invalid_name(*String::Utf8Value(value))) return Undefined(isolate);
+
+                Local<String> new_value = localize_name(value)->ToString();
+                length = Number::New(isolate, new_value->Length())->ToString();
+                new_data = String::Concat(length, String::Concat(colon, new_value));
+            } else if (type->StrictEquals(String::NewFromUtf8(isolate, "value"))) {
+                if (value_test->IsUndefined()) {
+                    new_data = String::NewFromUtf8(isolate, "0:");
+                } else if (value_test->IsSymbol() || value_test->IsSymbolObject()) {
+                    return Undefined(isolate);
+                } else if (value_test->IsNumber()) {
+                    length = Number::New(isolate, value->Length())->ToString();
+                    new_data = String::Concat(length, String::Concat(colon, value));
+                } else {
+                    length = Number::New(isolate, value->Length() + 2)->ToString();
+                    Local<String> quote = String::NewFromUtf8(isolate, "\"");
+                    new_data = String::Concat(String::Concat(length, String::Concat(colon, quote)), String::Concat(value, quote));
+                }
+            } else {
+                length = Number::New(isolate, data->Length() + 2)->ToString();
+                Local<String> quote = String::NewFromUtf8(isolate, "\"");
+                new_data = String::Concat(String::Concat(length, String::Concat(colon, quote)), String::Concat(data, quote));
+            }
+        } else {
+            length = Number::New(isolate, data->Length() + 2)->ToString();
+            Local<String> quote = String::NewFromUtf8(isolate, "\"");
+            new_data = String::Concat(String::Concat(length, String::Concat(colon, quote)), String::Concat(data, quote));
+        }
+
+        encoded_array->Set(i, new_data);
+    }
+
+    if (debug_g > MEDIUM) cout << "DEBUG>>> encode_arguments exit: " << *String::Utf8Value(encoded_array) << "\n";
+
+    return scope.Escape(encoded_array);
+} // @end encode_arguments function
 
 /*
  * @class GtmValue
@@ -506,14 +568,24 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -881,14 +953,24 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -1737,14 +1819,24 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -1934,14 +2026,24 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -2087,13 +2189,23 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
         hi = String::Empty(isolate);
     }
 
-    if (invalid_name(*String::Utf8Value(lo))) {
+    if (invalid_local(*String::Utf8Value(lo))) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'lo' cannot begin with 'v4w'")));
         return;
     }
 
-    if (invalid_name(*String::Utf8Value(hi))) {
+    if (invalid_name(*String::Utf8Value(lo))) {
+        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'lo' is an invalid name")));
+        return;
+    }
+
+    if (invalid_local(*String::Utf8Value(hi))) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'hi' cannot begin with 'v4w'")));
+        return;
+    }
+
+    if (invalid_name(*String::Utf8Value(hi))) {
+        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'hi' is an invalid name")));
         return;
     }
 
@@ -2282,14 +2394,24 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -2541,14 +2663,24 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
     Local<Value> from_name = Undefined(isolate);
 
     if (from_local) {
-        if (invalid_name(*String::Utf8Value(from_glvn))) {
+        if (invalid_local(*String::Utf8Value(from_glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(from_glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         from_name_msg = "DEBUG>> from_local: ";
         from_name = localize_name(from_glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(from_glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         from_name_msg = "DEBUG>> from_global: ";
         from_name = globalize_name(from_glvn);
     }
@@ -2557,14 +2689,24 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
     Local<Value> to_name = Undefined(isolate);
 
     if (to_local) {
-        if (invalid_name(*String::Utf8Value(to_glvn))) {
+        if (invalid_local(*String::Utf8Value(to_glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(to_glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         to_name_msg = "DEBUG>> to_local: ";
         to_name = localize_name(to_glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(to_glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         to_name_msg = "DEBUG>> to_global: ";
         to_name = globalize_name(to_glvn);
     }
@@ -2784,14 +2926,24 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -3239,14 +3391,24 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -3458,14 +3620,24 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -3677,14 +3849,24 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -4181,14 +4363,24 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }
@@ -4362,14 +4554,24 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_name(*String::Utf8Value(glvn))) {
+        if (invalid_local(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
+
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
     } else {
+        if (invalid_name(*String::Utf8Value(glvn))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            return;
+        }
+
         name_msg = "DEBUG>> global: ";
         name = globalize_name(glvn);
     }

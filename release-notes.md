@@ -1,5 +1,12 @@
 # NodeM Release Notes #
 
+## v0.11.0 - 2018 Apr 10 ##
+
+- Improve support for legacy MUMPS APIs
+- Add support for passing arguments by reference, and by local variable, to function and procedures
+- Add documentation and examples about new functionality in README.md
+- Fix typo and restructure documentation in README.md
+
 ## v0.10.1 - 2018 Apr 8 ##
 
 - Make a few updates to v0.10.0 that were missed

@@ -30,8 +30,8 @@
 namespace nodem {
 
 #define NODEM_MAJOR_VERSION  0
-#define NODEM_MINOR_VERSION  10
-#define NODEM_PATCH_VERSION  1
+#define NODEM_MINOR_VERSION  11
+#define NODEM_PATCH_VERSION  0
 
 #ifdef LIBYOTTADB_TYPES_H
     #define NODEM_DB "YottaDB"
