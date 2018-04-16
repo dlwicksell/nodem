@@ -37,15 +37,15 @@
         'GTM_VERSION=63'
       ],
       'variables': {
-        'gtm_dist%': '<!(if test "$ydb_dist" != "" ; then echo $ydb_dist; else echo $gtm_dist; fi)'
+        'gtm_dist%': '<!(if [ -n "$ydb_dist" ]; then echo $ydb_dist; else echo $gtm_dist; fi)',
+        'gtm_lib%': '<!(if [ -n "$ydb_dist" ]; then echo yottadb; else echo gtmshr; fi)'
       },
       'include_dirs': [
         '<(gtm_dist)'
       ],
       'libraries': [
         '-L<(gtm_dist)',
-        '-lgtmshr',
-        '-lyottadb'
+        '-l<(gtm_lib)'
       ],
       'ldflags': [
         '-Wl,-rpath,<(gtm_dist),--enable-new-dtags'

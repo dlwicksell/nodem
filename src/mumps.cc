@@ -3120,7 +3120,11 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
         if (!global_directory->IsUndefined() && global_directory->IsString()) {
             if (debug_g > LOW) cout << "DEBUG>> globalDirectory: " << *String::Utf8Value(global_directory) << "\n";
 
+#ifdef LIBYOTTADB_TYPES_H
+            if (setenv("ydb_gbldir", *String::Utf8Value(global_directory), 1) == -1) {
+#else
             if (setenv("gtmgbldir", *String::Utf8Value(global_directory), 1) == -1) {
+#endif
                 isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
                 return;
             }

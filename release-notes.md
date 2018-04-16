@@ -1,5 +1,11 @@
 # NodeM Release Notes #
 
+## v0.11.1 - 2018 Apr 15 ##
+
+- Merge Chris Edwards' enhancements
+- Make minor changes, including more support for ydb_* environment variables
+- Add v4wNode.o compiled object file to .gitignore
+
 ## v0.11.0 - 2018 Apr 10 ##
 
 - Improve support for legacy MUMPS APIs
