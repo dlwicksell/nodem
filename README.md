@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the YottaDB/GT.M language and database ##
 
-Version 0.11.1 - 2018 Apr 15
+Version 0.11.2 - 2018 Apr 24
 
 ## Copyright and License ##
 

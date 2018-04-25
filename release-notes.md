@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.11.2 - 2018 Apr 24 ##
+
+- Fix CPP bug
+
 ## v0.11.1 - 2018 Apr 15 ##
 
 - Merge Chris Edwards' enhancements

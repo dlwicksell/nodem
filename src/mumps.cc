@@ -402,7 +402,7 @@ class GtmValue
         {
             Isolate* isolate = Isolate::GetCurrent();
 
-#if NODE_MAJOR_VERSION >= 6 && NODE_MINOR_VERSION >= 8
+#if NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8 || NODE_MAJOR_VERSION >= 7
             const uint8_t* byte_buffer = reinterpret_cast<const uint8_t*>(buffer);
             MaybeLocal<String> maybe_string = String::NewFromOneByte(isolate, byte_buffer, NewStringType::kNormal);
             Local<String> string;
@@ -4826,7 +4826,7 @@ void Gtm::New(const FunctionCallbackInfo<Value>& args)
     } else {
         Local<Function> constructor = Local<Function>::New(isolate, constructor_g);
 
-#if NODE_MAJOR_VERSION >= 6 && NODE_MINOR_VERSION >= 8
+#if NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8 || NODE_MAJOR_VERSION >= 7
         MaybeLocal<Object> maybe_instance = constructor->NewInstance(isolate->GetCurrentContext());
         Local<Object> instance;
 
