@@ -24,22 +24,26 @@
       'target_name': 'mumps',
       'type': 'loadable_module',
       'sources': [
-        'src/mumps.cc'
+        'src/mumps.cc',
+        'src/gtm.cc',
+        'src/ydb.cc'
       ],
       'cflags': [
         '-ansi',
         '-pedantic',
+        '-error',
         '-std=c++11',
         '-Wno-deprecated-declarations',
         '-Wno-expansion-to-defined'
       ],
-      'defines': [
-        'GTM_VERSION=63'
-      ],
       'variables': {
-        'gtm_dist%': '<!(if [ -n "$ydb_dist" ]; then echo $ydb_dist; else echo $gtm_dist; fi)',
+        'gtm_dist%': '<!(if [ -n "$ydb_dist" ]; then echo $ydb_dist; else echo ${gtm_dist:-.}; fi)',
         'gtm_lib%': '<!(if [ -n "$ydb_dist" ]; then echo yottadb; else echo gtmshr; fi)'
       },
+      'defines': [
+        'GTM_CIP_API=<!(if [ "$(echo \'w $e($tr($p($zv," ",2),"V."),1,2)\' | <(gtm_dist)/mumps -dir | grep -Ev "^$|>")" -lt 55 ]; then echo 0; else echo 1; fi)',
+        'YDB_SIMPLE_API=0'
+      ],
       'include_dirs': [
         '<(gtm_dist)'
       ],

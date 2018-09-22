@@ -1,5 +1,14 @@
 # NodeM Release Notes #
 
+## v0.12.0 - 2018 Sep 22 ##
+
+- Add asynchronous support to the get, kill, order, and set APIs
+- Add call-by-position support for the get, kill, order, and set APIs
+- Add support for intrinsic special variables (ISVs) to the get and set APIs
+- Add new experimental support for YottaDB's SimpleAPI (for get, kill, order, and set)
+- Remove preinstall.js and move functionality to binding.gyp
+- Add new implementation files for better architectural support of new SimpleAPI
+
 ## v0.11.2 - 2018 Apr 24 ##
 
 - Fix CPP bug

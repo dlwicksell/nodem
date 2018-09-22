@@ -1,3 +1,4 @@
+#!/bin/bash -
 #
 # environ - Nodem environment script
 #
@@ -52,7 +53,8 @@
 # root, or else add that directory to the ldcache, as discussed in the README.md
 # file.
 
-DIR=$(pwd)/$(dirname $(dirname $BASH_SOURCE))
+DIR=$(dirname $(dirname ${BASH_SOURCE[0]}))
+[[ $DIR =~ $(pwd) ]] || DIR=$(pwd)/$DIR
 DIR=${DIR%/.}
 [[ $(basename $DIR) == "resources" ]] && DIR=${DIR%/resources}
 

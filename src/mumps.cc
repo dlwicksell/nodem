@@ -21,10 +21,6 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-extern "C" {
-    #include <gtmxc_types.h>
-}
-
 #include <termios.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -34,37 +30,39 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 
-#include <string>
+#include <algorithm>
 #include <iostream>
 
-#include "mumps.hh"
+#include "mumps.h"
+#include "gtm.h"
+#include "ydb.h"
 
 namespace nodem {
-
-#define MSG_LEN (2048 + 1)
-#define RET_LEN (1048576 + 1)
 
 static struct termios term_attr_g;
 static struct sigaction signal_attr_g;
 
 static enum {CLOSED, NOT_OPEN, OPEN} gtm_state_g = NOT_OPEN;
-static enum {STRICT, CANONICAL} mode_g = CANONICAL;
-static enum debug_t {OFF, LOW, MEDIUM, HIGH} debug_g = OFF;
+static enum mode_t {STRICT, CANONICAL} mode_g = CANONICAL;
 
-static bool utf8_g = true;
 static bool reset_term_g = false;
 static bool auto_relink_g = false;
+static bool utf8_g = true;
 
-static gtm_char_t msg_buffer_g[MSG_LEN];
-static gtm_char_t ret_buffer_g[RET_LEN];
+debug_t debug_g = OFF;
+uv_mutex_t mutex;
+
+gtm_char_t msg_buffer_g[MSG_LEN];
+gtm_char_t ret_buffer_g[RET_LEN];
 
 using namespace v8;
 using std::string;
+using std::vector;
 using std::cerr;
 using std::cout;
 using std::endl;
 
-static Persistent<Function> constructor_g;
+Persistent<Function> Gtm::constructor_p;
 
 /*
  * @function {public} catch_interrupt
@@ -74,7 +72,12 @@ static Persistent<Function> constructor_g;
  */
 inline void catch_interrupt(const int signal_num)
 {
+    if (debug_g > OFF) cerr << "\nDEBUG> catch_interrupt enter" << "\n";
+    if (debug_g > OFF) cerr << "DEBUG> signal_num: " << signal_num << "\n";
+
+    uv_mutex_lock(&mutex);
     gtm_exit();
+    uv_mutex_unlock(&mutex);
 
     if (reset_term_g == true) {
         term_attr_g.c_iflag |= ICRNL;
@@ -100,46 +103,51 @@ inline void catch_interrupt(const int signal_num)
 
     if (debug_g > OFF) {
         if (signal_num == 2) {
-            cerr << "\nDEBUG> Handled SIGINT gracefully" << endl;
+            cerr << "DEBUG> handled SIGINT gracefully" << "\n";
         } else if (signal_num == 3) {
-            cerr << "\nDEBUG> Handled SIGQUIT gracefully" << endl;
+            cerr << "DEBUG> handled SIGQUIT gracefully" << "\n";
         } else if (signal_num == 15) {
-            cerr << "\nDEBUG> Handled SIGTERM gracefully" << endl;
+            cerr << "DEBUG> handled SIGTERM gracefully" << "\n";
         }
+
+        cerr << "DEBUG> catch_interrupt exit" << endl;
     }
 
     exit(signal_num);
 } // @end catch_interrupt function
 
 /*
- * @function {private} gtm_status
+ * @function {public} gtm_status
  * @summary Handle an error from the YottaDB/GT.M runtime
  * @param {gtm_char_t*} msg_buffer_g - A character string representing the YottaDB/GT.M runtime error
- * @returns {Local<Object>} result - An object containing the formatted error content
+ * @param {bool} position - Whether the API was called by positional arguments or not
+ * @param {bool} async - Whether the API was called asynchronously or not
+ * @returns {Local<Value>} result - An object containing the formatted error content
  */
-inline static Local<Object> gtm_status(gtm_char_t *msg_buffer_g)
+inline Local<Value> gtm_status(gtm_char_t *msg_buffer_g, const bool position, const bool async)
 {
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
 
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> gtm_status enter: " << msg_buffer_g << "\n";
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> gtm_status enter" << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> msg_buffer_g: " << msg_buffer_g << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> position: " << position << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> async: " << async << "\n";
 
     char *error_msg;
     char *code = strtok_r(msg_buffer_g, ",", &error_msg);
 
     unsigned int error_code = atoi(code);
 
-    if (strstr(error_msg, "%YDB-E-CTRAP") != NULL) {
-        // Handle SIGINT caught by YottaDB
-        catch_interrupt(SIGINT);
-    } else if (strstr(error_msg, "%GTM-E-CTRAP") != NULL) {
-        // Handle SIGINT caught by GT.M
-        catch_interrupt(SIGINT);
+    if (strstr(error_msg, "%YDB-E-CTRAP") != NULL || strstr(error_msg, "%GTM-E-CTRAP") != NULL) {
+        catch_interrupt(SIGINT); // Handle SIGINT caught by YottaDB or GT.M
     }
 
     Local<Object> result = Object::New(isolate);
 
-    if (mode_g == STRICT) {
+    if (position && !async) {
+        return scope.Escape(String::NewFromUtf8(isolate, error_msg));
+    } else if (mode_g == STRICT) {
         result->Set(String::NewFromUtf8(isolate, "ErrorMessage"), String::NewFromUtf8(isolate, error_msg));
         result->Set(String::NewFromUtf8(isolate, "ErrorCode"), Number::New(isolate, error_code));
         result->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 0));
@@ -162,7 +170,8 @@ inline static Local<Object> gtm_status(gtm_char_t *msg_buffer_g)
  */
 inline static bool invalid_local(const char *name)
 {
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> invalid_local enter: " << name << "\n";
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> invalid_local enter" << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> name: " << name << "\n";
 
     if (strncmp(name, "v4w", 3) == 0) {
         if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_local exit: " << true << "\n";
@@ -170,6 +179,7 @@ inline static bool invalid_local(const char *name)
     }
 
     if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_local exit: " << false << "\n";
+
     return false;
 } // @end invalid_local function
 
@@ -181,7 +191,8 @@ inline static bool invalid_local(const char *name)
  */
 inline static bool invalid_name(const char *name)
 {
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> invalid_name enter: " << name << "\n";
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> invalid_name enter" << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> name: " << name << "\n";
 
     if (strchr(name, '(') != NULL || strchr(name, ')') != NULL) {
         if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_name exit: " << true << "\n";
@@ -189,6 +200,7 @@ inline static bool invalid_name(const char *name)
     }
 
     if (debug_g > MEDIUM) cout << "DEBUG>>> invalid_name exit: " << false << "\n";
+
     return false;
 } // @end invalid_name function
 
@@ -203,7 +215,8 @@ inline static Local<Value> globalize_name(const Local<Value> name)
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
 
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> globalize_name enter: " << *String::Utf8Value(name) << "\n";
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> globalize_name enter" << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> name: " << *String::Utf8Value(name) << "\n";
 
     String::Utf8Value data_string(name);
 
@@ -234,7 +247,8 @@ inline static Local<Value> localize_name(const Local<Value> name)
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
 
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> localize_name enter: " << *String::Utf8Value(name) << "\n";
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> localize_name enter" << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> name: " << *String::Utf8Value(name) << "\n";
 
     String::Utf8Value data_string(name);
 
@@ -264,13 +278,15 @@ inline static Local<Value> json_method(Local<Value> data, const string type)
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
 
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> json_method enter: " << *String::Utf8Value(data) << "\n";
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> json_method enter" << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> data: " << *String::Utf8Value(data) << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> type: " << type << "\n";
 
     Local<Object> global = isolate->GetCurrentContext()->Global();
     Local<Object> JSON = global->Get(String::NewFromUtf8(isolate, "JSON"))->ToObject();
     Local<Function> JSON_method = Local<Function>::Cast(JSON->Get(String::NewFromUtf8(isolate, type.c_str())));
 
-    if (debug_g > MEDIUM) cout << "DEBUG>>> json_method exit: " << type << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> json_method exit" << "\n";
 
     return scope.Escape(JSON_method->Call(JSON, 1, &data));
 } // @end json_method function
@@ -286,7 +302,8 @@ inline static Local<Value> encode_arguments(const Local<Value> arguments)
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
 
-    if (debug_g > MEDIUM) cout << "\nDEBUG>>> encode_arguments enter: " << *String::Utf8Value(arguments) << "\n";
+    if (debug_g > MEDIUM) cout << "\nDEBUG>>> encode_arguments enter" << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> arguments: " << *String::Utf8Value(arguments) << "\n";
 
     Local<Array> argument_array = Local<Array>::Cast(arguments);
     Local<Array> encoded_array = Array::New(isolate);
@@ -357,68 +374,658 @@ inline static Local<Value> encode_arguments(const Local<Value> arguments)
         encoded_array->Set(i, new_data);
     }
 
-    if (debug_g > MEDIUM) cout << "DEBUG>>> encode_arguments exit: " << *String::Utf8Value(encoded_array) << "\n";
+    if (debug_g > MEDIUM) cout << "DEBUG>>> encode_arguments exit" << "\n";
 
     return scope.Escape(encoded_array);
 } // @end encode_arguments function
 
 /*
  * @class GtmValue
- * @summary Convert UTF-8 encoded buffer to/from a byte encoded buffer
- * @constructor GtmValue
- * @destructor ~GtmValue
  * @method {instance} to_byte
- * @method {class} from_byte
+ * @summary Convert a UTF-8 encoded buffer to a byte encoded buffer
+ * @returns {gtm_char_t*} A byte encoded buffer
  */
-class GtmValue
+gtm_char_t* GtmValue::to_byte(void)
 {
-    private:
-        Local<String> value;
-        int size;
-        uint8_t* buffer;
+    value->WriteOneByte(buffer, 0, size);
+    return reinterpret_cast<gtm_char_t*>(buffer);
+}
 
-    public:
-        explicit GtmValue(Local<Value>& v8_val) :value{v8_val->ToString()}, size{value->Length() + 1}, buffer{new uint8_t[size]} {}
-        ~GtmValue() {delete buffer;}
-
-        /*
-         * @method {instance} to_byte
-         * @summary Convert a UTF-8 encoded buffer to a byte encoded buffer
-         * @returns {gtm_char_t*} A byte encoded buffer
-         */
-        gtm_char_t* to_byte(void)
-        {
-            value->WriteOneByte(buffer, 0, size);
-            return reinterpret_cast<gtm_char_t*>(buffer);
-        }
-
-        /*
-         * @method {class} from_byte
-         * @summary Convert a byte encoded buffer to a UTF-8 encoded buffer
-         * @param {gtm_char_t[]} buffer - A byte encoded buffer
-         * @returns {Local<String>} A UTF-8 encoded buffer
-         */
-        static Local<String> from_byte(gtm_char_t buffer[])
-        {
-            Isolate* isolate = Isolate::GetCurrent();
+/*
+ * @class GtmValue
+ * @method {class} from_byte
+ * @summary Convert a byte encoded buffer to a UTF-8 encoded buffer
+ * @param {gtm_char_t[]} buffer - A byte encoded buffer
+ * @returns {Local<String>} A UTF-8 encoded buffer
+ */
+Local<String> GtmValue::from_byte(gtm_char_t buffer[])
+{
+    Isolate* isolate = Isolate::GetCurrent();
 
 #if NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8 || NODE_MAJOR_VERSION >= 7
-            const uint8_t* byte_buffer = reinterpret_cast<const uint8_t*>(buffer);
-            MaybeLocal<String> maybe_string = String::NewFromOneByte(isolate, byte_buffer, NewStringType::kNormal);
-            Local<String> string;
+    const uint8_t* byte_buffer = reinterpret_cast<const uint8_t*>(buffer);
+    MaybeLocal<String> maybe_string = String::NewFromOneByte(isolate, byte_buffer, NewStringType::kNormal);
 
-            if (maybe_string.IsEmpty()) {
-                isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Unable to convert from a byte buffer")));
-                return String::Empty(isolate);
-            } else {
-                string = maybe_string.ToLocalChecked();
-                return string;
-            }
+    if (maybe_string.IsEmpty()) {
+        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Unable to convert from a byte buffer")));
+        return String::Empty(isolate);
+    } else {
+        return maybe_string.ToLocalChecked();
+    }
 #else
-            return String::NewFromOneByte(isolate, reinterpret_cast<const uint8_t*>(buffer));
+    return String::NewFromOneByte(isolate, reinterpret_cast<const uint8_t*>(buffer));
 #endif
+}
+
+/*
+ * @function {private} get_ret
+ * @summary Return data from a global or local node, or an intrinsic special variable
+ * @param {gtm_status_t} status - Return code; 0 is success, 1 is undefined node
+ * @param {gtm_char_t} ret_buf - Data returned from get call
+ * @param {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
+ * @param {bool} local - Whether the API was called on a local variable, or a global variable
+ * @param {bool} async - Whether the API was called asynchronously, or synchronously
+ * @param {string} glvn - The name of the global or local variable
+ * @param {Local<Value>} subscripts - V8 object containing the subscripts that were called
+ * @returns {Local<Value>} {scope escape} return_object - Data returned to Node.js
+ */
+static Local<Value> get_ret(gtm_status_t status, gtm_char_t ret_buf[], bool position, bool local, bool async, string glvn, Local<Value> subscripts)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (debug_g > OFF) cout << "\nDEBUG> get_ret enter" << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> status: " << status << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> ret_buf: " << ret_buf << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> position: " << position << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> local: " << local << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> async: " << async << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> glvn: " << glvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subscripts) << "\n";
+
+#if YDB_SIMPLE_API == 1
+    Local<Object> temp_object = Object::New(isolate);
+
+    if (status == YDB_ERR_GVUNDEF || status == YDB_ERR_LVUNDEF) {
+        temp_object->Set(String::NewFromUtf8(isolate, "defined"), Number::New(isolate, 0));
+    } else {
+        temp_object->Set(String::NewFromUtf8(isolate, "defined"), Number::New(isolate, 1));
+    }
+
+    string test(ret_buf);
+    bool flag = false;
+    size_t neg_cnt = count(test.begin(), test.end(), '-');
+    size_t decp_cnt = count(test.begin(), test.end(), '.');
+
+    if ((decp_cnt == 0 || decp_cnt == 1) && (neg_cnt == 0 || (neg_cnt == 1 && test[0] == '-'))) flag = true;
+    if ((decp_cnt == 1 || neg_cnt == 1) && test.length() <= 1) flag = false;
+
+    if (mode_g && flag && !test.empty() && all_of(test.begin(), test.end(), [](char c) {return (std::isdigit(c) || c == '-' || c == '.');})) {
+        temp_object->Set(String::NewFromUtf8(isolate, "data"), Number::New(isolate, atof(ret_buf)));
+    } else {
+        if (utf8_g == true) {
+            temp_object->Set(String::NewFromUtf8(isolate, "data"), String::NewFromUtf8(isolate, ret_buf));
+        } else {
+            temp_object->Set(String::NewFromUtf8(isolate, "data"), GtmValue::from_byte(ret_buf));
         }
-}; // @end GtmValue class
+    }
+#else
+    Local<String> json_string;
+
+    if (utf8_g == true) {
+        json_string = String::NewFromUtf8(isolate, ret_buf);
+    } else {
+        json_string = GtmValue::from_byte(ret_buf);
+    }
+
+    if (debug_g > OFF) cout << "DEBUG> get_ret JSON string: " << *String::Utf8Value(json_string) << "\n";
+
+#if NODE_MAJOR_VERSION >= 1
+    TryCatch try_catch(isolate);
+#else
+    TryCatch try_catch;
+#endif
+
+    Local<Object> temp_object;
+    Local<Value> json = json_method(json_string, "parse");
+
+    if (try_catch.HasCaught()) {
+        return scope.Escape(try_catch.Exception());
+    } else {
+        temp_object = json->ToObject();
+    }
+#endif
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> name = String::NewFromUtf8(isolate, glvn.c_str());
+
+    if (position) {
+        if (debug_g > OFF) cout << "\nDEBUG> get_ret exit" << "\n";
+
+        if (async) {
+            return_object->Set(String::NewFromUtf8(isolate, "result"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
+
+            return scope.Escape(return_object);
+        } else {
+            return scope.Escape(temp_object->Get(String::NewFromUtf8(isolate, "data")));
+        }
+    } else if (mode_g == STRICT) {
+        if (async) {
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+            return_object->Set(String::NewFromUtf8(isolate, "data"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
+            return_object->Set(String::NewFromUtf8(isolate, "defined"), temp_object->Get(String::NewFromUtf8(isolate, "defined")));
+        } else {
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+            return_object->Set(String::NewFromUtf8(isolate, "defined"), temp_object->Get(String::NewFromUtf8(isolate, "defined")));
+            return_object->Set(String::NewFromUtf8(isolate, "data"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
+        }
+    } else {
+        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
+
+        if (local) {
+            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+        } else {
+            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+        }
+
+        if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+        return_object->Set(String::NewFromUtf8(isolate, "data"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
+        return_object->Set(String::NewFromUtf8(isolate, "defined"), temp_object->Get(String::NewFromUtf8(isolate, "defined")));
+    }
+
+    if (debug_g > OFF) cout << "\nDEBUG> get_ret exit" << "\n";
+
+    return scope.Escape(return_object);
+} // @end get_ret function
+
+/*
+ * @function {private} kill_ret
+ * @summary Return data about removing a global or global node, or a local or local node, or the entire local symbol table
+ * @param {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
+ * @param {bool} local - Whether the API was called on a local variable, or a global variable
+ * @param {bool} async - Whether the API was called asynchronously, or synchronously
+ * @param {string} glvn - The name of the global or local variable
+ * @param {Local<Value>} subscripts - V8 object containing the subscripts that were called
+ * @returns {Local<Value>} {scope escape} return_object - Data returned to Node.js
+ */
+static Local<Value> kill_ret(bool position, bool local, bool async, string glvn, Local<Value> subscripts)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (debug_g > OFF) cout << "\nDEBUG> kill_ret enter" << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> position: " << position << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> local: " << local << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> async: " << async << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> glvn: " << glvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subscripts) << "\n";
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> name = String::NewFromUtf8(isolate, glvn.c_str());
+
+    if (name->StrictEquals(String::NewFromUtf8(isolate, ""))) {
+        Local<Value> ret_data = Undefined(isolate);
+
+        if (mode_g == STRICT) {
+            ret_data = String::NewFromUtf8(isolate, "0");
+        } else {
+            ret_data = Number::New(isolate, 0);
+        }
+
+        return scope.Escape(ret_data);
+    } else if (position) {
+        if (debug_g > OFF) cout << "\nDEBUG> kill_ret exit" << "\n";
+
+        if (async) {
+            if (mode_g == STRICT) {
+                return_object->Set(String::NewFromUtf8(isolate, "result"), String::NewFromUtf8(isolate, "0"));
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
+            }
+
+            return scope.Escape(return_object);
+        } else {
+            return scope.Escape(Number::New(isolate, 0));
+        }
+    } else if (mode_g == STRICT) {
+        if (async) {
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+            return_object->Set(String::NewFromUtf8(isolate, "result"), String::NewFromUtf8(isolate, "0"));
+        } else {
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+            return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
+        }
+    } else {
+        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
+
+        if (local) {
+            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+        } else {
+            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+        }
+
+        if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+        return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
+    }
+
+    if (debug_g > OFF) cout << "\nDEBUG> kill_ret exit" << "\n";
+
+    return scope.Escape(return_object);
+} // @end kill_ret function
+
+/*
+ * @function {private} order_ret
+ * @summary Return data about the next global or local node at the same level
+ * @param {gtm_char_t} ret_buf - Data returned from get call
+ * @param {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
+ * @param {bool} local - Whether the API was called on a local variable, or a global variable
+ * @param {bool} async - Whether the API was called asynchronously, or synchronously
+ * @param {string} glvn - The name of the global or local variable
+ * @param {Local<Value>} subscripts - V8 object containing the subscripts that were called
+ * @returns {Local<Value>} {scope escape} return_object - Data returned to Node.js
+ */
+static Local<Value> order_ret(gtm_char_t ret_buf[], bool position, bool local, bool async, string glvn, Local<Value> subscripts)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (debug_g > OFF) cout << "\nDEBUG> order_ret enter" << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> ret_buf: " << ret_buf << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> position: " << position << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> local: " << local << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> async: " << async << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> glvn: " << glvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subscripts) << "\n";
+
+#if YDB_SIMPLE_API == 1
+    Local<Object> temp_object = Object::New(isolate);
+    temp_object->Set(String::NewFromUtf8(isolate, "defined"), Number::New(isolate, 1));
+
+    string test(ret_buf);
+    bool flag = false;
+    size_t neg_cnt = count(test.begin(), test.end(), '-');
+    size_t decp_cnt = count(test.begin(), test.end(), '.');
+
+    if ((decp_cnt == 0 || decp_cnt == 1) && (neg_cnt == 0 || (neg_cnt == 1 && test[0] == '-'))) flag = true;
+    if ((decp_cnt == 1 || neg_cnt == 1) && test.length() <= 1) flag = false;
+
+    if (mode_g && flag && !test.empty() && all_of(test.begin(), test.end(), [](char c) {return (std::isdigit(c) || c == '-' || c == '.');})) {
+        temp_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, atof(ret_buf)));
+    } else {
+        if (utf8_g == true) {
+            temp_object->Set(String::NewFromUtf8(isolate, "result"), String::NewFromUtf8(isolate, ret_buf));
+        } else {
+            temp_object->Set(String::NewFromUtf8(isolate, "result"), GtmValue::from_byte(ret_buf));
+        }
+    }
+#else
+    Local<String> json_string;
+
+    if (utf8_g == true) {
+        json_string = String::NewFromUtf8(isolate, ret_buf);
+    } else {
+        json_string = GtmValue::from_byte(ret_buf);
+    }
+
+    if (debug_g > OFF) cout << "DEBUG> order_ret JSON string: " << *String::Utf8Value(json_string) << "\n";
+
+#if NODE_MAJOR_VERSION >= 1
+    TryCatch try_catch(isolate);
+#else
+    TryCatch try_catch;
+#endif
+
+    Local<Object> temp_object;
+    Local<Value> json = json_method(json_string, "parse");
+
+    if (try_catch.HasCaught()) {
+        return scope.Escape(try_catch.Exception());
+    } else {
+        temp_object = json->ToObject();
+    }
+#endif
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> name = String::NewFromUtf8(isolate, glvn.c_str());
+
+    if (position) {
+        if (debug_g > OFF) cout << "\nDEBUG> order_ret exit" << "\n";
+
+        if (async) {
+            return_object->Set(String::NewFromUtf8(isolate, "result"), temp_object->Get(String::NewFromUtf8(isolate, "result")));
+
+            return scope.Escape(return_object);
+        } else {
+            return scope.Escape(temp_object->Get(String::NewFromUtf8(isolate, "result")));
+        }
+    } else if (mode_g == STRICT) {
+        if (async) {
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            Local<Value> result = temp_object->Get(String::NewFromUtf8(isolate, "result"));
+
+            if (!subscripts->IsUndefined() && Local<Array>::Cast(subscripts)->Length() > 0) {
+                Local<Array> new_subscripts = Local<Array>::Cast(subscripts);
+
+                new_subscripts->Set(Number::New(isolate, new_subscripts->Length() -1), result);
+                return_object->Set(String::NewFromUtf8(isolate, "subscripts"), new_subscripts);
+            }
+
+            return_object->Set(String::NewFromUtf8(isolate, "result"), result);
+        } else {
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            Local<Value> result = temp_object->Get(String::NewFromUtf8(isolate, "result"));
+
+            if (!subscripts->IsUndefined() && Local<Array>::Cast(subscripts)->Length() > 0) {
+                Local<Array> new_subscripts = Local<Array>::Cast(subscripts);
+
+                new_subscripts->Set(Number::New(isolate, new_subscripts->Length() -1), result);
+                return_object->Set(String::NewFromUtf8(isolate, "subscripts"), new_subscripts);
+            }
+
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+            return_object->Set(String::NewFromUtf8(isolate, "result"), result);
+        }
+    } else {
+        Local<Value> result = temp_object->Get(String::NewFromUtf8(isolate, "result"));
+
+        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
+
+        if (local) {
+            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+        } else {
+            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+        }
+
+        if (!subscripts->IsUndefined() && Local<Array>::Cast(subscripts)->Length() > 0) {
+            Local<Array> new_subscripts = Local<Array>::Cast(subscripts);
+
+            new_subscripts->Set(Number::New(isolate, new_subscripts->Length() -1), result);
+            return_object->Set(String::NewFromUtf8(isolate, "subscripts"), new_subscripts);
+        }
+
+        return_object->Set(String::NewFromUtf8(isolate, "result"), result);
+    }
+
+    if (debug_g > OFF) cout << "\nDEBUG> order_ret exit" << "\n";
+
+    return scope.Escape(return_object);
+} // @end order_ret function
+
+/*
+ * @function {private} set_ret
+ * @summary Return data about the store of a global or local node, or an intrinsic special variable
+ * @param {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
+ * @param {bool} local - Whether the API was called on a local variable, or a global variable
+ * @param {bool} async - Whether the API was called asynchronously, or synchronously
+ * @param {string} glvn - The name of the global or local variable
+ * @param {Local<Value>} subscripts - V8 object containing the subscripts that were called
+ * @param {Local<Value>} data - V8 object containing the data to store in the node that was called
+ * @returns {Local<Value>} {scope escape} return_object - Data returned to Node.js
+ */
+static Local<Value> set_ret(bool position, bool local, bool async, string glvn, Local<Value> subscripts, Local<Value> data)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (debug_g > OFF) cout << "\nDEBUG> set_ret enter" << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> position: " << position << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> local: " << local << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> async: " << async << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> glvn: " << glvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subscripts) << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> data: " << *String::Utf8Value(data) << "\n";
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> name = String::NewFromUtf8(isolate, glvn.c_str());
+
+    if (position) {
+        if (debug_g > OFF) cout << "\nDEBUG> set_ret exit" << "\n";
+
+        if (async) {
+            if (mode_g == STRICT) {
+                return_object->Set(String::NewFromUtf8(isolate, "result"), String::NewFromUtf8(isolate, "0"));
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
+            }
+
+            return scope.Escape(return_object);
+        } else {
+            return scope.Escape(Number::New(isolate, 0));
+        }
+    } else if (mode_g == STRICT) {
+        if (async) {
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+            return_object->Set(String::NewFromUtf8(isolate, "data"), data);
+            return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
+        } else {
+            if (local) {
+                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+            }
+
+            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+            return_object->Set(String::NewFromUtf8(isolate, "data"), data);
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+            return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
+        }
+    } else {
+        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
+
+        if (local) {
+            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+        } else {
+            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+        }
+
+        if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+        return_object->Set(String::NewFromUtf8(isolate, "data"), data);
+        return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
+    }
+
+    if (debug_g > OFF) cout << "\nDEBUG> set_ret exit" << "\n";
+
+    return scope.Escape(return_object);
+} // @end set_ret function
+
+/*
+ * @function {public} async_work
+ * @summary Call in to YottaDB/GT.M asynchronously, via a Node.js worker thread
+ * @param {uv_work_t *} request - A pointer to the Baton structure for transferring data between the main thread and worker thread
+ * @returns void
+ */
+void async_work(uv_work_t *request)
+{
+    if (debug_g > LOW) cout << "\nDEBUG>> async_work enter" << "\n";
+
+    Baton* baton = static_cast<Baton*>(request->data);
+
+    if (baton->api == "get") {
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into get in the SimpleAPI interface" << "\n";
+
+        baton->status = ydb::get(baton->ret_buf, baton->glvn, baton->subsarray, baton->mode);
+#else
+        if (debug_g > LOW) cout << "DEBUG>> call into get in the Call-in interface" << "\n";
+
+        baton->status = gtm::get(baton->ret_buf, baton->glvn, baton->subs, baton->mode);
+#endif
+    } else if (baton->api == "kill") {
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into kill in the SimpleAPI interface" << "\n";
+
+        baton->status = ydb::kill(baton->glvn, baton->subsarray, baton->mode);
+#else
+        if (debug_g > LOW) cout << "DEBUG>> call into kill in the Call-in interface" << "\n";
+
+        baton->status = gtm::kill(baton->glvn, baton->subs, baton->mode);
+#endif
+    } else if (baton->api == "order") {
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into order in the SimpleAPI interface" << "\n";
+
+        baton->status = ydb::order(baton->ret_buf, baton->glvn, baton->subsarray, baton->mode);
+#else
+        if (debug_g > LOW) cout << "DEBUG>> call into order in the Call-in interface" << "\n";
+
+        baton->status = gtm::order(baton->ret_buf, baton->glvn, baton->subs, baton->mode);
+#endif
+    } else if (baton->api == "set") {
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into set in the SimpleAPI interface" << "\n";
+
+        baton->status = ydb::set(baton->glvn, baton->subsarray, baton->value, baton->mode);
+#else
+        if (debug_g > LOW) cout << "DEBUG>> call into set in the Call-in interface" << "\n";
+
+        baton->status = gtm::set(baton->glvn, baton->subs, baton->value, baton->mode);
+#endif
+    }
+
+    if (debug_g > LOW) cout << "DEBUG>> async_work exit" << "\n";
+
+    return;
+} // @end async_work function
+
+/*
+ * @function {public} async_after
+ * @summary Call in to the return functions, passing the data from YottaDB/GT.M, after receiving the data from the worker thread
+ * @param {uv_work_t *} request - A pointer to the Baton structure for transferring data between the main thread and worker thread
+ * @returns void
+ */
+void async_after(uv_work_t *request, int status)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope scope(isolate);
+
+    if (debug_g > LOW) cout << "\nDEBUG>> async_after enter: " << status << "\n";
+
+    Baton* baton = static_cast<Baton*>(request->data);
+
+    Local<Value> error_code = Null(isolate);
+    Local<Value> return_object = Object::New(isolate);
+    Local<Value> error_object = Object::New(isolate);
+    Local<Value> subscripts = Local<Value>::New(isolate, baton->subscripts_p);
+
+    if (baton->status == -1) {
+        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
+        return;
+    } else if (baton->status != EXIT_SUCCESS) {
+        if (debug_g > LOW) cout << "DEBUG>> " << NODEM_DB << " error code: " << baton->status << "\n";
+
+        uv_mutex_lock(&mutex);
+        gtm_zstatus(baton->msg_buf, MSG_LEN);
+        uv_mutex_unlock(&mutex);
+
+        if (mode_g == STRICT) {
+            error_code = Number::New(isolate, 1);
+
+            return_object = gtm_status(baton->msg_buf, baton->position, baton->async);
+        } else {
+            error_object = gtm_status(baton->msg_buf, baton->position, baton->async);
+
+            error_code = Exception::Error(String::NewFromUtf8(isolate, *String::Utf8Value(((Object*)*error_object)->Get(String::NewFromUtf8(isolate, "errorMessage")))));
+            ((Object*)*error_code)->Set(String::NewFromUtf8(isolate, "ok"), ((Object*)*error_object)->Get(String::NewFromUtf8(isolate, "ok")));
+            ((Object*)*error_code)->Set(String::NewFromUtf8(isolate, "errorCode"), ((Object*)*error_object)->Get(String::NewFromUtf8(isolate, "errorCode")));
+            ((Object*)*error_code)->Set(String::NewFromUtf8(isolate, "errorMessage"), ((Object*)*error_object)->Get(String::NewFromUtf8(isolate, "errorMessage")));
+
+            return_object = Undefined(isolate);
+        }
+    } else {
+        if (baton->api == "get") {
+            if (debug_g > LOW) cout << "DEBUG>> call into get_ret" << "\n";
+
+            return_object = get_ret(baton->status, baton->ret_buf, baton->position, baton->local, baton->async, baton->glvn, subscripts);
+        } else if (baton->api == "kill") {
+            if (debug_g > LOW) cout << "DEBUG>> call into kill_ret" << "\n";
+
+            return_object = kill_ret(baton->position, baton->local, baton->async, baton->glvn, subscripts);
+        } else if (baton->api == "order") {
+            if (debug_g > LOW) cout << "DEBUG>> call into order_ret" << "\n";
+
+            return_object = order_ret(baton->ret_buf, baton->position, baton->local, baton->async, baton->glvn, subscripts);
+        } else if (baton->api == "set") {
+            if (debug_g > LOW) cout << "DEBUG>> call into set_ret" << "\n";
+
+            Local<Value> data = Local<Value>::New(isolate, baton->data_p);
+
+            return_object = set_ret(baton->position, baton->local, baton->async, baton->glvn, subscripts, data);
+        }
+
+        if (mode_g == STRICT) error_code = Number::New(isolate, 0);
+    }
+
+    Local<Value> argv[2] = {error_code, return_object};
+    Local<Function>::New(isolate, baton->callback_p)->Call(Null(isolate), 2, argv);
+
+    baton->callback_p.Reset();
+    baton->subscripts_p.Reset();
+    baton->data_p.Reset();
+    delete baton;
+
+    if (debug_g > LOW) cout << "DEBUG>> async_after exit" << "\n";
+
+    return;
+} // @end async_after function
 
 // ***Begin Public APIs***
 
@@ -433,12 +1040,12 @@ void Gtm::close(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::close enter" << "\n";
+
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
         return;
     }
-
-    if (debug_g > OFF) cout << "\nDEBUG> close enter" << "\n";
 
     if (args[0]->IsObject() && args[0]->ToObject()->Has(String::NewFromUtf8(isolate, "resetTerminal"))) {
         reset_term_g = args[0]->ToObject()->Get(String::NewFromUtf8(isolate, "resetTerminal"))->BooleanValue();
@@ -446,12 +1053,14 @@ void Gtm::close(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) cout << "DEBUG>> resetTerminal: " << reset_term_g << "\n";
 
+    uv_mutex_lock(&mutex);
     if (gtm_exit() != EXIT_SUCCESS) {
         gtm_zstatus(msg_buffer_g, MSG_LEN);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
+    uv_mutex_unlock(&mutex);
 
     gtm_state_g = CLOSED;
 
@@ -483,7 +1092,8 @@ void Gtm::close(const FunctionCallbackInfo<Value>& args)
         args.GetReturnValue().Set(Number::New(isolate, 1));
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> close exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::close exit" << endl;
+
     return;
 } // @end Gtm::close method
 
@@ -498,7 +1108,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> data enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::data enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -568,11 +1178,6 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -580,6 +1185,11 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -596,7 +1206,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_data[] = "data";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_data;
@@ -607,7 +1217,9 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -615,14 +1227,18 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_data, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -630,14 +1246,18 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_data, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -651,7 +1271,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> data JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::data JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -698,7 +1318,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> data exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::data exit" << endl;
     return;
 } // @end Gtm::data method
 
@@ -713,7 +1333,7 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> function enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::function enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -775,7 +1395,7 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_function[] = "function";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_function;
@@ -786,7 +1406,9 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> function: " << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << *String::Utf8Value(arg) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(arg), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_args {arg};
@@ -794,14 +1416,18 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> function: " << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << gtm_args.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_args.to_byte(), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << "DEBUG>> function: " << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << *String::Utf8Value(arg) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_function, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(arg), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_args {arg};
@@ -809,14 +1435,18 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> function: " << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << gtm_args.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_function, ret_buffer_g, gtm_name.to_byte(), gtm_args.to_byte(), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -830,7 +1460,7 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> function JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::function JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -868,7 +1498,7 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> function exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::function exit" << endl;
     return;
 } // @end Gtm::function method
 
@@ -883,34 +1513,63 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> get enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::get enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
         return;
     }
 
-    if (args.Length() == 0) {
-        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an argument")));
-        return;
-    } else if (!args[0]->IsObject()) {
-        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Argument must be an object")));
+    bool async = false;
+    unsigned int args_count = args.Length();
+
+    if (args[args_count - 1]->IsFunction()) {
+        --args_count;
+        async = true;
+    }
+
+    if (args_count == 0) {
+        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an additional argument")));
         return;
     }
 
-    Local<Object> arg_object = args[0]->ToObject();
-    Local<Value> glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+    Local<Value> glvn = Undefined(isolate);
+    Local<Value> subscripts = Undefined(isolate);
     bool local = false;
+    bool position = false;
 
-    if (glvn->IsUndefined()) {
-        glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+    if (args[0]->IsObject()) {
+        Local<Object> arg_object = args[0]->ToObject();
+        glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+
+        if (glvn->IsUndefined()) {
+            glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+            local = true;
+        }
 
         if (glvn->IsUndefined()) {
             isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply a 'global' or 'local' property")));
             return;
-        } else {
-            local = true;
         }
+
+        subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
+    } else {
+        glvn = args[0];
+
+        if (args_count > 1) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_count - 1);
+
+            for (unsigned int i = 1; i < args_count; i++) {
+                temp_subscripts->Set(i - 1, args[i]);
+            }
+
+            subscripts = temp_subscripts;
+        }
+
+        position = true;
+
+        string test = *String::Utf8Value(glvn);
+        if (test[0] != '^') local = true;
     }
 
     if (!glvn->IsString()) {
@@ -931,19 +1590,40 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
         return;
     }
 
-    Local<Value> subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
     Local<Value> subs = Undefined(isolate);
+#if YDB_SIMPLE_API == 1
+    vector<string> subsarray;
+    string subsdata;
+#endif
 
     if (subscripts->IsUndefined()) {
         subs = String::Empty(isolate);
     } else if (subscripts->IsArray()) {
+#if YDB_SIMPLE_API == 1
+        Local<Array> subscripts_array = Local<Array>::Cast(subscripts);
+        unsigned int length = subscripts_array->Length();
+
+        for (unsigned int i = 0; i < length; i++) {
+            Local<Value> data = subscripts_array->Get(i);
+
+            if (utf8_g == true) {
+                subsdata = *String::Utf8Value(data);
+            } else {
+                GtmValue gtm_data {data};
+                subsdata = gtm_data.to_byte();
+            }
+
+            subsarray.push_back(subsdata);
+        }
+#else
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Subscripts contain invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
+#endif
     } else {
         isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Property 'subscripts' must be an array")));
         return;
@@ -953,21 +1633,21 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Global is an invalid name")));
             return;
         }
 
@@ -978,115 +1658,92 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
     if (debug_g > OFF) cout << "\nDEBUG> call into " NODEM_DB << endl;
     if (debug_g > LOW) cout << "DEBUG>> mode: " << mode_g << "\n";
 
-    gtm_status_t stat_buf;
-    gtm_char_t gtm_get[] = "get";
-
-#if (GTM_VERSION > 54)
-    ci_name_descriptor access;
-
-    access.rtn_name.address = gtm_get;
-    access.rtn_name.length = 3;
-    access.handle = NULL;
+    gtm_status_t stat_buf = 0;
+    Local<Value> return_object = Object::New(isolate);
+    string gvn, sub;
 
     if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
-
-        stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        gvn = *String::Utf8Value(name);
+        sub = *String::Utf8Value(subs);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
 
-        if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
-
-        stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        gvn = gtm_name.to_byte();
+        sub = gtm_subs.to_byte();
     }
-#else
-    if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
-        stat_buf = gtm_ci(gtm_get, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
+    if (debug_g > LOW) cout << name_msg << gvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << sub << endl;
 
-        if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
+    if (async) {
+        Local<Function> callback = Local<Function>::Cast(args[args_count]);
 
-        stat_buf = gtm_ci(gtm_get, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
-    }
+        Baton *baton = new Baton();
+
+        baton->request.data = baton;
+        baton->api = "get";
+        baton->callback_p.Reset(isolate, callback);
+        baton->subscripts_p.Reset(isolate, subscripts);
+        baton->glvn = gvn;
+        baton->subs = sub;
+#if YDB_SIMPLE_API == 1
+        baton->subsarray = subsarray;
 #endif
+        baton->mode = mode_g;
+        baton->status = stat_buf;
+        baton->async = async;
+        baton->local = local;
+        baton->position = position;
 
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_queue_work(uv_default_loop(), &baton->request, async_work, async_after);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
-        return;
-    }
-
-    if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
-
-    Local<String> json_string;
-
-    if (utf8_g == true) {
-        json_string = String::NewFromUtf8(isolate, ret_buffer_g);
-    } else {
-        json_string = GtmValue::from_byte(ret_buffer_g);
-    }
-
-    if (debug_g > OFF) cout << "DEBUG> get JSON string: " << *String::Utf8Value(json_string) << "\n";
-
-#if NODE_MAJOR_VERSION >= 1
-    TryCatch try_catch(isolate);
-#else
-    TryCatch try_catch;
-#endif
-
-    Local<Object> temp_object;
-    Local<Value> json = json_method(json_string, "parse");
-
-    if (try_catch.HasCaught()) {
-        args.GetReturnValue().Set(try_catch.Exception());
+        args.GetReturnValue().Set(Undefined(isolate));
         return;
     } else {
-        temp_object = json->ToObject();
-    }
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into get in the SimpleAPI interface" << "\n";
 
-    Local<Object> return_object = Object::New(isolate);
+        stat_buf = ydb::get(ret_buffer_g, gvn, subsarray, mode_g);
+#else
+        if (debug_g > LOW) cout << "DEBUG>> call into get in the Call-in interface" << "\n";
 
-    if (mode_g == STRICT) {
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), glvn);
+        stat_buf = gtm::get(ret_buffer_g, gvn, sub, mode_g);
+#endif
+
+        if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
+
+#if YDB_SIMPLE_API == 1
+        if (stat_buf == -1) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
+            return;
+        } else if (stat_buf != EXIT_SUCCESS && stat_buf != YDB_ERR_GVUNDEF && stat_buf != YDB_ERR_LVUNDEF) {
+#else
+        if (stat_buf != EXIT_SUCCESS) {
+#endif
+            uv_mutex_lock(&mutex);
+            gtm_zstatus(msg_buffer_g, MSG_LEN);
+            uv_mutex_unlock(&mutex);
+
+            if (position) {
+                isolate->ThrowException(Exception::Error(gtm_status(msg_buffer_g, position, async)->ToString()));
+                args.GetReturnValue().Set(Undefined(isolate));
+                return;
+            } else {
+                args.GetReturnValue().Set(gtm_status(msg_buffer_g, position, async));
+                return;
+            }
         }
 
-        if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+        if (debug_g > LOW) cout << "DEBUG>> call into get_ret" << "\n";
 
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
-        return_object->Set(String::NewFromUtf8(isolate, "defined"), temp_object->Get(String::NewFromUtf8(isolate, "defined")));
-        return_object->Set(String::NewFromUtf8(isolate, "data"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
-    } else {
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
+        return_object = get_ret(stat_buf, ret_buffer_g, position, local, async, gvn, subscripts);
 
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(glvn));
-        }
+        if (debug_g > OFF) cout << "DEBUG> Gtm::get exit" << endl;
 
-        if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
-
-        return_object->Set(String::NewFromUtf8(isolate, "data"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
-        return_object->Set(String::NewFromUtf8(isolate, "defined"), temp_object->Get(String::NewFromUtf8(isolate, "defined")));
+        args.GetReturnValue().Set(return_object);
+        return;
     }
-
-    args.GetReturnValue().Set(return_object);
-
-    if (debug_g > OFF) cout << "\nDEBUG> get exit" << endl;
-    return;
 } // @end Gtm::get method
 
 /*
@@ -1100,7 +1757,7 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> global_directory enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::global_directory enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -1139,7 +1796,7 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_global_directory[] = "global_directory";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_global_directory;
@@ -1150,7 +1807,9 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> lo: " << *String::Utf8Value(lo) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << *String::Utf8Value(hi) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, max->Uint32Value(), *String::Utf8Value(lo), *String::Utf8Value(hi), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_lo {lo};
         GtmValue gtm_hi {hi};
@@ -1158,14 +1817,18 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> lo: " << gtm_lo.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << gtm_hi.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, max->Uint32Value(), gtm_lo.to_byte(), gtm_hi.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << "DEBUG>> lo: " << *String::Utf8Value(lo) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << *String::Utf8Value(hi) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_global_directory, ret_buffer_g, max->Uint32Value(), *String::Utf8Value(lo), *String::Utf8Value(hi), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_lo {lo};
         GtmValue gtm_hi {hi};
@@ -1173,14 +1836,18 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> lo: " << gtm_lo.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << gtm_hi.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_global_directory, ret_buffer_g, max->Uint32Value(), gtm_lo.to_byte(), gtm_hi.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -1194,7 +1861,7 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> global_directory JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::global_directory JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -1210,7 +1877,7 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
         args.GetReturnValue().Set(Local<Array>::Cast(json));
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> global_directory exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::global_directory exit" << endl;
     return;
 } // @end Gtm::global_directory method
 
@@ -1240,8 +1907,8 @@ void Gtm::help(const FunctionCallbackInfo<Value>& args)
             "\n\tOptional argument:\n"
             "\t{\n"
             "\t\tglobalDirectory|namespace:\t{string} <none>,\n"
-            "\t\troutinePath:\t\t\t{string} <none>,\n"
-            "\t\tcallinPath:\t\t\t{string} <none>,\n"
+            "\t\troutinesPath:\t\t\t{string} <none>,\n"
+            "\t\tcallinTable:\t\t\t{string} <none>,\n"
             "\t\tipAddress|ip_address:\t\t{string} <none>,\n"
             "\t\ttcpPort|tcp_port:\t\t{number|string} <none>,\n"
             "\t\tcharset:\t\t\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
@@ -1737,7 +2404,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> increment enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::increment enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -1819,11 +2486,6 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -1831,6 +2493,11 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -1848,7 +2515,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_increment[] = "increment";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_increment;
@@ -1859,7 +2526,9 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), increment->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -1867,14 +2536,18 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), increment->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_increment, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), increment->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -1882,14 +2555,18 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_increment, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), increment->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -1903,7 +2580,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> increment JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::increment JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -1948,7 +2625,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> increment exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::increment exit" << endl;
     return;
 } // @end Gtm::increment method
 
@@ -1963,21 +2640,27 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> kill enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::kill enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
         return;
     }
 
+    bool async = false;
+    unsigned int args_count = args.Length();
+
+    if (args[args_count - 1]->IsFunction()) {
+        --args_count;
+        async = true;
+    }
+
     Local<Value> glvn = Undefined(isolate);
     Local<Value> subscripts = Undefined(isolate);
     bool local = false;
+    bool position = false;
 
-    if (args.Length() > 0 && !args[0]->IsObject()) {
-        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Argument must be an object")));
-        return;
-    } else if (args.Length() > 0) {
+    if (args[0]->IsObject()) {
         Local<Object> arg_object = args[0]->ToObject();
         glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
 
@@ -1992,7 +2675,30 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
         }
 
         subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
+    } else if (args_count > 0) {
+        glvn = args[0];
+
+        if (args_count > 1) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_count - 1);
+
+            for (unsigned int i = 1; i < args_count; i++) {
+                temp_subscripts->Set(i - 1, args[i]);
+            }
+
+            subscripts = temp_subscripts;
+        }
+
+        position = true;
+
+        string test = *String::Utf8Value(glvn);
+        if (test[0] != '^') local = true;
     }
+
+    Local<Value> subs = String::Empty(isolate);
+#if YDB_SIMPLE_API == 1
+    vector<string> subsarray;
+    string subsdata;
+#endif
 
     if (!glvn->IsUndefined() && !glvn->IsString()) {
         if (local) {
@@ -2002,45 +2708,69 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
         }
 
         return;
+    } else if (glvn->StrictEquals(String::NewFromUtf8(isolate, ""))) {
+        if (local) {
+            isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Local must not be an empty string")));
+        } else {
+            isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Global must not be an empty string")));
+        }
+
+        return;
     } else if (glvn->IsUndefined()) {
         glvn = String::Empty(isolate);
         local = true;
-    }
+    } else {
+        if (subscripts->IsArray()) {
+#if YDB_SIMPLE_API == 1
+            Local<Array> subscripts_array = Local<Array>::Cast(subscripts);
+            unsigned int length = subscripts_array->Length();
 
-    Local<Value> subs = String::Empty(isolate);
+            for (unsigned int i = 0; i < length; i++) {
+                Local<Value> data = subscripts_array->Get(i);
 
-    if (subscripts->IsArray()) {
-        subs = encode_arguments(subscripts);
+                if (utf8_g == true) {
+                    subsdata = *String::Utf8Value(data);
+                } else {
+                    GtmValue gtm_data {data};
+                    subsdata = gtm_data.to_byte();
+                }
 
-        if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+                subsarray.push_back(subsdata);
+            }
+#else
+            subs = encode_arguments(subscripts);
+
+            if (subs->IsUndefined()) {
+                Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
+                isolate->ThrowException(Exception::SyntaxError(error_message));
+                return;
+            }
+#endif
+        } else if (!subscripts->IsUndefined()) {
+            isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Property 'subscripts' must be an array")));
             return;
         }
-    } else if (!subscripts->IsUndefined()) {
-        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Property 'subscripts' must be an array")));
-        return;
     }
 
     const char *name_msg;
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Global is an invalid name")));
             return;
         }
 
@@ -2051,99 +2781,88 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
     if (debug_g > OFF) cout << "\nDEBUG> call into " NODEM_DB << endl;
     if (debug_g > LOW) cout << "DEBUG>> mode: " << mode_g << "\n";
 
-    gtm_status_t stat_buf;
-    gtm_char_t gtm_kill[] = "kill";
-
-#if (GTM_VERSION > 54)
-    ci_name_descriptor access;
-
-    access.rtn_name.address = gtm_kill;
-    access.rtn_name.length = 4;
-    access.handle = NULL;
+    gtm_status_t stat_buf = 0;
+    Local<Value> return_object = Object::New(isolate);
+    string gvn, sub;
 
     if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
-
-        stat_buf = gtm_cip(&access, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        gvn = *String::Utf8Value(name);
+        sub = *String::Utf8Value(subs);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
 
-        if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
-
-        stat_buf = gtm_cip(&access, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        gvn = gtm_name.to_byte();
+        sub = gtm_subs.to_byte();
     }
+
+    if (debug_g > LOW) cout << name_msg << gvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << sub << endl;
+
+    if (async) {
+        Local<Function> callback = Local<Function>::Cast(args[args_count]);
+
+        Baton *baton = new Baton();
+
+        baton->request.data = baton;
+        baton->api = "kill";
+        baton->callback_p.Reset(isolate, callback);
+        baton->subscripts_p.Reset(isolate, subscripts);
+        baton->glvn = gvn;
+        baton->subs = sub;
+#if YDB_SIMPLE_API == 1
+        baton->subsarray = subsarray;
+#endif
+        baton->mode = mode_g;
+        baton->status = stat_buf;
+        baton->async = async;
+        baton->local = local;
+        baton->position = position;
+
+        uv_queue_work(uv_default_loop(), &baton->request, async_work, async_after);
+
+        args.GetReturnValue().Set(Undefined(isolate));
+        return;
+    } else {
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into kill in the SimpleAPI interface" << "\n";
+
+        stat_buf = ydb::kill(gvn, subsarray, mode_g);
 #else
-    if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
+        if (debug_g > LOW) cout << "DEBUG>> call into kill in the Call-in interface" << "\n";
 
-        stat_buf = gtm_ci(gtm_kill, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-
-        if (debug_g > LOW) cout << "DEBUG>> global" << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts" << gtm_subs.to_byte() << endl;
-
-        stat_buf = gtm_ci(gtm_kill, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
-    }
+        stat_buf = gtm::kill(gvn, sub, mode_g);
 #endif
 
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_zstatus(msg_buffer_g, MSG_LEN);
+        if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
-        return;
-    }
+        if (stat_buf == -1) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
+            return;
+        } else if (stat_buf != EXIT_SUCCESS) {
+            uv_mutex_lock(&mutex);
+            gtm_zstatus(msg_buffer_g, MSG_LEN);
+            uv_mutex_unlock(&mutex);
 
-    if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
-
-    if (name->StrictEquals(String::NewFromUtf8(isolate, ""))) {
-        Local<Value> ret_data = Undefined(isolate);
-
-        if (mode_g == STRICT) {
-            ret_data = String::NewFromUtf8(isolate, "0");
-        } else {
-            ret_data = Number::New(isolate, 0);
+            if (position) {
+                isolate->ThrowException(Exception::Error(gtm_status(msg_buffer_g, position, async)->ToString()));
+                args.GetReturnValue().Set(Undefined(isolate));
+                return;
+            } else {
+                args.GetReturnValue().Set(gtm_status(msg_buffer_g, position, async));
+                return;
+            }
         }
 
-        args.GetReturnValue().Set(ret_data);
-    } else {
-        Local<Object> return_object = Object::New(isolate);
+        if (debug_g > LOW) cout << "DEBUG>> call into kill_ret" << "\n";
 
-        if (mode_g == STRICT) {
-            if (local) {
-                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-            } else {
-                return_object->Set(String::NewFromUtf8(isolate, "global"), glvn);
-            }
+        return_object = kill_ret(position, local, async, gvn, subscripts);
 
-            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
-
-            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
-            return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
-
-            if (local) {
-                return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-            } else {
-                return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(glvn));
-            }
-
-            if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
-
-            return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
-        }
+        if (debug_g > OFF) cout << "DEBUG> Gtm::kill exit" << endl;
 
         args.GetReturnValue().Set(return_object);
+        return;
     }
-
-    if (debug_g > OFF) cout << "\nDEBUG> kill exit" << endl;
-    return;
 } // @end Gtm::kill method
 
 /*
@@ -2157,7 +2876,7 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> local_directory enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::local_directory enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -2216,7 +2935,7 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_local_directory[] = "local_directory";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_local_directory;
@@ -2227,7 +2946,9 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> lo: " << *String::Utf8Value(lo) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << *String::Utf8Value(hi) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, max->Uint32Value(), *String::Utf8Value(lo), *String::Utf8Value(hi), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_lo {lo};
         GtmValue gtm_hi {hi};
@@ -2235,14 +2956,18 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> lo: " << gtm_lo.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << gtm_hi.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, max->Uint32Value(), gtm_lo.to_byte(), gtm_hi.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << "DEBUG>> lo: " << *String::Utf8Value(lo) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << *String::Utf8Value(hi) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_local_directory, ret_buffer_g, max->Uint32Value(), *String::Utf8Value(lo), *String::Utf8Value(hi), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_lo {lo};
         GtmValue gtm_hi {hi};
@@ -2250,14 +2975,18 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> lo: " << gtm_lo.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> hi: " << gtm_hi.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_local_directory, ret_buffer_g, max->Uint32Value(), gtm_lo.to_byte(), gtm_hi.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -2271,7 +3000,7 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> local_directory JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::local_directory JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -2287,7 +3016,7 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
         args.GetReturnValue().Set(Local<Array>::Cast(json));
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> local_directory exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::local_directory exit" << endl;
     return;
 } // @end Gtm::local_directory method
 
@@ -2302,7 +3031,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> lock enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::lock enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -2394,11 +3123,6 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -2406,6 +3130,11 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -2423,7 +3152,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_lock[] = "lock";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_lock;
@@ -2434,7 +3163,9 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), timeout->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -2442,14 +3173,18 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), timeout->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_lock, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), timeout->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -2457,14 +3192,18 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_lock, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), timeout->NumberValue(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -2478,7 +3217,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> lock JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::lock JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -2508,7 +3247,13 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
         }
 
         if (!subscripts->IsUndefined()) {
-            return_object->Set(String::NewFromUtf8(isolate, "subscripts"), temp_object->Get(String::NewFromUtf8(isolate, "subscripts")));
+            Local<Value> temp_subscripts = temp_object->Get(String::NewFromUtf8(isolate, "subscripts"));
+
+            if (!temp_subscripts->IsUndefined()) {
+                return_object->Set(String::NewFromUtf8(isolate, "subscripts"), temp_subscripts);
+            } else {
+                return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+            }
         }
     } else {
         return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, 1));
@@ -2526,7 +3271,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> lock exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::lock exit" << endl;
     return;
 } // @end Gtm::lock method
 
@@ -2541,7 +3286,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> merge enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::merge enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -2663,11 +3408,6 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
     Local<Value> from_name = Undefined(isolate);
 
     if (from_local) {
-        if (invalid_local(*String::Utf8Value(from_glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(from_glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -2675,6 +3415,11 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
 
         from_name_msg = "DEBUG>> from_local: ";
         from_name = localize_name(from_glvn);
+
+        if (invalid_local(*String::Utf8Value(from_name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' in 'from' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(from_glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -2689,11 +3434,6 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
     Local<Value> to_name = Undefined(isolate);
 
     if (to_local) {
-        if (invalid_local(*String::Utf8Value(to_glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(to_glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -2701,6 +3441,11 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
 
         to_name_msg = "DEBUG>> to_local: ";
         to_name = localize_name(to_glvn);
+
+        if (invalid_local(*String::Utf8Value(to_name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' in 'to' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(to_glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -2717,7 +3462,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_merge[] = "merge";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_merge;
@@ -2730,7 +3475,9 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << to_name_msg << *String::Utf8Value(to_name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> to_subscripts: " << *String::Utf8Value(to_subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(from_name), *String::Utf8Value(from_subs), *String::Utf8Value(to_name), *String::Utf8Value(to_subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_from_name {from_name};
         GtmValue gtm_from_subs {from_subs};
@@ -2742,7 +3489,9 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << to_name_msg << gtm_to_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> to_subscripts: " << gtm_to_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_from_name.to_byte(), gtm_from_subs.to_byte(), gtm_to_name.to_byte(), gtm_to_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
@@ -2751,7 +3500,9 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << to_name_msg << *String::Utf8Value(to_name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> to_subscripts: " << *String::Utf8Value(to_subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_merge, ret_buffer_g, *String::Utf8Value(from_name), *String::Utf8Value(from_subs), *String::Utf8Value(to_name), *String::Utf8Value(to_subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_from_name {from_name};
         GtmValue gtm_from_subs {from_subs};
@@ -2763,14 +3514,18 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << to_name_msg << gtm_to_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> to_subscripts: " << gtm_to_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_merge, ret_buffer_g, gtm_from_name.to_byte(), gtm_from_subs.to_byte(), gtm_to_name.to_byte(), gtm_to_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -2784,7 +3539,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> merge JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::merge JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -2814,7 +3569,17 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
         }
 
         if (!from_subscripts->IsUndefined() || !to_subscripts->IsUndefined()) {
-            return_object->Set(String::NewFromUtf8(isolate, "subscripts"), temp_object->Get(String::NewFromUtf8(isolate, "subscripts")));
+            Local<Value> temp_subscripts = temp_object->Get(String::NewFromUtf8(isolate, "subscripts"));
+
+            if (!temp_subscripts->IsUndefined()) {
+                return_object->Set(String::NewFromUtf8(isolate, "subscripts"), temp_subscripts);
+            } else {
+                if (!from_subscripts->IsUndefined()) {
+                    return_object->Set(String::NewFromUtf8(isolate, "subscripts"), from_subscripts);
+                } else {
+                    return_object->Set(String::NewFromUtf8(isolate, "subscripts"), to_subscripts);
+                }
+            }
         }
 
         return_object->Set(String::NewFromUtf8(isolate, "result"), String::NewFromUtf8(isolate, "1"));
@@ -2841,7 +3606,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> merge exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::merge exit" << endl;
     return;
 } // @end Gtm::merge method
 
@@ -2856,7 +3621,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> next_node enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::next_node enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -2926,11 +3691,6 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -2938,6 +3698,11 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -2954,7 +3719,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_next_node[] = "next_node";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_next_node;
@@ -2965,7 +3730,9 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -2973,14 +3740,18 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_next_node, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -2988,14 +3759,18 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_next_node, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -3009,7 +3784,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> next_node JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::next_node JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -3065,7 +3840,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> next_node exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::next_node exit" << endl;
     return;
 } // @end Gtm::next_node method
 
@@ -3110,7 +3885,7 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
             }
         }
 
-        if (debug_g > OFF) cout << "\nDEBUG> open enter" << endl;
+        if (debug_g > OFF) cout << "\nDEBUG> Gtm::open enter" << endl;
         if (debug_g > LOW) cout << "DEBUG>> debug: " << debug_g << "\n";
 
         Local<Value> global_directory = arg_object->Get(String::NewFromUtf8(isolate, "globalDirectory"));
@@ -3130,23 +3905,23 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
             }
         }
 
-        Local<Value> routine_path = arg_object->Get(String::NewFromUtf8(isolate, "routinePath"));
+        Local<Value> routines_path = arg_object->Get(String::NewFromUtf8(isolate, "routinesPath"));
 
-        if (!routine_path->IsUndefined() && routine_path->IsString()) {
-            if (debug_g > LOW) cout << "DEBUG>> routinePath: " << *String::Utf8Value(routine_path) << "\n";
+        if (!routines_path->IsUndefined() && routines_path->IsString()) {
+            if (debug_g > LOW) cout << "DEBUG>> routinesPath: " << *String::Utf8Value(routines_path) << "\n";
 
-            if (setenv("gtmroutines", *String::Utf8Value(routine_path), 1) == -1) {
+            if (setenv("gtmroutines", *String::Utf8Value(routines_path), 1) == -1) {
                 isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
                 return;
             }
         }
 
-        Local<Value> callin_path = arg_object->Get(String::NewFromUtf8(isolate, "callinPath"));
+        Local<Value> callin_table = arg_object->Get(String::NewFromUtf8(isolate, "callinTable"));
 
-        if (!callin_path->IsUndefined() && callin_path->IsString()) {
-            if (debug_g > LOW) cout << "DEBUG>> callinPath: " << *String::Utf8Value(callin_path) << "\n";
+        if (!callin_table->IsUndefined() && callin_table->IsString()) {
+            if (debug_g > LOW) cout << "DEBUG>> callinTable: " << *String::Utf8Value(callin_table) << "\n";
 
-            if (setenv("GTMCI", *String::Utf8Value(callin_path), 1) == -1) {
+            if (setenv("GTMCI", *String::Utf8Value(callin_table), 1) == -1) {
                 isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
                 return;
             }
@@ -3240,12 +4015,14 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
         }
     }
 
+    uv_mutex_lock(&mutex);
     if (gtm_init() != EXIT_SUCCESS) {
         gtm_zstatus(msg_buffer_g, MSG_LEN);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
+    uv_mutex_unlock(&mutex);
 
     gtm_state_g = OPEN;
 
@@ -3276,22 +4053,28 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
         gtm_status_t stat_buf;
         gtm_char_t gtm_debug[] = "debug";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
         ci_name_descriptor access;
 
         access.rtn_name.address = gtm_debug;
         access.rtn_name.length = 5;
         access.handle = NULL;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, debug_g);
+        uv_mutex_unlock(&mutex);
 #else
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_debug, debug_g);
+        uv_mutex_unlock(&mutex);
 #endif
 
         if (stat_buf != EXIT_SUCCESS) {
+            uv_mutex_lock(&mutex);
             gtm_zstatus(msg_buffer_g, MSG_LEN);
+            uv_mutex_unlock(&mutex);
 
-            args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+            args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
             return;
         }
     }
@@ -3308,7 +4091,7 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
         result->Set(String::NewFromUtf8(isolate, "gtm_pid"), Number::New(isolate, getpid()));
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> open exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::open exit" << endl;
 
     args.GetReturnValue().Set(result);
     return;
@@ -3325,34 +4108,63 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> order enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::order enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
         return;
     }
 
-    if (args.Length() == 0) {
-        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an argument")));
-        return;
-    } else if (!args[0]->IsObject()) {
-        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Argument must be an object")));
+    bool async = false;
+    unsigned int args_count = args.Length();
+
+    if (args[args_count - 1]->IsFunction()) {
+        --args_count;
+        async = true;
+    }
+
+    if (args_count == 0) {
+        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an additional argument")));
         return;
     }
 
-    Local<Object> arg_object = args[0]->ToObject();
-    Local<Value> glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+    Local<Value> glvn = Undefined(isolate);
+    Local<Value> subscripts = Undefined(isolate);
     bool local = false;
+    bool position = false;
 
-    if (glvn->IsUndefined()) {
-        glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+    if (args[0]->IsObject()) {
+        Local<Object> arg_object = args[0]->ToObject();
+        glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+
+        if (glvn->IsUndefined()) {
+            glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+            local = true;
+        }
 
         if (glvn->IsUndefined()) {
             isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply a 'global' or 'local' property")));
             return;
-        } else {
-            local = true;
         }
+
+        subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
+    } else {
+        glvn = args[0];
+
+        if (args_count > 1) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_count - 1);
+
+            for (unsigned int i = 1; i < args_count; i++) {
+                temp_subscripts->Set(i - 1, args[i]);
+            }
+
+            subscripts = temp_subscripts;
+        }
+
+        position = true;
+
+        string test = *String::Utf8Value(glvn);
+        if (test[0] != '^') local = true;
     }
 
     if (!glvn->IsString()) {
@@ -3373,19 +4185,40 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
         return;
     }
 
-    Local<Value> subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
     Local<Value> subs = Undefined(isolate);
+#if YDB_SIMPLE_API == 1
+    vector<string> subsarray;
+    string subsdata;
+#endif
 
     if (subscripts->IsUndefined()) {
         subs = String::Empty(isolate);
     } else if (subscripts->IsArray()) {
+#if YDB_SIMPLE_API == 1
+        Local<Array> subscripts_array = Local<Array>::Cast(subscripts);
+        unsigned int length = subscripts_array->Length();
+
+        for (unsigned int i = 0; i < length; i++) {
+            Local<Value> data = subscripts_array->Get(i);
+
+            if (utf8_g == true) {
+                subsdata = *String::Utf8Value(data);
+            } else {
+                GtmValue gtm_data {data};
+                subsdata = gtm_data.to_byte();
+            }
+
+            subsarray.push_back(subsdata);
+        }
+#else
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Subscripts contain invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
+#endif
     } else {
         isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Property 'subscripts' must be an array")));
         return;
@@ -3395,21 +4228,21 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Global is an invalid name")));
             return;
         }
 
@@ -3420,127 +4253,88 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
     if (debug_g > OFF) cout << "\nDEBUG> call into " NODEM_DB << endl;
     if (debug_g > LOW) cout << "DEBUG>> mode: " << mode_g << "\n";
 
-    gtm_status_t stat_buf;
-    gtm_char_t gtm_order[] = "order";
-
-#if (GTM_VERSION > 54)
-    ci_name_descriptor access;
-
-    access.rtn_name.address = gtm_order;
-    access.rtn_name.length = 5;
-    access.handle = NULL;
+    gtm_status_t stat_buf = 0;
+    Local<Value> return_object = Object::New(isolate);
+    string gvn, sub;
 
     if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
-
-        stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        gvn = *String::Utf8Value(name);
+        sub = *String::Utf8Value(subs);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
 
-        if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
-
-        stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        gvn = gtm_name.to_byte();
+        sub = gtm_subs.to_byte();
     }
-#else
-    if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
-        stat_buf = gtm_ci(gtm_order, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
+    if (debug_g > LOW) cout << name_msg << gvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << sub << endl;
 
-        if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
+    if (async) {
+        Local<Function> callback = Local<Function>::Cast(args[args_count]);
 
-        stat_buf = gtm_ci(gtm_order, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
-    }
+        Baton *baton = new Baton();
+
+        baton->request.data = baton;
+        baton->api = "order";
+        baton->callback_p.Reset(isolate, callback);
+        baton->subscripts_p.Reset(isolate, subscripts);
+        baton->glvn = gvn;
+        baton->subs = sub;
+#if YDB_SIMPLE_API == 1
+        baton->subsarray = subsarray;
 #endif
+        baton->mode = mode_g;
+        baton->status = stat_buf;
+        baton->async = async;
+        baton->local = local;
+        baton->position = position;
 
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_queue_work(uv_default_loop(), &baton->request, async_work, async_after);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
-        return;
-    }
-
-    if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
-
-    Local<String> json_string;
-
-    if (utf8_g == true) {
-        json_string = String::NewFromUtf8(isolate, ret_buffer_g);
-    } else {
-        json_string = GtmValue::from_byte(ret_buffer_g);
-    }
-
-    if (debug_g > OFF) cout << "DEBUG> order JSON string: " << *String::Utf8Value(json_string) << "\n";
-
-#if NODE_MAJOR_VERSION >= 1
-    TryCatch try_catch(isolate);
-#else
-    TryCatch try_catch;
-#endif
-
-    Local<Object> temp_object;
-    Local<Value> json = json_method(json_string, "parse");
-
-    if (try_catch.HasCaught()) {
-        args.GetReturnValue().Set(try_catch.Exception());
+        args.GetReturnValue().Set(Undefined(isolate));
         return;
     } else {
-        temp_object = json->ToObject();
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into order in the SimpleAPI interface" << "\n";
+
+        stat_buf = ydb::order(ret_buffer_g, gvn, subsarray, mode_g);
+#else
+        if (debug_g > LOW) cout << "DEBUG>> call into order in the Call-in interface" << "\n";
+
+        stat_buf = gtm::order(ret_buffer_g, gvn, sub, mode_g);
+#endif
+
+        if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
+
+        if (stat_buf == -1) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
+            return;
+        } else if (stat_buf != EXIT_SUCCESS) {
+            uv_mutex_lock(&mutex);
+            gtm_zstatus(msg_buffer_g, MSG_LEN);
+            uv_mutex_unlock(&mutex);
+
+            if (position) {
+                isolate->ThrowException(Exception::Error(gtm_status(msg_buffer_g, position, async)->ToString()));
+                args.GetReturnValue().Set(Undefined(isolate));
+                return;
+            } else {
+                args.GetReturnValue().Set(gtm_status(msg_buffer_g, position, async));
+                return;
+            }
+        }
+
+        if (debug_g > LOW) cout << "DEBUG>> call into order_ret" << "\n";
+
+        return_object = order_ret(ret_buffer_g, position, local, async, gvn, subscripts);
+
+        if (debug_g > OFF) cout << "DEBUG> Gtm::order exit" << endl;
+
+        args.GetReturnValue().Set(return_object);
+        return;
     }
-
-    Local<Object> return_object = Object::New(isolate);
-
-    if (mode_g == STRICT) {
-        Local<Value> result = temp_object->Get(String::NewFromUtf8(isolate, "result"));
-
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), glvn);
-        }
-
-        if (!subscripts->IsUndefined() && Local<Array>::Cast(subscripts)->Length() > 0) {
-            Local<Array> new_subscripts = Local<Array>::Cast(subscripts);
-
-            new_subscripts->Set(Number::New(isolate, new_subscripts->Length() -1), result);
-            return_object->Set(String::NewFromUtf8(isolate, "subscripts"), new_subscripts);
-        }
-
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
-        return_object->Set(String::NewFromUtf8(isolate, "result"), result);
-    } else {
-        Local<Value> result = temp_object->Get(String::NewFromUtf8(isolate, "result"));
-
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
-
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(glvn));
-        }
-
-        if (!subscripts->IsUndefined() && Local<Array>::Cast(subscripts)->Length() > 0) {
-            Local<Array> new_subscripts = Local<Array>::Cast(subscripts);
-
-            new_subscripts->Set(Number::New(isolate, new_subscripts->Length() -1), result);
-            return_object->Set(String::NewFromUtf8(isolate, "subscripts"), new_subscripts);
-        }
-
-        return_object->Set(String::NewFromUtf8(isolate, "result"), result);
-    }
-
-    args.GetReturnValue().Set(return_object);
-
-    if (debug_g > OFF) cout << "\nDEBUG> order exit" << endl;
-    return;
 } // @end Gtm::order method
 
 /*
@@ -3554,7 +4348,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> previous enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::previous enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -3624,11 +4418,6 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -3636,6 +4425,11 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -3652,7 +4446,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_previous[] = "previous";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_previous;
@@ -3663,7 +4457,9 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -3671,14 +4467,18 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_previous, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -3686,14 +4486,18 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_previous, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -3707,7 +4511,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> previous JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::previous JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -3768,7 +4572,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> previous exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::previous exit" << endl;
     return;
 } // @end Gtm::previous method
 
@@ -3783,7 +4587,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> previous_node enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::previous_node enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -3853,11 +4657,6 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -3865,6 +4664,11 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -3881,7 +4685,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_previous_node[] = "previous_node";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_previous_node;
@@ -3892,7 +4696,9 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -3900,14 +4706,18 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_previous_node, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -3915,14 +4725,18 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_previous_node, ret_buffer_g, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -3936,7 +4750,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> previous_node JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::previous_node JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -3997,7 +4811,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> previous_node exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::previous_node exit" << endl;
     return;
 } // @end Gtm::previous_node method
 
@@ -4012,7 +4826,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> procedure enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::procedure enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -4083,7 +4897,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_procedure[] = "procedure";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_procedure;
@@ -4094,7 +4908,9 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> procedure: " << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << *String::Utf8Value(arg) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(arg), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_args {arg};
@@ -4102,14 +4918,18 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> procedure: " << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << gtm_args.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, ret_buffer_g, gtm_name.to_byte(), gtm_args.to_byte(), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << "DEBUG>> procedure: " << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << *String::Utf8Value(arg) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_procedure, ret_buffer_g, *String::Utf8Value(name), *String::Utf8Value(arg), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_args {arg};
@@ -4117,14 +4937,18 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << "DEBUG>> procedure: " << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> arguments: " << gtm_args.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_procedure, ret_buffer_g, gtm_name.to_byte(), gtm_args.to_byte(), relink, mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -4138,7 +4962,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> procedure JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::procedure JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -4188,7 +5012,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> procedure exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::procedure exit" << endl;
     return;
 } // @end Gtm::procedure method
 
@@ -4203,7 +5027,7 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> retrieve enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::retrieve enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -4215,22 +5039,28 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_retrieve[] = "retrieve";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_retrieve;
     access.rtn_name.length = 8;
     access.handle = NULL;
 
+    uv_mutex_lock(&mutex);
     stat_buf = gtm_cip(&access, ret_buffer_g);
+    uv_mutex_unlock(&mutex);
 #else
+    uv_mutex_lock(&mutex);
     stat_buf = gtm_ci(gtm_retrieve, ret_buffer_g);
+    uv_mutex_unlock(&mutex);
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -4244,7 +5074,7 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> retrieve JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::retrieve JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -4264,7 +5094,7 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(temp_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> retrieve exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::retrieve exit" << endl;
     return;
 } // @end Gtm::retrieve method
 
@@ -4279,34 +5109,66 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> set enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::set enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
         return;
     }
 
-    if (args.Length() == 0) {
-        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an argument")));
-        return;
-    } else if (!args[0]->IsObject()) {
-        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Argument must be an object")));
+    bool async = false;
+    unsigned int args_count = args.Length();
+
+    if (args[args_count - 1]->IsFunction()) {
+        --args_count;
+        async = true;
+    }
+
+    if (args_count == 0) {
+        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an additional argument")));
         return;
     }
 
-    Local<Object> arg_object = args[0]->ToObject();
-    Local<Value> glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+    Local<Value> glvn = Undefined(isolate);
+    Local<Value> subscripts = Undefined(isolate);
+    Local<Value> data, data_node;
     bool local = false;
+    bool position = false;
 
-    if (glvn->IsUndefined()) {
-        glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+    if (args[0]->IsObject()) {
+        Local<Object> arg_object = args[0]->ToObject();
+        glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+
+        if (glvn->IsUndefined()) {
+            glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+            local = true;
+        }
 
         if (glvn->IsUndefined()) {
             isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply a 'global' or 'local' property")));
             return;
-        } else {
-            local = true;
         }
+
+        subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
+        data = arg_object->Get(String::NewFromUtf8(isolate, "data"));
+    } else {
+        glvn = args[0];
+        data = args[args_count - 1];
+
+        if (args_count > 2) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_count - 2);
+
+            for (unsigned int i = 1; i < args_count - 1; i++) {
+                temp_subscripts->Set(i - 1, args[i]);
+            }
+
+            subscripts = temp_subscripts;
+        }
+
+        position = true;
+
+        string test = *String::Utf8Value(glvn);
+        if (test[0] != '^') local = true;
     }
 
     if (!glvn->IsString()) {
@@ -4327,25 +5189,44 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
         return;
     }
 
-    Local<Value> subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
     Local<Value> subs = Undefined(isolate);
+#if YDB_SIMPLE_API == 1
+    vector<string> subsarray;
+    string subsdata;
+#endif
 
     if (subscripts->IsUndefined()) {
         subs = String::Empty(isolate);
     } else if (subscripts->IsArray()) {
+#if YDB_SIMPLE_API == 1
+        Local<Array> subscripts_array = Local<Array>::Cast(subscripts);
+        unsigned int length = subscripts_array->Length();
+
+        for (unsigned int i = 0; i < length; i++) {
+            Local<Value> data = subscripts_array->Get(i);
+
+            if (utf8_g == true) {
+                subsdata = *String::Utf8Value(data);
+            } else {
+                GtmValue gtm_data {data};
+                subsdata = gtm_data.to_byte();
+            }
+
+            subsarray.push_back(subsdata);
+        }
+#else
         subs = encode_arguments(subscripts);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
+            Local<String> error_message = String::NewFromUtf8(isolate, "Subscripts contain invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
+#endif
     } else {
         isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Property 'subscripts' must be an array")));
         return;
     }
-
-    Local<Value> data = arg_object->Get(String::NewFromUtf8(isolate, "data"));
 
     if (data->IsUndefined()) {
         isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply a 'data' property")));
@@ -4355,7 +5236,11 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
     Local<Array> data_array = Array::New(isolate, 1);
     data_array->Set(0, data);
 
-    Local<Value> data_node = encode_arguments(data_array);
+#if YDB_SIMPLE_API == 1
+    data_node = data_array;
+#else
+    data_node = encode_arguments(data_array);
+#endif
 
     if (data_node->IsUndefined()) {
         Local<String> error_message = String::NewFromUtf8(isolate, "Property 'data' contains invalid data");
@@ -4367,21 +5252,21 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local is an invalid name")));
             return;
         }
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Global is an invalid name")));
             return;
         }
 
@@ -4392,96 +5277,94 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
     if (debug_g > OFF) cout << "\nDEBUG> call into " NODEM_DB << endl;
     if (debug_g > LOW) cout << "DEBUG>> mode: " << mode_g << "\n";
 
-    gtm_status_t stat_buf;
-    gtm_char_t gtm_set[] = "set";
-
-#if (GTM_VERSION > 54)
-    ci_name_descriptor access;
-
-    access.rtn_name.address = gtm_set;
-    access.rtn_name.length = 3;
-    access.handle = NULL;
+    gtm_status_t stat_buf = 0;
+    Local<Value> return_object = Object::New(isolate);
+    string gvn, sub, value;
 
     if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> data: " << *String::Utf8Value(data_node) << endl;
-
-        stat_buf = gtm_cip(&access, *String::Utf8Value(name), *String::Utf8Value(subs), *String::Utf8Value(data_node), mode_g);
+        gvn = *String::Utf8Value(name);
+        sub = *String::Utf8Value(subs);
+        value = *String::Utf8Value(data_node);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
         GtmValue gtm_data {data_node};
 
-        if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> data: " << gtm_data.to_byte() << endl;
-
-        stat_buf = gtm_cip(&access, gtm_name.to_byte(), gtm_subs.to_byte(), gtm_data.to_byte(), mode_g);
+        gvn = gtm_name.to_byte();
+        sub = gtm_subs.to_byte();
+        value = gtm_data.to_byte();
     }
+
+    if (debug_g > LOW) cout << name_msg << gvn << "\n";
+    if (debug_g > LOW) cout << "DEBUG>> subscripts: " << sub << endl;
+    if (debug_g > LOW) cout << "DEBUG>> data: " << value << endl;
+
+    if (async) {
+        Local<Function> callback = Local<Function>::Cast(args[args_count]);
+
+        Baton *baton = new Baton();
+
+        baton->request.data = baton;
+        baton->api = "set";
+        baton->callback_p.Reset(isolate, callback);
+        baton->subscripts_p.Reset(isolate, subscripts);
+        baton->data_p.Reset(isolate, data);
+        baton->glvn = gvn;
+        baton->subs = sub;
+        baton->value = value;
+#if YDB_SIMPLE_API == 1
+        baton->subsarray = subsarray;
+#endif
+        baton->mode = mode_g;
+        baton->status = stat_buf;
+        baton->async = async;
+        baton->local = local;
+        baton->position = position;
+
+        uv_queue_work(uv_default_loop(), &baton->request, async_work, async_after);
+
+        args.GetReturnValue().Set(Undefined(isolate));
+        return;
+    } else {
+#if YDB_SIMPLE_API == 1
+        if (debug_g > LOW) cout << "DEBUG>> call into set in the SimpleAPI interface" << "\n";
+
+        stat_buf = ydb::set(gvn, subsarray, value, mode_g);
 #else
-    if (utf8_g == true) {
-        if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> data: " << *String::Utf8Value(data_node) << endl;
+        if (debug_g > LOW) cout << "DEBUG>> call into set in the Call-in interface" << "\n";
 
-        stat_buf = gtm_ci(gtm_set, *String::Utf8Value(name), *String::Utf8Value(subs), *String::Utf8Value(data_node), mode_g);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-        GtmValue gtm_data {data_node};
-
-        if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << "\n";
-        if (debug_g > LOW) cout << "DEBUG>> data: " << gtm_data.to_byte() << endl;
-
-        stat_buf = gtm_ci(gtm_set, gtm_name.to_byte(), gtm_subs.to_byte(), gtm_data.to_byte(), mode_g);
-    }
+        stat_buf = gtm::set(gvn, sub, value, mode_g);
 #endif
 
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_zstatus(msg_buffer_g, MSG_LEN);
+        if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        if (stat_buf == -1) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror(errno))));
+            return;
+        } else if (stat_buf != EXIT_SUCCESS) {
+            uv_mutex_lock(&mutex);
+            gtm_zstatus(msg_buffer_g, MSG_LEN);
+            uv_mutex_unlock(&mutex);
+
+            if (position) {
+                isolate->ThrowException(Exception::Error(gtm_status(msg_buffer_g, position, async)->ToString()));
+                args.GetReturnValue().Set(Undefined(isolate));
+                return;
+            } else {
+                args.GetReturnValue().Set(gtm_status(msg_buffer_g, position, async));
+                return;
+            }
+        }
+
+        if (debug_g > LOW) cout << "DEBUG>> call into set_ret" << "\n";
+
+        return_object = set_ret(position, local, async, gvn, subscripts, data);
+
+        if (debug_g > OFF) cout << "DEBUG> Gtm::set exit" << endl;
+
+        args.GetReturnValue().Set(return_object);
         return;
     }
-
-    if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
-
-    Local<Object> return_object = Object::New(isolate);
-
-    if (mode_g == STRICT) {
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), glvn);
-        }
-
-        if (!subscripts->IsUndefined())
-            return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
-
-        return_object->Set(String::NewFromUtf8(isolate, "data"), data);
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
-        return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
-    } else {
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
-
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(glvn));
-        }
-
-        if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
-
-        return_object->Set(String::NewFromUtf8(isolate, "data"), data);
-        return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
-    }
-
-    args.GetReturnValue().Set(return_object);
-
-    if (debug_g > OFF) cout << "\nDEBUG> set exit" << endl;
-    return;
 } // @end Gtm::set method
 
 /*
@@ -4495,7 +5378,7 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> unlock enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::unlock enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -4558,11 +5441,6 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
     Local<Value> name = Undefined(isolate);
 
     if (local) {
-        if (invalid_local(*String::Utf8Value(glvn))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
-            return;
-        }
-
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
             return;
@@ -4570,6 +5448,11 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
 
         name_msg = "DEBUG>> local: ";
         name = localize_name(glvn);
+
+        if (invalid_local(*String::Utf8Value(name))) {
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            return;
+        }
     } else {
         if (invalid_name(*String::Utf8Value(glvn))) {
             isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
@@ -4586,7 +5469,7 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_unlock[] = "unlock";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_unlock;
@@ -4597,7 +5480,9 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -4605,14 +5490,18 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_cip(&access, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #else
     if (utf8_g == true) {
         if (debug_g > LOW) cout << name_msg << *String::Utf8Value(name) << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_unlock, *String::Utf8Value(name), *String::Utf8Value(subs), mode_g);
+        uv_mutex_unlock(&mutex);
     } else {
         GtmValue gtm_name {name};
         GtmValue gtm_subs {subs};
@@ -4620,14 +5509,18 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
         if (debug_g > LOW) cout << name_msg << gtm_name.to_byte() << "\n";
         if (debug_g > LOW) cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
 
+        uv_mutex_lock(&mutex);
         stat_buf = gtm_ci(gtm_unlock, gtm_name.to_byte(), gtm_subs.to_byte(), mode_g);
+        uv_mutex_unlock(&mutex);
     }
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -4671,7 +5564,7 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
         args.GetReturnValue().Set(return_object);
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> unlock exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::unlock exit" << endl;
     return;
 } // @end Gtm::unlock method
 
@@ -4686,7 +5579,7 @@ void Gtm::update(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> update enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::update enter" << "\n";
 
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, NODEM_DB " database connection is not open")));
@@ -4698,22 +5591,28 @@ void Gtm::update(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_update[] = "update";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_update;
     access.rtn_name.length = 6;
     access.handle = NULL;
 
+    uv_mutex_lock(&mutex);
     stat_buf = gtm_cip(&access, ret_buffer_g);
+    uv_mutex_unlock(&mutex);
 #else
+    uv_mutex_lock(&mutex);
     stat_buf = gtm_ci(gtm_update, ret_buffer_g);
+    uv_mutex_unlock(&mutex);
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -4727,7 +5626,7 @@ void Gtm::update(const FunctionCallbackInfo<Value>& args)
         json_string = GtmValue::from_byte(ret_buffer_g);
     }
 
-    if (debug_g > OFF) cout << "DEBUG> update JSON string: " << *String::Utf8Value(json_string) << "\n";
+    if (debug_g > OFF) cout << "DEBUG> Gtm::update JSON string: " << *String::Utf8Value(json_string) << "\n";
 
 #if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
@@ -4747,7 +5646,7 @@ void Gtm::update(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(temp_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> update exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::update exit" << endl;
     return;
 } // @end Gtm::update method
 
@@ -4762,7 +5661,7 @@ void Gtm::version(const FunctionCallbackInfo<Value>& args)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    if (debug_g > OFF) cout << "\nDEBUG> version enter" << "\n";
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::version enter" << "\n";
 
     Local<String> nodem_version = String::NewFromUtf8(isolate, "Node.js Adaptor for " NODEM_DB ": Version: " NODEM_VERSION " (FWS)");
 
@@ -4776,22 +5675,28 @@ void Gtm::version(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_version[] = "version";
 
-#if (GTM_VERSION > 54)
+#if (GTM_CIP_API == 1)
     ci_name_descriptor version;
 
     version.rtn_name.address = gtm_version;
     version.rtn_name.length = 7;
     version.handle = NULL;
 
+    uv_mutex_lock(&mutex);
     stat_buf = gtm_cip(&version, ret_buffer_g);
+    uv_mutex_unlock(&mutex);
 #else
+    uv_mutex_lock(&mutex);
     stat_buf = gtm_ci(gtm_version, ret_buffer_g);
+    uv_mutex_unlock(&mutex);
 #endif
 
     if (stat_buf != EXIT_SUCCESS) {
+        uv_mutex_lock(&mutex);
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
-        args.GetReturnValue().Set(gtm_status(msg_buffer_g));
+        args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
     }
 
@@ -4802,7 +5707,7 @@ void Gtm::version(const FunctionCallbackInfo<Value>& args)
 
     args.GetReturnValue().Set(version_string);
 
-    if (debug_g > OFF) cout << "\nDEBUG> version exit" << endl;
+    if (debug_g > OFF) cout << "\nDEBUG> Gtm::version exit" << endl;
     return;
 } // @end Gtm::version & Gtm::about method
 
@@ -4824,7 +5729,7 @@ void Gtm::New(const FunctionCallbackInfo<Value>& args)
         args.GetReturnValue().Set(args.This());
         return;
     } else {
-        Local<Function> constructor = Local<Function>::New(isolate, constructor_g);
+        Local<Function> constructor = Local<Function>::New(isolate, constructor_p);
 
 #if NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8 || NODE_MAJOR_VERSION >= 7
         MaybeLocal<Object> maybe_instance = constructor->NewInstance(isolate->GetCurrentContext());
@@ -4854,44 +5759,47 @@ void Gtm::Init(Local<Object> exports)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    Local<FunctionTemplate> func_template = FunctionTemplate::New(isolate, Gtm::New);
+    Local<FunctionTemplate> func_tpl = FunctionTemplate::New(isolate, Gtm::New);
 
-    func_template->SetClassName(String::NewFromUtf8(isolate, "Gtm"));
-    func_template->InstanceTemplate()->SetInternalFieldCount(1);
+    func_tpl->SetClassName(String::NewFromUtf8(isolate, "Gtm"));
+    func_tpl->InstanceTemplate()->SetInternalFieldCount(1);
 
-    NODE_SET_PROTOTYPE_METHOD(func_template, "about", version);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "close", close);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "data", data);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "function", function);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "get", get);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "globalDirectory", global_directory);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "global_directory", global_directory);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "help", help);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "increment", increment);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "kill", kill);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "localDirectory", local_directory);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "local_directory", local_directory);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "lock", lock);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "merge", merge);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "next", order);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "nextNode", next_node);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "next_node", next_node);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "open", open);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "order", order);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "previous", previous);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "previousNode", previous_node);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "previous_node", previous_node);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "procedure", procedure);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "retrieve", retrieve);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "routine", procedure);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "set", set);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "unlock", unlock);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "update", update);
-    NODE_SET_PROTOTYPE_METHOD(func_template, "version", version);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "about", version);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "close", close);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "data", data);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "function", function);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "get", get);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "globalDirectory", global_directory);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "global_directory", global_directory);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "help", help);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "increment", increment);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "kill", kill);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "localDirectory", local_directory);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "local_directory", local_directory);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "lock", lock);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "merge", merge);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "next", order);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "nextNode", next_node);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "next_node", next_node);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "open", open);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "order", order);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "previous", previous);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "previousNode", previous_node);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "previous_node", previous_node);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "procedure", procedure);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "retrieve", retrieve);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "routine", procedure);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "set", set);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "unlock", unlock);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "update", update);
+    NODE_SET_PROTOTYPE_METHOD(func_tpl, "version", version);
 
-    constructor_g.Reset(isolate, func_template->GetFunction());
+    constructor_p.Reset(isolate, func_tpl->GetFunction());
+    Local<Function> constructor = Local<Function>::New(isolate, constructor_p);
 
-    exports->Set(String::NewFromUtf8(isolate, "Gtm"), func_template->GetFunction());
+    exports->Set(String::NewFromUtf8(isolate, "Gtm"), constructor);
+
+    if (strcmp(NODEM_DB, "YottaDB") == 0) exports->Set(String::NewFromUtf8(isolate, "Ydb"), constructor);
 } // @end Gtm::Init method
 
 /*

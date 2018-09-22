@@ -1,7 +1,7 @@
 {
   "name": "nodem",
   "description": "Database driver and binding API for the YottaDB and GT.M database and language",
-  "version": "0.11.2",
+  "version": "0.12.0",
   "author": {
     "name": "David Wicksell",
     "email": "dlw@linux.com",
@@ -37,8 +37,7 @@
   "gypfile": true,
   "scripts": {
     "debug": "bash -o pipefail -c \"node-gyp rebuild -d 3>&1 1>&2 2>&3 3>&- | tee builderror.log\"",
-    "preinstall": "bash -o pipefail -c \"node lib/preinstall 3>&1 1>&2 2>&3 3>&- | tee builderror.log\"",
-    "install": "bash -o pipefail -c \"node-gyp rebuild 3>&1 1>&2 2>&3 3>&- | tee -a builderror.log\"",
+    "install": "bash -o pipefail -c \"node-gyp rebuild 3>&1 1>&2 2>&3 3>&- | tee builderror.log\"",
     "postinstall": "bash -o pipefail -c \"node lib/postinstall 3>&1 1>&2 2>&3 3>&- | tee -a builderror.log\"",
     "uninstall": "rm -rf build builderror.log src/v4wNode.o",
     "test": "echo \"Error: No test specified\" && exit 1"

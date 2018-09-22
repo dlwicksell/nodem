@@ -1,4 +1,4 @@
-v4wNode() ;; 2018-04-10  12:38 PM
+v4wNode() ;;2018-09-17  12:57 PM
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -367,8 +367,13 @@ get(v4wGlvn,v4wSubs,v4wMode)
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> get:",! zwrite v4wName
  ;
- set v4wDefined=$data(@v4wName)#10
- set v4wData=$$process($get(@v4wName),"output",v4wMode,1,0)
+ if $zextract(v4wName)="$" do
+ . set v4wDefined=1
+ . xecute "set v4wName="_v4wName
+ . set v4wData=$$process(v4wName,"output",v4wMode,1,0)
+ else  do
+ . set v4wDefined=$data(@v4wName)#10
+ . set v4wData=$$process($get(@v4wName),"output",v4wMode,1,0)
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> get exit:",! zwrite v4wDefined,v4wData use $principal
  quit "{""defined"":"_v4wDefined_",""data"":"_v4wData_"}"
@@ -828,7 +833,10 @@ set(v4wGlvn,v4wSubs,v4wData,v4wMode)
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> set:",! zwrite v4wName,v4wData
  ;
- set @v4wName=v4wData
+ if $zextract(v4wName)="$" do
+ . xecute "set $"_$zextract(v4wName,2,$zlength(v4wName))_"="_$$process(v4wData,"output",v4wMode,1,0)
+ else  do
+ . set @v4wName=v4wData
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> set exit",! use $principal
  quit
