@@ -42,7 +42,7 @@
       },
       'defines': [
         'GTM_CIP_API=<!(if [ "$(echo \'w $e($tr($p($zv," ",2),"V."),1,2)\' | <(gtm_dist)/mumps -dir | grep -Ev "^$|>")" -lt 55 ]; then echo 0; else echo 1; fi)',
-        'YDB_SIMPLE_API=0'
+        'YDB_SIMPLE_API=<!(if [ -e "<(gtm_dist)/ydb" ]; then echo 1; else echo 0; fi)'
       ],
       'include_dirs': [
         '<(gtm_dist)'

@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.12.1-pre - 2018 Sep 24 ##
+
+- Pre-release version with SimpleAPI support on by default, for testing
+
 ## v0.12.0 - 2018 Sep 22 ##
 
 - Add asynchronous support to the get, kill, order, and set APIs

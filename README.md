@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the YottaDB/GT.M language and database ##
 
-Version 0.12.0 - 2018 Sep 22
+Version 0.12.1-pre - 2018 Sep 24
 
 ## Copyright and License ##
 
@@ -61,18 +61,18 @@ support for the rest of the API is coming soon.
 interface. YottaDB has released a new, lower-level database access API in C,
 called the SimpleAPI, which provides faster access to the underlying database
 operations. This release now has experimental support for YottaDB's new
-SimpleAPI for the get, kill, order, and set APIs, if you are using YottaDB r1.20
-or newer. By default, this support is turned off. In order to try the SimpleAPI
-versions of these four APIs, you will need to run the try-simple-api script
-found in the root of the Nodem repository. If you'd like to revert back to the
-original, and more thoroughly tested, call-in versions of the get, kill, order,
-and set APIs, you will need to run the try-simple-api script with the -r option,
-e.g.
+SimpleAPI for the get, kill, order, and set APIs, if you are using YottaDB
+r1.20 or newer. In this pre-release version, the SimpleAPI support is turned
+on. If you'd like to revert back to the original, and more thoroughly tested,
+call-in versions of the get, kill, order, and set APIs, you will need to run
+the try-simple-api script located in the root of the Nodem repository with the
+-r option. If you'd like to turn the SimpleAPI support back on again, run the
+try-simple-api script with no options, e.g.
 
     $ cd ~/nodem
-    $ ./try-simple-api
-    or
     $ ./try-simple-api -r
+    or
+    $ ./try-simple-api
 
 ## Installation ##
 
@@ -215,7 +215,7 @@ Here is a short example of how to use Nodem in the Node.js REPL:
     > gtm.open();
       { ok: true, result: 1, gtm_pid: 6162 }
     > gtm.version();
-      'Node.js Adaptor for GT.M: Version: 0.12.0 (FWS); GT.M version: 6.3-003A'
+      'Node.js Adaptor for GT.M: Version: 0.12.1 (FWS); GT.M version: 6.3-003A'
     > gtm.help();
       NodeM: Gtm class help menu - methods:
       ... <List of Nodem methods> ...
