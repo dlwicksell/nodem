@@ -1,5 +1,10 @@
 # NodeM Release Notes #
 
+## v0.12.1 - 2018 Oct 10 ##
+
+- Turn SimpleAPI support on by default
+- Speed up performance of SimpleAPI support
+
 ## v0.12.1-pre - 2018 Sep 24 ##
 
 - Pre-release version with SimpleAPI support on by default, for testing

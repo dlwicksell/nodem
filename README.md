@@ -2,7 +2,7 @@
 
 ## A Node.js binding and driver for the YottaDB/GT.M language and database ##
 
-Version 0.12.1-pre - 2018 Sep 24
+Version 0.12.1 - 2018 Oct 10
 
 ## Copyright and License ##
 
@@ -60,19 +60,19 @@ support for the rest of the API is coming soon.
 **NOTE:** The current implementation relies upon the YottaDB and GT.M C call-in
 interface. YottaDB has released a new, lower-level database access API in C,
 called the SimpleAPI, which provides faster access to the underlying database
-operations. This release now has experimental support for YottaDB's new
-SimpleAPI for the get, kill, order, and set APIs, if you are using YottaDB
-r1.20 or newer. In this pre-release version, the SimpleAPI support is turned
-on. If you'd like to revert back to the original, and more thoroughly tested,
-call-in versions of the get, kill, order, and set APIs, you will need to run
-the try-simple-api script located in the root of the Nodem repository with the
--r option. If you'd like to turn the SimpleAPI support back on again, run the
-try-simple-api script with no options, e.g.
+operations. Nodem now supports YottaDB's SimpleAPI for the get, kill, order, and
+set APIs, if you are using YottaDB r1.20 or newer. The SimpleAPI support is
+turned on by default, falling back to the call-in interface if the SimpleAPI is
+not available. If you'd like to revert back to the original, and more thoroughly
+tested, call-in versions of the get, kill, order, and set APIs, you will need to
+run the simple-api script located in the root of the Nodem repository with the
+-off option. If you'd like to turn the SimpleAPI support back on again, run the
+simple-api script with the -on option, e.g.
 
     $ cd ~/nodem
-    $ ./try-simple-api -r
+    $ ./simple-api -off
     or
-    $ ./try-simple-api
+    $ ./simple-api -on
 
 ## Installation ##
 
@@ -100,7 +100,7 @@ run the 'npm install' command, e.g.
     $ npm install
 
 Nodem should run on every version of Node.js starting with version 0.12.2,
-through the current release (v10.10.0 at this time), as well as every version of
+through the current release (v10.12.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards-compatible way, which might
 break Nodem for that version.
@@ -488,7 +488,7 @@ David Wicksell <dlw@linux.com>
 [YottaDB]: https://yottadb.com/
 [GT.M]: https://www.fisglobal.com/solutions/banking-and-wealth/services/database-engine
 [Caché]: https://www.intersystems.com/products/cache/
-[BXJS]: https://docs.intersystems.com/documentation/cache/20172/pdfs/BXJS.pdf
+[BXJS]: https://docs.intersystems.com/documentation/cache/20181/pdfs/BXJS.pdf
 [GT.CM]: http://tinco.pair.com/bhaskar/gtm/doc/books/ao/UNIX_manual/webhelp/content/ch13.html
 
 ### APIs ###

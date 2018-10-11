@@ -38,7 +38,6 @@ namespace ydb {
 using namespace v8;
 using std::cout;
 using std::string;
-using std::stringstream;
 using std::vector;
 
 /*
@@ -47,204 +46,129 @@ using std::vector;
  * @param {ydb_char_t} buffer - Data returned from YottaDB/GT.M database, via SimpleAPI interface
  * @param {string} name - Global, local, or intrinsic special variable name
  * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-ydb_status_t get(ydb_char_t buffer[], string name, vector<string> subs, mode_t mode)
+ydb_status_t get(ydb_char_t buffer[], string name, vector<string> subs)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::get enter" << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> buffer: " << buffer << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name.c_str() << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs.size() << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
 
-    int ret_code = 0;
-    char *varname = (char *) name.c_str();
-    unsigned int var_size = strlen(varname);
+    char *var_name = (char *) name.c_str();
 
-    ydb_buffer_t var_name;
-    var_name.len_alloc = var_size;
-    var_name.len_used = var_size;
-    var_name.buf_addr = varname;
+    ydb_buffer_t glvn;
+    glvn.len_alloc = glvn.len_used = strlen(var_name);
+    glvn.buf_addr = var_name;
 
-    uv_mutex_lock(&nodem::mutex);
-    ydb_buffer_t *subs_array = NULL;
-
-    if (subs.size() > 0) {
-        subs_array = (ydb_buffer_t *) ydb_malloc(subs.size() * sizeof(ydb_buffer_t));
-
-        if (subs_array == NULL) return -1;
-
-        for (unsigned int i = 0; i < subs.size(); i++) {
-            unsigned int subs_size = subs[i].length();
-
-            subs_array[i].len_alloc = subs_size;
-            subs_array[i].len_used = subs_size;
-            subs_array[i].buf_addr = (gtm_char_t*) ydb_malloc(subs_size);
-
-            if (subs_array[i].buf_addr == NULL) return -1;
-
-            strncpy(subs_array[i].buf_addr, subs[i].c_str(), subs_size);
-        }
-    }
-
-    ydb_buffer_t ret_value;
-    ret_value.len_alloc = YDB_MAX_STR;
-    ret_value.len_used = 0;
-    ret_value.buf_addr = (char *) ydb_malloc(YDB_MAX_STR);
-
-    if (ret_value.buf_addr == NULL) return -1;
-
-    ret_code = ydb_get_s(&var_name, subs.size(), subs_array, &ret_value);
-
-    strncpy(buffer, ret_value.buf_addr, ret_value.len_used);
-    buffer[ret_value.len_used] = '\0';
+    ydb_buffer_t subs_array[YDB_MAX_SUBS];
 
     for (unsigned int i = 0; i < subs.size(); i++) {
-        ydb_free(subs_array[i].buf_addr);
+            subs_array[i].len_alloc = subs_array[i].len_used = subs[i].length();
+            subs_array[i].buf_addr = (char *) subs[i].c_str();
     }
 
-    if (subs.size() > 0) ydb_free(subs_array);
+    char data[YDB_MAX_STR];
 
-    ydb_free(ret_value.buf_addr);
+    ydb_buffer_t value;
+    value.len_alloc = YDB_MAX_STR;
+    value.len_used = 0;
+    value.buf_addr = (char *) &data;
+
+    uv_mutex_lock(&nodem::mutex);
+    int code = ydb_get_s(&glvn, subs.size(), subs_array, &value);
     uv_mutex_unlock(&nodem::mutex);
+
+    strncpy(buffer, value.buf_addr, value.len_used);
+    buffer[value.len_used] = '\0';
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::get exit" << "\n";
 
-    return ret_code;
+    return code;
 } // @end get function
 
 /*
  * @function {public} kill
  * @summary Kill a global or global node, or a local or local node, or the entire local symbol table
- * @param {string} name - Global, local, or intrinsic special variable name
+ * @param {string} name - Global or local variable name
  * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-ydb_status_t kill(string name, vector<string> subs, mode_t mode)
+ydb_status_t kill(string name, vector<string> subs)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::kill enter" << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name.c_str() << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs.size() << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
 
-    int ret_code = 0;
-    char *varname = (char *) name.c_str();
-    unsigned int var_size = strlen(varname);
+    char *var_name = (char *) name.c_str();
 
-    ydb_buffer_t var_name;
-    var_name.len_alloc = var_size;
-    var_name.len_used = var_size;
-    var_name.buf_addr = varname;
+    ydb_buffer_t glvn;
+    glvn.len_alloc = glvn.len_used = strlen(var_name);
+    glvn.buf_addr = var_name;
 
-    uv_mutex_lock(&nodem::mutex);
-    ydb_buffer_t *subs_array = NULL;
+    ydb_buffer_t subs_array[YDB_MAX_SUBS];
 
-    if (subs.size() > 0) {
-        subs_array = (ydb_buffer_t *) ydb_malloc(subs.size() * sizeof(ydb_buffer_t));
-
-        if (subs_array == NULL) return -1;
-
-        for (unsigned int i = 0; i < subs.size(); i++) {
-            unsigned int subs_size = subs[i].length();
-
-            subs_array[i].len_alloc = subs_size;
-            subs_array[i].len_used = subs_size;
-            subs_array[i].buf_addr = (gtm_char_t*) ydb_malloc(subs_size);
-
-            if (subs_array[i].buf_addr == NULL) return -1;
-
-            strncpy(subs_array[i].buf_addr, subs[i].c_str(), subs_size);
-        }
+    for (unsigned int i = 0; i < subs.size(); i++) {
+            subs_array[i].len_alloc = subs_array[i].len_used = subs[i].length();
+            subs_array[i].buf_addr = (char *) subs[i].c_str();
     }
 
     int delete_type = YDB_DEL_TREE;
 
-    ret_code = ydb_delete_s(&var_name, subs.size(), subs_array, delete_type);
-
-    for (unsigned int i = 0; i < subs.size(); i++) {
-        ydb_free(subs_array[i].buf_addr);
-    }
-
-    if (subs.size() > 0) ydb_free(subs_array);
+    uv_mutex_lock(&nodem::mutex);
+    int code = ydb_delete_s(&glvn, subs.size(), subs_array, delete_type);
     uv_mutex_unlock(&nodem::mutex);
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::kill exit" << "\n";
 
-    return ret_code;
+    return code;
 } // @end kill function
 
 /*
  * @function {public} order
  * @summary Return the next global or local node at the same level
  * @param {ydb_char_t} buffer - Data returned from YottaDB/GT.M database, via SimpleAPI interface
- * @param {string} name - Global, local, or intrinsic special variable name
+ * @param {string} name - Global or local variable name
  * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-ydb_status_t order(ydb_char_t buffer[], string name, vector<string> subs, mode_t mode)
+ydb_status_t order(ydb_char_t buffer[], string name, vector<string> subs)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::order enter" << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> buffer: " << buffer << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name.c_str() << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs.size() << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
 
-    int ret_code = 0;
-    char *varname = (char *) name.c_str();
-    unsigned int var_size = strlen(varname);
+    char *var_name = (char *) name.c_str();
 
-    ydb_buffer_t var_name;
-    var_name.len_alloc = var_size;
-    var_name.len_used = var_size;
-    var_name.buf_addr = varname;
+    ydb_buffer_t glvn;
+    glvn.len_alloc = glvn.len_used = strlen(var_name);
+    glvn.buf_addr = var_name;
 
-    uv_mutex_lock(&nodem::mutex);
-    ydb_buffer_t *subs_array = NULL;
-
-    if (subs.size() > 0) {
-        subs_array = (ydb_buffer_t *) ydb_malloc(subs.size() * sizeof(ydb_buffer_t));
-
-        if (subs_array == NULL) return -1;
-
-        for (unsigned int i = 0; i < subs.size(); i++) {
-            unsigned int subs_size = subs[i].length();
-
-            subs_array[i].len_alloc = subs_size;
-            subs_array[i].len_used = subs_size;
-            subs_array[i].buf_addr = (gtm_char_t*) ydb_malloc(subs_size);
-
-            if (subs_array[i].buf_addr == NULL) return -1;
-
-            strncpy(subs_array[i].buf_addr, subs[i].c_str(), subs_size);
-        }
-    }
-
-    ydb_buffer_t ret_value;
-    ret_value.len_alloc = YDB_MAX_STR;
-    ret_value.buf_addr = (char *) ydb_malloc(YDB_MAX_STR);
-
-    if (ret_value.buf_addr == NULL) return -1;
-
-    ret_code = ydb_subscript_next_s(&var_name, subs.size(), subs_array, &ret_value);
-
-    strncpy(buffer, ret_value.buf_addr, ret_value.len_used);
-    buffer[ret_value.len_used] = '\0';
+    ydb_buffer_t subs_array[YDB_MAX_SUBS];
 
     for (unsigned int i = 0; i < subs.size(); i++) {
-        ydb_free(subs_array[i].buf_addr);
+            subs_array[i].len_alloc = subs_array[i].len_used = subs[i].length();
+            subs_array[i].buf_addr = (char *) subs[i].c_str();
     }
 
-    if (subs.size() > 0) ydb_free(subs_array);
+    char data[YDB_MAX_STR];
 
-    ydb_free(ret_value.buf_addr);
+    ydb_buffer_t value;
+    value.len_alloc = YDB_MAX_STR;
+    value.len_used = 0;
+    value.buf_addr = (char *) &data;
+
+    uv_mutex_lock(&nodem::mutex);
+    int code = ydb_subscript_next_s(&glvn, subs.size(), subs_array, &value);
     uv_mutex_unlock(&nodem::mutex);
+
+    strncpy(buffer, value.buf_addr, value.len_used);
+    buffer[value.len_used] = '\0';
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::order exit" << "\n";
 
-    return ret_code;
+    return code;
 } // @end order function
 
 /*
@@ -252,67 +176,41 @@ ydb_status_t order(ydb_char_t buffer[], string name, vector<string> subs, mode_t
  * @summary Set a global or local node, or an intrinsic special variable
  * @param {string} name - Global, local, or intrinsic special variable name
  * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-ydb_status_t set(string name, vector<string> subs, string data, mode_t mode)
+ydb_status_t set(string name, vector<string> subs, string data)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::set enter" << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name.c_str() << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs.size() << "\n";
     if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> data: " << data.c_str() << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
 
-    int ret_code = 0;
-    char *varname = (char *) name.c_str();
-    unsigned int var_size = strlen(varname);
+    char *var_name = (char *) name.c_str();
 
-    ydb_buffer_t var_name;
-    var_name.len_alloc = var_size;
-    var_name.len_used = var_size;
-    var_name.buf_addr = varname;
+    ydb_buffer_t glvn;
+    glvn.len_alloc = glvn.len_used = strlen(var_name);
+    glvn.buf_addr = var_name;
 
-    uv_mutex_lock(&nodem::mutex);
-    ydb_buffer_t *subs_array = NULL;
-
-    if (subs.size() > 0) {
-        subs_array = (ydb_buffer_t *) ydb_malloc(subs.size() * sizeof(ydb_buffer_t));
-
-        if (subs_array == NULL) return -1;
-
-        for (unsigned int i = 0; i < subs.size(); i++) {
-            unsigned int subs_size = subs[i].length();
-
-            subs_array[i].len_alloc = subs_size;
-            subs_array[i].len_used = subs_size;
-            subs_array[i].buf_addr = (gtm_char_t*) ydb_malloc(subs_size);
-
-            if (subs_array[i].buf_addr == NULL) return -1;
-
-            strncpy(subs_array[i].buf_addr, subs[i].c_str(), subs_size);
-        }
-    }
-
-    char *data_name = (char *) data.c_str();
-    unsigned int data_size = strlen(data_name);
-
-    ydb_buffer_t data_buffer;
-    data_buffer.len_alloc = data_size;
-    data_buffer.len_used = data_size;
-    data_buffer.buf_addr = data_name;
-
-    ret_code = ydb_set_s(&var_name, subs.size(), subs_array, &data_buffer);
+    ydb_buffer_t subs_array[YDB_MAX_SUBS];
 
     for (unsigned int i = 0; i < subs.size(); i++) {
-        ydb_free(subs_array[i].buf_addr);
+            subs_array[i].len_alloc = subs_array[i].len_used = subs[i].length();
+            subs_array[i].buf_addr = (char *) subs[i].c_str();
     }
 
-    if (subs.size() > 0) ydb_free(subs_array);
+    char *value = (char *) data.c_str();
+
+    ydb_buffer_t data_node;
+    data_node.len_alloc = data_node.len_used = strlen(value);
+    data_node.buf_addr = value;
+
+    uv_mutex_lock(&nodem::mutex);
+    int code = ydb_set_s(&glvn, subs.size(), subs_array, &data_node);
     uv_mutex_unlock(&nodem::mutex);
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::set exit" << "\n";
 
-    return ret_code;
+    return code;
 } // @end set
 
 } // @end ydb namespace

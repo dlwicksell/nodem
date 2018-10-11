@@ -55,7 +55,7 @@ gtm_status_t get(gtm_char_t buffer[], string name, string subs, mode_t mode)
     gtm_status_t stat_buf;
     gtm_char_t gtm_get[] = "get";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_get;
@@ -79,7 +79,7 @@ gtm_status_t get(gtm_char_t buffer[], string name, string subs, mode_t mode)
 /*
  * @function {public} kill
  * @summary Kill a global or global node, or a local or local node, or the entire local symbol table
- * @param {string} name - Global, local, or intrinsic special variable name
+ * @param {string} name - Global or local variable name
  * @param {string} subs - Subscripts
  * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
@@ -94,7 +94,7 @@ gtm_status_t kill(string name, string subs, mode_t mode)
     gtm_status_t stat_buf;
     gtm_char_t gtm_kill[] = "kill";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_kill;
@@ -119,7 +119,7 @@ gtm_status_t kill(string name, string subs, mode_t mode)
  * @function {public} order
  * @summary Return the next global or local node at the same level
  * @param {gtm_char_t} buffer - Data returned from YottaDB/GT.M database, via Call-in interface
- * @param {string} name - Global, local, or intrinsic special variable name
+ * @param {string} name - Global or local variable name
  * @param {string} subs - Subscripts
  * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
@@ -135,7 +135,7 @@ gtm_status_t order(gtm_char_t buffer[], string name, string subs, mode_t mode)
     gtm_status_t stat_buf;
     gtm_char_t gtm_order[] = "order";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_order;
@@ -175,7 +175,7 @@ gtm_status_t set(string name, string subs, string data, mode_t mode)
     gtm_status_t stat_buf;
     gtm_char_t gtm_set[] = "set";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_set;

@@ -76,7 +76,17 @@ inline void catch_interrupt(const int signal_num)
     if (debug_g > OFF) cerr << "DEBUG> signal_num: " << signal_num << "\n";
 
     uv_mutex_lock(&mutex);
-    gtm_exit();
+#if YDB_SIMPLE_API == 1
+    if (ydb_exit() != YDB_OK) {
+#else
+    if (gtm_exit() != EXIT_SUCCESS) {
+#endif
+        gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
+
+        cerr << msg_buffer_g << endl;
+        exit(EXIT_FAILURE);
+    }
     uv_mutex_unlock(&mutex);
 
     if (reset_term_g == true) {
@@ -903,7 +913,7 @@ void async_work(uv_work_t *request)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into get in the SimpleAPI interface" << "\n";
 
-        baton->status = ydb::get(baton->ret_buf, baton->glvn, baton->subsarray, baton->mode);
+        baton->status = ydb::get(baton->ret_buf, baton->glvn, baton->subsarray);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into get in the Call-in interface" << "\n";
 
@@ -913,7 +923,7 @@ void async_work(uv_work_t *request)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into kill in the SimpleAPI interface" << "\n";
 
-        baton->status = ydb::kill(baton->glvn, baton->subsarray, baton->mode);
+        baton->status = ydb::kill(baton->glvn, baton->subsarray);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into kill in the Call-in interface" << "\n";
 
@@ -923,7 +933,7 @@ void async_work(uv_work_t *request)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into order in the SimpleAPI interface" << "\n";
 
-        baton->status = ydb::order(baton->ret_buf, baton->glvn, baton->subsarray, baton->mode);
+        baton->status = ydb::order(baton->ret_buf, baton->glvn, baton->subsarray);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into order in the Call-in interface" << "\n";
 
@@ -933,7 +943,7 @@ void async_work(uv_work_t *request)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into set in the SimpleAPI interface" << "\n";
 
-        baton->status = ydb::set(baton->glvn, baton->subsarray, baton->value, baton->mode);
+        baton->status = ydb::set(baton->glvn, baton->subsarray, baton->value);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into set in the Call-in interface" << "\n";
 
@@ -1054,8 +1064,13 @@ void Gtm::close(const FunctionCallbackInfo<Value>& args)
     if (debug_g > LOW) cout << "DEBUG>> resetTerminal: " << reset_term_g << "\n";
 
     uv_mutex_lock(&mutex);
+#if YDB_SIMPLE_API == 1
+    if (ydb_exit() != YDB_OK) {
+#else
     if (gtm_exit() != EXIT_SUCCESS) {
+#endif
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
         args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
@@ -1089,7 +1104,7 @@ void Gtm::close(const FunctionCallbackInfo<Value>& args)
     if (mode_g == STRICT) {
         args.GetReturnValue().Set(String::NewFromUtf8(isolate, "1"));
     } else {
-        args.GetReturnValue().Set(Number::New(isolate, 1));
+        args.GetReturnValue().Set(Boolean::New(isolate, true));
     }
 
     if (debug_g > OFF) cout << "\nDEBUG> Gtm::close exit" << endl;
@@ -1206,7 +1221,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_data[] = "data";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_data;
@@ -1395,7 +1410,7 @@ void Gtm::function(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_function[] = "function";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_function;
@@ -1704,7 +1719,7 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into get in the SimpleAPI interface" << "\n";
 
-        stat_buf = ydb::get(ret_buffer_g, gvn, subsarray, mode_g);
+        stat_buf = ydb::get(ret_buffer_g, gvn, subsarray);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into get in the Call-in interface" << "\n";
 
@@ -1796,7 +1811,7 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_global_directory[] = "global_directory";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_global_directory;
@@ -2515,7 +2530,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_increment[] = "increment";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_increment;
@@ -2827,7 +2842,7 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into kill in the SimpleAPI interface" << "\n";
 
-        stat_buf = ydb::kill(gvn, subsarray, mode_g);
+        stat_buf = ydb::kill(gvn, subsarray);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into kill in the Call-in interface" << "\n";
 
@@ -2935,7 +2950,7 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_local_directory[] = "local_directory";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_local_directory;
@@ -3152,7 +3167,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_lock[] = "lock";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_lock;
@@ -3462,7 +3477,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_merge[] = "merge";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_merge;
@@ -3719,7 +3734,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_next_node[] = "next_node";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_next_node;
@@ -4016,8 +4031,13 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
     }
 
     uv_mutex_lock(&mutex);
+#if YDB_SIMPLE_API == 1
+    if (ydb_init() != YDB_OK) {
+#else
     if (gtm_init() != EXIT_SUCCESS) {
+#endif
         gtm_zstatus(msg_buffer_g, MSG_LEN);
+        uv_mutex_unlock(&mutex);
 
         args.GetReturnValue().Set(gtm_status(msg_buffer_g, false, false));
         return;
@@ -4053,7 +4073,7 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
         gtm_status_t stat_buf;
         gtm_char_t gtm_debug[] = "debug";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
         ci_name_descriptor access;
 
         access.rtn_name.address = gtm_debug;
@@ -4299,7 +4319,7 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into order in the SimpleAPI interface" << "\n";
 
-        stat_buf = ydb::order(ret_buffer_g, gvn, subsarray, mode_g);
+        stat_buf = ydb::order(ret_buffer_g, gvn, subsarray);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into order in the Call-in interface" << "\n";
 
@@ -4446,7 +4466,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_previous[] = "previous";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_previous;
@@ -4685,7 +4705,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_previous_node[] = "previous_node";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_previous_node;
@@ -4897,7 +4917,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_procedure[] = "procedure";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_procedure;
@@ -5039,7 +5059,7 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_retrieve[] = "retrieve";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_retrieve;
@@ -5329,7 +5349,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
 #if YDB_SIMPLE_API == 1
         if (debug_g > LOW) cout << "DEBUG>> call into set in the SimpleAPI interface" << "\n";
 
-        stat_buf = ydb::set(gvn, subsarray, value, mode_g);
+        stat_buf = ydb::set(gvn, subsarray, value);
 #else
         if (debug_g > LOW) cout << "DEBUG>> call into set in the Call-in interface" << "\n";
 
@@ -5469,7 +5489,7 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_unlock[] = "unlock";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_unlock;
@@ -5591,7 +5611,7 @@ void Gtm::update(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_update[] = "update";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor access;
 
     access.rtn_name.address = gtm_update;
@@ -5675,7 +5695,7 @@ void Gtm::version(const FunctionCallbackInfo<Value>& args)
     gtm_status_t stat_buf;
     gtm_char_t gtm_version[] = "version";
 
-#if (GTM_CIP_API == 1)
+#if GTM_CIP_API == 1
     ci_name_descriptor version;
 
     version.rtn_name.address = gtm_version;
@@ -5798,7 +5818,6 @@ void Gtm::Init(Local<Object> exports)
     Local<Function> constructor = Local<Function>::New(isolate, constructor_p);
 
     exports->Set(String::NewFromUtf8(isolate, "Gtm"), constructor);
-
     if (strcmp(NODEM_DB, "YottaDB") == 0) exports->Set(String::NewFromUtf8(isolate, "Ydb"), constructor);
 } // @end Gtm::Init method
 

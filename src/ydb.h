@@ -36,22 +36,22 @@ extern "C" {
 
 namespace ydb {
 
-ydb_status_t data(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t function(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t get(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t global_directory(ydb_char_t [], std::string, std::vector<std::string>, std::string, mode_t);
-ydb_status_t increment(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t kill(std::string, std::vector<std::string>, mode_t);
-ydb_status_t local_directory(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t lock(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t merge(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t next_node(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t order(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t previous(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t previous_node(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t procedure(ydb_char_t [], std::string, std::vector<std::string>, mode_t);
-ydb_status_t set(std::string, std::vector<std::string>, std::string, mode_t);
-ydb_status_t unlock(std::string, std::vector<std::string>, mode_t);
+ydb_status_t data(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t function(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t get(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t global_directory(ydb_char_t [], std::string, std::vector<std::string>, std::string);
+ydb_status_t increment(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t kill(std::string, std::vector<std::string>);
+ydb_status_t local_directory(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t lock(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t merge(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t next_node(ydb_char_t [], std::string, std::vector<std::string> &);
+ydb_status_t order(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t previous(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t previous_node(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t procedure(ydb_char_t [], std::string, std::vector<std::string>);
+ydb_status_t set(std::string, std::vector<std::string>, std::string);
+ydb_status_t unlock(std::string, std::vector<std::string>);
 
 } // @end ydb namespace
 
