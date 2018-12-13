@@ -1,13 +1,18 @@
 # NodeM Release Notes #
 
+## v0.13.2 - 2018 Dec 13 ##
+
+- Add missing release note to v0.13.0
+- Remove incorrect release note from v0.13.1
+
 ## v0.13.1 - 2018 Dec 13 ##
 
 - Fix several typos in README.md
-- Add missing release note to v0.13.0
 
 ## v0.13.0 - 2018 Dec 12 ##
 
 - Add full asynchronous support to the data, previous, nextNode, and previousNode APIs
+- Add SimpleAPI support to the data, previous, nextNode, and previousNode APIs
 - Add support for calling arguments by-position to the data, previous, nextNode, and previousNode APIs
 - Restructured the README.md documentation
 - Remove simple-api script now that SimpleAPI support is more fully tested
