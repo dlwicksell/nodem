@@ -21,36 +21,79 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#include "gtm.h"
-#include "mumps.h"
-
-#include <node.h>
-#include <uv.h>
-
 #include <iostream>
+#include <string>
+#include "gtm.h"
 
 namespace gtm {
 
 using namespace v8;
-using std::string;
 using std::cout;
+using std::string;
+
+/*
+ * @function {public} data
+ * @summary Check if global or local node has data and/or children or not
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_char_t} ret_buf - Data returned from YottaDB/GT.M, via the call-in interface
+ * @member {string} glvn - Global or local variable name
+ * @member {string} subs - Subscripts
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+gtm_status_t data(nodem::Baton* baton)
+{
+    if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::data enter" << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
+
+    gtm_status_t stat_buf;
+    gtm_char_t gtm_data[] = "data";
+
+#if GTM_CIP_API == 1
+    ci_name_descriptor access;
+
+    access.rtn_name.address = gtm_data;
+    access.rtn_name.length = 4;
+    access.handle = NULL;
+
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#else
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_data, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#endif
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::data exit" << "\n";
+
+    return stat_buf;
+} // @end data function
 
 /*
  * @function {public} get
  * @summary Get data from a global or local node, or an intrinsic special variable
- * @param {gtm_char_t} buffer - Data returned from YottaDB/GT.M database, via Call-in interface
- * @param {string} name - Global, local, or intrinsic special variable name
- * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_char_t} ret_buf - Data returned from YottaDB/GT.M, via the call-in interface
+ * @member {string} glvn - Global, local, or intrinsic special variable name
+ * @member {string} subs - Subscripts
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t get(gtm_char_t buffer[], string name, string subs, mode_t mode)
+gtm_status_t get(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::get enter" << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> buffer: " << buffer << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
 
     gtm_status_t stat_buf;
     gtm_char_t gtm_get[] = "get";
@@ -62,13 +105,13 @@ gtm_status_t get(gtm_char_t buffer[], string name, string subs, mode_t mode)
     access.rtn_name.length = 3;
     access.handle = NULL;
 
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_cip(&access, buffer, name.c_str(), subs.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #else
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_ci(gtm_get, buffer, name.c_str(), subs.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_get, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #endif
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::get exit" << "\n";
@@ -79,17 +122,21 @@ gtm_status_t get(gtm_char_t buffer[], string name, string subs, mode_t mode)
 /*
  * @function {public} kill
  * @summary Kill a global or global node, or a local or local node, or the entire local symbol table
- * @param {string} name - Global or local variable name
- * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @param {Baton*} baton - struct containing the following members
+ * @member {string} glvn - Global or local variable name
+ * @member {string} subs - Subscripts
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t kill(string name, string subs, mode_t mode)
+gtm_status_t kill(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::kill enter" << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
 
     gtm_status_t stat_buf;
     gtm_char_t gtm_kill[] = "kill";
@@ -101,13 +148,13 @@ gtm_status_t kill(string name, string subs, mode_t mode)
     access.rtn_name.length = 4;
     access.handle = NULL;
 
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_cip(&access, name.c_str(), subs.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #else
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_ci(gtm_kill, name.c_str(), subs.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_kill, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #endif
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::kill exit" << "\n";
@@ -116,21 +163,68 @@ gtm_status_t kill(string name, string subs, mode_t mode)
 } // @end kill function
 
 /*
- * @function {public} order
- * @summary Return the next global or local node at the same level
- * @param {gtm_char_t} buffer - Data returned from YottaDB/GT.M database, via Call-in interface
- * @param {string} name - Global or local variable name
- * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @function {public} next_node
+ * @summary Return the next global or local node, depth first
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_char_t} ret_buf - Data returned from YottaDB/GT.M, via the call-in interface
+ * @member {string} glvn - Global or local variable name
+ * @member {string} subs - Subscripts
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t order(gtm_char_t buffer[], string name, string subs, mode_t mode)
+gtm_status_t next_node(nodem::Baton* baton)
+{
+    if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::next_node enter" << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
+
+    gtm_status_t stat_buf;
+    gtm_char_t gtm_next_node[] = "next_node";
+
+#if GTM_CIP_API == 1
+    ci_name_descriptor access;
+
+    access.rtn_name.address = gtm_next_node;
+    access.rtn_name.length = 9;
+    access.handle = NULL;
+
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#else
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_next_node, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#endif
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::next_node exit" << "\n";
+
+    return stat_buf;
+} // @end next_node function
+
+/*
+ * @function {public} order
+ * @summary Return the next global or local node at the same level
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_char_t} ret_buf - Data returned from YottaDB/GT.M, via the call-in interface
+ * @member {string} glvn - Global or local variable name
+ * @member {string} subs - Subscripts
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+gtm_status_t order(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::order enter" << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> buffer: " << buffer << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
 
     gtm_status_t stat_buf;
     gtm_char_t gtm_order[] = "order";
@@ -142,13 +236,13 @@ gtm_status_t order(gtm_char_t buffer[], string name, string subs, mode_t mode)
     access.rtn_name.length = 5;
     access.handle = NULL;
 
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_cip(&access, buffer, name.c_str(), subs.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #else
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_ci(gtm_order, buffer, name.c_str(), subs.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_order, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #endif
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::order exit" << "\n";
@@ -157,20 +251,113 @@ gtm_status_t order(gtm_char_t buffer[], string name, string subs, mode_t mode)
 } // @end order function
 
 /*
- * @function {public} set
- * @summary Set a global or local node, or an intrinsic special variable
- * @param {string} name - Global, local, or intrinsic special variable name
- * @param {string} subs - Subscripts
- * @param {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @function {public} previous
+ * @summary Return the previous global or local node at the same level
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_char_t} ret_buf - Data returned from YottaDB/GT.M, via the call-in interface
+ * @member {string} glvn - Global or local variable name
+ * @member {string} subs - Subscripts
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t set(string name, string subs, string data, mode_t mode)
+gtm_status_t previous(nodem::Baton* baton)
+{
+    if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::previous enter" << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
+
+    gtm_status_t stat_buf;
+    gtm_char_t gtm_previous[] = "previous";
+
+#if GTM_CIP_API == 1
+    ci_name_descriptor access;
+
+    access.rtn_name.address = gtm_previous;
+    access.rtn_name.length = 8;
+    access.handle = NULL;
+
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#else
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_previous, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#endif
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::previous exit" << "\n";
+
+    return stat_buf;
+} // @end previous function
+
+/*
+ * @function {public} previous_node
+ * @summary Return the previous global or local node, depth first
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_char_t} ret_buf - Data returned from YottaDB/GT.M, via the call-in interface
+ * @member {string} glvn - Global or local variable name
+ * @member {string} subs - Subscripts
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+gtm_status_t previous_node(nodem::Baton* baton)
+{
+    if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::previous_node enter" << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
+
+    gtm_status_t stat_buf;
+    gtm_char_t gtm_previous_node[] = "previous_node";
+
+#if GTM_CIP_API == 1
+    ci_name_descriptor access;
+
+    access.rtn_name.address = gtm_previous_node;
+    access.rtn_name.length = 13;
+    access.handle = NULL;
+
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#else
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_previous_node, baton->ret_buf, baton->glvn.c_str(), baton->subs.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
+#endif
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::previous_node exit" << "\n";
+
+    return stat_buf;
+} // @end previous_node function
+
+/*
+ * @function {public} set
+ * @summary Set a global or local node, or an intrinsic special variable
+ * @param {Baton*} baton - struct containing the following members
+ * @member {string} glvn - Global, local, or intrinsic special variable name
+ * @member {string} subs - Subscripts
+ * @member {string} value - Value to set
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+gtm_status_t set(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::set enter" << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << name << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> subs: " << subs << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> data: " << data << "\n";
-    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> mode: " << mode << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> glvn: " << baton->glvn << "\n";
+        cout << "DEBUG>>> subs: " << baton->subs << "\n";
+        cout << "DEBUG>>> value: " << baton->value << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
 
     gtm_status_t stat_buf;
     gtm_char_t gtm_set[] = "set";
@@ -182,13 +369,13 @@ gtm_status_t set(string name, string subs, string data, mode_t mode)
     access.rtn_name.length = 3;
     access.handle = NULL;
 
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_cip(&access, name.c_str(), subs.c_str(), data.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_cip(&access, baton->glvn.c_str(), baton->subs.c_str(), baton->value.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #else
-    uv_mutex_lock(&nodem::mutex);
-    stat_buf = gtm_ci(gtm_set, name.c_str(), subs.c_str(), data.c_str(), mode);
-    uv_mutex_unlock(&nodem::mutex);
+    uv_mutex_lock(&nodem::mutex_g);
+    stat_buf = gtm_ci(gtm_set, baton->glvn.c_str(), baton->subs.c_str(), baton->value.c_str(), baton->mode);
+    uv_mutex_unlock(&nodem::mutex_g);
 #endif
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::set exit" << "\n";

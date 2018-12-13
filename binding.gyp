@@ -33,6 +33,7 @@
         '-pedantic',
         '-error',
         '-std=c++11',
+        '-Wno-cast-function-type',
         '-Wno-deprecated-declarations',
         '-Wno-expansion-to-defined'
       ],

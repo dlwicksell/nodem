@@ -1,5 +1,41 @@
 # NodeM Release Notes #
 
+## v0.13.0 - 2018 Dec 12 ##
+
+- Add full asynchronous support to the data, previous, nextNode, and previousNode APIs
+- Add support for calling arguments by-position to the data, previous, nextNode, and previousNode APIs
+- Restructured the README.md documentation
+- Remove simple-api script now that SimpleAPI support is more fully tested
+- Update zwrite.js
+  - Add support for full debug tracing to CLI
+  - Improve error handling
+  - Improve argument handling
+- Update gtm.hh and gtm.cc 
+  - Add support for data, previous, nextNode, and previousNode to enable asynchronous versions
+  - Improve efficiency of debug tracing code
+- Update ydb.hh and ydb.cc
+  - Add support for data, previous, nextNode, and previousNode to enable asynchronous versions
+  - Ignore local variables that begin with the 'v4w' namespace in order and previous
+  - Improve efficiency of debug tracing code
+- Update v4wNode.m 
+  - Ignore local variables that begin with the 'v4w' namespace in order and previous
+  - Improve previousNode handling for versions of YottaDB and GT.M that do not implement it
+  - Add ok property to the JSON returned by previousNode, retrieve, and update
+  - Simplify version API when connected to YottaDB
+- Update mumps.cc
+  - Add signalHandler property to open API
+  - Improve and update help API data
+  - Rename the catch_interrupt function as clean_shutdown
+  - Rename the gtm_status function as error_status
+  - Improve signal handling in clean_shutdown signal handler function
+  - Improve efficiency of debug tracing code
+  - Add is_number function to support canonical mode for YottaDB
+  - Change internal API interfaces to pass the Baton struct around for better maintainability
+  - Replace the asynchronous conditional jump blocks with function pointers in the Baton struct
+  - Fix utf-8 bug in the encode_arguments function
+  - Add build_subscripts function to more easily support the YottaDB API
+  - Fix potential memory leaks
+
 ## v0.12.1 - 2018 Oct 10 ##
 
 - Turn SimpleAPI support on by default

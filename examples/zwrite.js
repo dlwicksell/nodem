@@ -36,7 +36,7 @@
  *
  * -c [character set encoding] - <utf-8>|m - The character encoding of the data
  *
- * -d [debug mode] - <on> - Turns on debug mode, which provides debug tracing data
+ * -d [debug mode] - [<false>|true]|[<off>|low|medium|high]|[<0>|1|2|3] - Turns on debug mode, which provides debug tracing data
  */
 
 process.on('uncaughtException', function(err) {
@@ -58,12 +58,16 @@ var charset = 'utf-8',
 process.argv.forEach(function(argument) {
     if (process.argv[0] === argument || process.argv[1] === argument) return;
 
-    if (command === '-m') {
-        mode = argument;
+    if (command === '-c') {
+        charset = argument;
         command = '';
         return;
-    } else if (command === '-c') {
-        charset = argument;
+    } else if (command === '-d') {
+        debug = argument;
+        command = '';
+        return;
+    } else if (command === '-m') {
+        mode = argument;
         command = '';
         return;
     }
@@ -71,14 +75,14 @@ process.argv.forEach(function(argument) {
     if (argument === '-f') {
         fast = true;
         return;
+    } else if (argument === '-c') {
+        command = '-c';
+        return;
     } else if (argument === '-d') {
-        debug = true;
+        command = '-d';
         return;
     } else if (argument === '-m') {
         command = '-m';
-        return;
-    } else if (argument === '-c') {
-        command = '-c';
         return;
     } else {
         global = argument;
@@ -98,29 +102,34 @@ if (typeof version === 'object') {
 
 if (fast) {
     var fs = require('fs');
-    var code = 'zwrite(glvn) set:$extract(glvn)\'="^" glvn="^"_glvn zwrite @glvn quit ""';
+    var code = 'zwrite(glvn) set:$extract(glvn)\'="^" glvn="^"_glvn zwrite @glvn quit ""\n';
     var fd = fs.openSync('v4wTest.m', 'w');
 
     fs.writeSync(fd, code);
-    gtm.function({function: 'zwrite^v4wTest', arguments: [global]});
+    var result = gtm.function({function: 'zwrite^v4wTest', arguments: [global]});
 
     fs.closeSync(fd);
     fs.unlinkSync('v4wTest.m');
     fs.unlinkSync('v4wTest.o');
+
+    if (!result.ok) console.log(result);
 } else {
     if (charset === 'm') process.stdout.setDefaultEncoding('binary');
 
+    var pre = '';
+    if (global[0] != '^') pre = '^';
+
     if (gtm.data({global: global}).defined % 2) {
         node = gtm.get({global: global});
-        console.log('^' + global + '=' + JSON.stringify(node.data));
+        console.log(pre + global + '=' + JSON.stringify(node.data));
     }
 
     while (true) {
         node = gtm.next_node({global: global, subscripts: node.subscripts});
 
-        if (node.subscripts === undefined) break;
+        if (!node.defined) break;
 
-        console.log('^' + global + '(' + JSON.stringify(node.subscripts).slice(1, -1) + ')=' + JSON.stringify(node.data));
+        console.log(pre + global + '(' + JSON.stringify(node.subscripts).slice(1, -1) + ')=' + JSON.stringify(node.data));
     }
 }
 

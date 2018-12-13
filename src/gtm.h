@@ -24,30 +24,26 @@
 #ifndef GTM_H
 #define GTM_H
 
-extern "C" {
-    #include <gtmxc_types.h>
-}
-
-#include <string>
+#include "mumps.h"
 
 namespace gtm {
 
-gtm_status_t data(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t function(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t get(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t global_directory(gtm_char_t [], std::string, std::string, std::string, mode_t);
-gtm_status_t increment(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t kill(std::string, std::string, mode_t);
-gtm_status_t local_directory(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t lock(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t merge(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t next_node(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t order(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t previous(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t previous_node(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t procedure(gtm_char_t [], std::string, std::string, mode_t);
-gtm_status_t set(std::string, std::string, std::string, mode_t);
-gtm_status_t unlock(std::string, std::string, mode_t);
+gtm_status_t data(nodem::Baton*);
+gtm_status_t function(nodem::Baton*);
+gtm_status_t get(nodem::Baton*);
+gtm_status_t global_directory(nodem::Baton*);
+gtm_status_t increment(nodem::Baton*);
+gtm_status_t kill(nodem::Baton*);
+gtm_status_t local_directory(nodem::Baton*);
+gtm_status_t lock(nodem::Baton*);
+gtm_status_t merge(nodem::Baton*);
+gtm_status_t next_node(nodem::Baton*);
+gtm_status_t order(nodem::Baton*);
+gtm_status_t previous(nodem::Baton*);
+gtm_status_t previous_node(nodem::Baton*);
+gtm_status_t procedure(nodem::Baton*);
+gtm_status_t set(nodem::Baton*);
+gtm_status_t unlock(nodem::Baton*);
 
 } // @end gtm namespace
 

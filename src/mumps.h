@@ -26,12 +26,16 @@
 
 extern "C" {
     #include <gtmxc_types.h>
+
+#if YDB_SIMPLE_API == 1
+    #include <libydberrors.h>
+    #include <libyottadb.h>
+#endif
 }
 
 #include <node.h>
 #include <node_object_wrap.h>
 #include <uv.h>
-
 #include <string>
 #include <vector>
 
@@ -43,9 +47,9 @@ namespace nodem {
     #define NODEM_DB "GT.M"
 #endif
 
-#define NODEM_MAJOR_VERSION  0
-#define NODEM_MINOR_VERSION  12
-#define NODEM_PATCH_VERSION  1
+#define NODEM_MAJOR_VERSION 0
+#define NODEM_MINOR_VERSION 13
+#define NODEM_PATCH_VERSION 0
 
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
@@ -56,10 +60,7 @@ namespace nodem {
 #define RET_LEN (1048576 + 1)
 
 extern enum debug_t {OFF, LOW, MEDIUM, HIGH} debug_g;
-extern uv_mutex_t mutex;
-
-extern gtm_char_t msg_buffer_g[];
-extern gtm_char_t ret_buffer_g[];
+extern uv_mutex_t mutex_g;
 
 /*
  * @struct Baton
@@ -68,38 +69,38 @@ extern gtm_char_t ret_buffer_g[];
  * @member callback_p
  * @member subscripts_p
  * @member data_p
- * @member api
  * @member glvn
  * @member subs
  * @member value
- * @member {conditional} subsarray
+ * @member subs_array
  * @member mode
- * @member status
  * @member async
  * @member local
  * @member position
+ * @member status
  * @member msg_bug
  * @member ret_buf
+ * @member function
+ * @member function_return
  */
 struct Baton {
     uv_work_t                    request;
     v8::Persistent<v8::Function> callback_p;
     v8::Persistent<v8::Value>    subscripts_p;
     v8::Persistent<v8::Value>    data_p;
-    std::string                  api;
     std::string                  glvn;
     std::string                  subs;
     std::string                  value;
-#if YDB_SIMPLE_API == 1
-    std::vector<std::string>    subsarray;
-#endif
+    std::vector<std::string>     subs_array;
     mode_t                       mode;
-    gtm_status_t                 status;
     bool                         async;
     bool                         local;
     bool                         position;
+    gtm_status_t                 status;
     gtm_char_t                   msg_buf[MSG_LEN];
     gtm_char_t                   ret_buf[RET_LEN];
+    gtm_status_t                 (*function)(Baton*);
+    v8::Local<v8::Value>         (*function_return)(Baton*);
 }; // @end Baton struct
 
 /*
@@ -110,19 +111,18 @@ struct Baton {
  * @method {instance} to_byte
  * @method {class} from_byte
  */
-class GtmValue
-{
-    public:
-        explicit GtmValue(v8::Local<v8::Value>& v8_val) :value{v8_val->ToString()}, size{value->Length() + 1}, buffer{new uint8_t[size]} {}
-        ~GtmValue() {delete buffer;}
+class GtmValue {
+public:
+    explicit GtmValue(v8::Local<v8::Value>& val) : value{val->ToString()}, size{value->Length() + 1}, buffer{new uint8_t[size]} {}
+    ~GtmValue() {delete buffer;}
 
-        gtm_char_t* to_byte(void);
-        static v8::Local<v8::String> from_byte(gtm_char_t buffer[]);
+    gtm_char_t* to_byte(void);
+    static v8::Local<v8::String> from_byte(gtm_char_t buffer[]);
 
-    private:
-        v8::Local<v8::String> value;
-        int size;
-        uint8_t* buffer;
+private:
+    v8::Local<v8::String> value;
+    int size;
+    uint8_t* buffer;
 }; // @end GtmValue class
 
 /*
@@ -156,41 +156,40 @@ class GtmValue
  * @method {class} {private} version
  * @method {class} {private} constructor_p
  */
-class Gtm :public node::ObjectWrap
-{
-    public:
-        static void Init(v8::Local<v8::Object>);
+class Gtm : public node::ObjectWrap {
+public:
+    static void Init(v8::Local<v8::Object>);
 
-    private:
-        Gtm() {uv_mutex_init(&mutex);}
-        ~Gtm() {uv_mutex_destroy(&mutex);}
+private:
+    Gtm() {uv_mutex_init(&mutex_g);}
+    ~Gtm() {uv_mutex_destroy(&mutex_g);}
 
-        static void New(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void New(const v8::FunctionCallbackInfo<v8::Value>&);
 
-        static void close(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void data(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void function(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void get(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void global_directory(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void help(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void increment(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void kill(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void local_directory(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void lock(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void merge(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void next_node(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void open(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void order(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void previous(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void previous_node(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void procedure(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void retrieve(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void set(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void unlock(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void update(const v8::FunctionCallbackInfo<v8::Value>&);
-        static void version(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void close(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void data(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void function(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void get(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void global_directory(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void help(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void increment(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void kill(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void local_directory(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void lock(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void merge(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void next_node(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void open(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void order(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void previous(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void previous_node(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void procedure(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void retrieve(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void set(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void unlock(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void update(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void version(const v8::FunctionCallbackInfo<v8::Value>&);
 
-        static v8::Persistent<v8::Function> constructor_p;
+    static v8::Persistent<v8::Function> constructor_p;
 }; // @end Gtm class
 
 } // @end namespace nodem

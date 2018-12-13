@@ -1,4 +1,4 @@
-v4wNode() ;;2018-09-17  12:57 PM
+v4wNode() ;;2018-12-10  3:50 PM
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -119,11 +119,11 @@ isString:(data,direction)
  ;   - 309 digits before overflow (represented as the Infinity primitive)
  ;   - 21 digits before conversion to exponent notation
  ;   - 16 digits of precision
- ; This is why anything over 15 characters needs to be treated as a string
+ ; This is why anything over 16 characters needs to be treated as a string
  if $get(v4wDebug,0)>2 write !,"DEBUG>>> isString enter:",! zwrite data,direction
  ;
  if ($zextract(data)="""")&($zextract(data,$zlength(data))="""") write:$get(v4wDebug,0)>2 "isString: 3",! quit 3
- else  if $zlength(data)>15 write:$get(v4wDebug,0)>2 "DEBUG>>> isString: 1",! quit 1
+ else  if $zlength(data)>16 write:$get(v4wDebug,0)>2 "DEBUG>>> isString: 1",! quit 1
  else  if direction="input",data["e+" write:$get(v4wDebug,0)>2 "DEBUG>>> isString: 1",! quit 1
  else  if $$isNumber(data,direction) write:$get(v4wDebug,0)>2 "isString: 0",! quit 0
  else  write:$get(v4wDebug,0)>2 "isString: 2",! quit 2
@@ -672,8 +672,10 @@ order(v4wGlvn,v4wSubs,v4wMode)
  ;
  set v4wResult=$order(@v4wName)
  ;
- if v4wSubs="",$zextract(v4wResult)="^" set $zextract(v4wResult)=""
+ for  quit:(v4wSubs'="")!($zextract(v4wResult,1,3)'="v4w")  set v4wResult=$order(@v4wResult)
+ ;
  set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
+ ;
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> order exit:",! zwrite v4wResult use $principal
  quit "{""result"":"_v4wResult_"}"
@@ -700,7 +702,8 @@ previous(v4wGlvn,v4wSubs,v4wMode)
  ;
  set v4wResult=$order(@v4wName,-1)
  ;
- if v4wSubs="",$zextract(v4wResult)="^" set $zextract(v4wResult)=""
+ for  quit:(v4wSubs'="")!($zextract(v4wResult,1,3)'="v4w")  set v4wResult=$order(@v4wResult,-1)
+ ;
  set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> previous exit:",! zwrite v4wResult use $principal
@@ -716,16 +719,17 @@ previous(v4wGlvn,v4wSubs,v4wMode)
 previousNode(v4wGlvn,v4wSubs,v4wMode)
  use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
  ; Handle reverse $query not existing in this M implementation version (150373074: %GTM-E-INVSVN, Invalid special variable name)
- set $etrap="if $ecode["",Z150373074,"" set $ecode="""" quit ""{""""status"""":""""previous_node not yet implemented""""}"""
- set $ecode=""
- ;
+ new v4wStatus
  set v4wMode=$get(v4wMode,1)
+ set v4wStatus="{""ok"":"_$select(v4wMode:"false",1:0)_",""status"":""previous_node not yet implemented""}"
+ set $ecode="",$etrap="if $ecode["",Z150373074,"" set $ecode="""" quit v4wStatus"
+ ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> previousNode enter:",! zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  new v4wData,v4wDefined,v4wName,v4wNewSubscripts,v4wResult,v4wReturn,v4wYottaVersion
  set v4wYottaVersion=$zpiece($zyrelease," ",2),$zextract(v4wYottaVersion)=""
  ;
- if v4wYottaVersion<1.10 quit "{""status"":""previous_node not yet implemented""}"
+ if v4wYottaVersion<1.10 quit v4wStatus
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  set v4wName=$$construct(v4wGlvn,v4wSubs)
@@ -809,7 +813,7 @@ retrieve()
  use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
- quit "{""status"":""retrieve not yet implemented""}"
+ quit "{""ok"":0,""status"":""retrieve not yet implemented""}"
  ;; @end retrieve
  ;
  ;; @subroutine {public} set
@@ -876,7 +880,7 @@ update()
  use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
- quit "{""status"":""update not yet implemented""}"
+ quit "{""ok"":0,""status"":""update not yet implemented""}"
  ;; @end update
  ;
  ;; @function {public} version
@@ -894,6 +898,6 @@ version()
  set gtmVersion=$zpiece($zversion," ",2),$zextract(gtmVersion)=""
  set yottaVersion=$zpiece($zyrelease," ",2),$zextract(yottaVersion)=""
  ;
- if $get(v4wDebug,0)>1 write !,"DEBUG>> version exit:",! zwrite return use $principal
- quit "GT.M version: "_gtmVersion_"; YottaDB version: "_yottaVersion
+ if $get(v4wDebug,0)>1 write !,"DEBUG>> version exit",! use $principal
+ quit "YottaDB version: "_yottaVersion
  ;; @end version

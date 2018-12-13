@@ -1,11 +1,11 @@
 {
   "name": "nodem",
-  "description": "Database driver and binding API for the YottaDB and GT.M database and language",
-  "version": "0.12.1",
+  "description": "A YottaDB and GT.M database driver and language binding",
+  "version": "0.13.0",
   "author": {
     "name": "David Wicksell",
     "email": "dlw@linux.com",
-    "url": "http://www.fourthwatchsoftware.com/"
+    "url": "https://www.fourthwatchsoftware.com/"
   },
   "maintainers": "David Wicksell <dlw@linux.com>",
   "homepage": "https://github.com/dlwicksell/nodem",
@@ -18,7 +18,6 @@
   },
   "keywords": [
     "database",
-    "databases",
     "hierarchical database",
     "GT.M",
     "M",
@@ -29,7 +28,7 @@
   "main": "./lib/nodem",
   "license": "AGPL-3.0",
   "engines": {
-    "node": ">=0.12.2"
+    "node": ">=0.12.0"
   },
   "os": [
     "linux"

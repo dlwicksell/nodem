@@ -26,32 +26,26 @@
 #ifndef YDB_H
 #define YDB_H
 
-extern "C" {
-    #include <libydberrors.h>
-    #include <libyottadb.h>
-}
-
-#include <string>
-#include <vector>
+#include "mumps.h"
 
 namespace ydb {
 
-ydb_status_t data(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t function(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t get(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t global_directory(ydb_char_t [], std::string, std::vector<std::string>, std::string);
-ydb_status_t increment(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t kill(std::string, std::vector<std::string>);
-ydb_status_t local_directory(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t lock(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t merge(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t next_node(ydb_char_t [], std::string, std::vector<std::string> &);
-ydb_status_t order(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t previous(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t previous_node(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t procedure(ydb_char_t [], std::string, std::vector<std::string>);
-ydb_status_t set(std::string, std::vector<std::string>, std::string);
-ydb_status_t unlock(std::string, std::vector<std::string>);
+ydb_status_t data(nodem::Baton*);
+ydb_status_t function(nodem::Baton*);
+ydb_status_t get(nodem::Baton*);
+ydb_status_t global_directory(nodem::Baton*);
+ydb_status_t increment(nodem::Baton*);
+ydb_status_t kill(nodem::Baton*);
+ydb_status_t local_directory(nodem::Baton*);
+ydb_status_t lock(nodem::Baton*);
+ydb_status_t merge(nodem::Baton*);
+ydb_status_t next_node(nodem::Baton*);
+ydb_status_t order(nodem::Baton*);
+ydb_status_t previous(nodem::Baton*);
+ydb_status_t previous_node(nodem::Baton*);
+ydb_status_t procedure(nodem::Baton*);
+ydb_status_t set(nodem::Baton*);
+ydb_status_t unlock(nodem::Baton*);
 
 } // @end ydb namespace
 

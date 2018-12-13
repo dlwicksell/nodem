@@ -65,16 +65,16 @@ if (type === 'global') {
 }
 
 console.log('Testing the set command, starting at: ' + Date());
-var start = process.hrtime(), ret;
+var start = process.hrtime(), ret, i;
 
 if (type === 'global') {
-    for (var i = 0; i < nodes; i++) {
+    for (i = 0; i < nodes; i++) {
         ret = gtm.set({global: name, subscripts: ['testing', i], data: 'record ' + i});
 
         if (!ret.ok) break;
     }
 } else {
-    for (var i = 0; i < nodes; i++) {
+    for (i = 0; i < nodes; i++) {
         ret = gtm.set({local: name, subscripts: ['testing', i], data: 'record ' + i});
 
         if (!ret.ok) break;
