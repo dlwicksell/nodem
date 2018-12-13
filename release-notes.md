@@ -1,5 +1,10 @@
 # NodeM Release Notes #
 
+## v0.13.1 - 2018 Dec 13 ##
+
+- Fix several typos in README.md
+- Add missing release note to v0.13.0
+
 ## v0.13.0 - 2018 Dec 12 ##
 
 - Add full asynchronous support to the data, previous, nextNode, and previousNode APIs

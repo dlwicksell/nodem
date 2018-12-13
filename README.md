@@ -6,9 +6,9 @@
 
 # NodeM #
 
-## A YottaDB and GT.M database driver and language binding ##
+## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.13.0 - 2018 Dec 12
+Version 0.13.1 - 2018 Dec 13
 
 ## Copyright and License ##
 
@@ -76,9 +76,9 @@ Using Nodem with YottaDB, in the Node.js REPL:
 > const ydb = require('nodem').Ydb(); // Create YottaDB connection instance - use Gtm() when connecting to GT.M
 undefined
 > ydb.open(); // Open connection to YottaDB
-{ ok: true, result: 1, pid: 15975 }
+{ ok: true, pid: 15975 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.13.0 (FWS); YottaDB version: 1.22'
+'Node.js Adaptor for YottaDB: Version: 0.13.1 (FWS); YottaDB version: 1.22'
 > ydb.get({global: 'test', subscripts: [0, 2, 0]}); // ^test(0,2,0)
 { ok: true,
   global: 'test',
@@ -119,7 +119,7 @@ true
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v11.3.0 at this time), as well as every version of
+through the current release (v11.4.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards-compatible way, which might
 break Nodem for that version.
@@ -335,7 +335,7 @@ signalHandler object (with properties for each of the signals) for each
 individual signal, or all of them at once, e.g.
 
 ```javascript
-> ydb.open({signalHandler: {sigint: true, sigterm: false, sigquit: fasle}});
+> ydb.open({signalHandler: {sigint: true, sigterm: false, sigquit: false}});
 ```
 or
 ```javascript
