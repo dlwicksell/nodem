@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.13.3 - 2018 Dec 13 ##
+
+- Fix V8 type bug
+
 ## v0.13.2 - 2018 Dec 13 ##
 
 - Add missing release note to v0.13.0

@@ -791,11 +791,7 @@ static Local<Value> kill_return(Baton* baton)
     if (name->StrictEquals(String::NewFromUtf8(isolate, ""))) {
         Local<Value> ret_data = Undefined(isolate);
 
-        if (mode_g == STRICT) {
-            ret_data = Number::New(isolate, 0);
-        } else {
-            ret_data = Undefined(isolate);
-        }
+        if (mode_g == STRICT) ret_data = Number::New(isolate, 0);
 
         return scope.Escape(ret_data);
     } else if (baton->position) {
@@ -808,7 +804,9 @@ static Local<Value> kill_return(Baton* baton)
         } else if (mode_g == STRICT) {
             return scope.Escape(Number::New(isolate, 0));
         } else {
-            return scope.Escape(Undefined(isolate));
+            Local<Value> ret_data = Undefined(isolate);
+
+            return scope.Escape(ret_data);
         }
     } else {
         if (mode_g == STRICT) {
@@ -1409,7 +1407,9 @@ static Local<Value> set_return(Baton* baton)
         } else if (mode_g == STRICT) {
             return scope.Escape(Number::New(isolate, 0));
         } else {
-            return scope.Escape(Undefined(isolate));
+            Local<Value> ret_data = Undefined(isolate);
+
+            return scope.Escape(ret_data);
         }
     } else {
         if (mode_g == STRICT) {
@@ -5981,8 +5981,6 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& args)
         }
 
         if (!arguments->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "arguments"), arguments);
-
-        return_object->Set(String::NewFromUtf8(isolate, "result"), Number::New(isolate, 0));
     }
 
     args.GetReturnValue().Set(return_object);

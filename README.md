@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.13.2 - 2018 Dec 13
+Version 0.13.3 - 2018 Dec 13
 
 ## Copyright and License ##
 
@@ -100,7 +100,7 @@ undefined
 > result: 2 bags of wheat
 
 > ydb.set('^test', 0, 2, 0, '3 bags of wheat'); // ^test(0,2,0)="3 bags of wheat"
-0
+undefined
 > ydb.get({global: 'test', subscripts: [0, 2, 0]});
 { ok: true,
   global: 'test',
@@ -443,18 +443,17 @@ clearing the symbol table, e.g.
 > ydb.localDirectory();
 []
 > ydb.set({local: 'U', data: '^'});
-{ ok: true, local: 'U', data: '^', result: 0 }
+{ ok: true, local: 'U', data: '^' }
 > ydb.localDirectory();
 [ 'U' ]
 > ydb.procedure({procedure: 'AGET^ORWORR', arguments: [, 9, '2^0', 13, 0]});
 { ok: true,
   procedure: 'AGET^ORWORR',
-  arguments: [ <1 empty item>, 9, '2^0', 13, 0 ],
-  result: 0 }
+  arguments: [ <1 empty item>, 9, '2^0', 13, 0 ] }
 > ydb.localDirectory();
 [ 'DILOCKTM', 'DISYS', 'DT', 'DTIME', 'DUZ', 'IO', 'U', 'XPARSYS' ]
 > ydb.kill();
-0
+undefined
 > ydb.localDirectory();
 []
 ```
@@ -482,14 +481,13 @@ arguments in this fashion, e.g.
 
 ```javascript
 > ydb.set({local: 'U', data: '^'});
-{ ok: true, local: 'U', data: '^', result: 0 }
+{ ok: true, local: 'U', data: '^' }
 > const arg = {type: 'reference', value: 'LIST'};
 undefined
 > ydb.procedure({procedure: 'LISTALL^ORWPT', arguments: [arg, 'A', 1]});
 { ok: true,
   procedure: 'LISTALL^ORWPT',
-  arguments: [ { type: 'reference', value: 'LIST' }, 'A', 1 ],
-  result: 0 }
+  arguments: [ { type: 'reference', value: 'LIST' }, 'A', 1 ] }
 > ydb.localDirectory();
 [ 'LIST', 'U' ]
 > ydb.data({local: 'LIST'});
