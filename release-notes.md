@@ -1,5 +1,11 @@
 # NodeM Release Notes #
 
+## v0.13.4 - 2019 Jan 6 ##
+
+- Fix minor documentation mistakes
+- Fix indirection limit bug in v4wNode.m routine
+- Fix bug in environ script
+
 ## v0.13.3 - 2018 Dec 13 ##
 
 - Fix V8 type bug

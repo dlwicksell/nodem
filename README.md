@@ -8,12 +8,12 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.13.3 - 2018 Dec 13
+Version 0.13.4 - 2019 Jan 6
 
 ## Copyright and License ##
 
 Addon Module written and maintained by David Wicksell <dlw@linux.com>  
-Copyright © 2012-2018 Fourth Watch Software LC
+Copyright © 2012-2019 Fourth Watch Software LC
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License (AGPL) as published by the
@@ -25,7 +25,7 @@ WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License along
-with this program. If not, see <http://www.gnu.org/licenses/>.
+with this program. If not, see <https://www.gnu.org/licenses/>.
 
 Full license text: [AGPL-3.0][license]
 
@@ -78,14 +78,14 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 15975 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.13.2 (FWS); YottaDB version: 1.22'
-> ydb.get({global: 'test', subscripts: [0, 2, 0]}); // ^test(0,2,0)
+'Node.js Adaptor for YottaDB: Version: 0.13.4 (FWS); YottaDB version: 1.22'
+> ydb.get({global: 'test', subscripts: [0, 2, 0]}); // write ^test(0,2,0)
 { ok: true,
   global: 'test',
   subscripts: [ 0, 2, 0 ],
   data: '2 bags of wheat',
   defined: 1 }
-> ydb.get('^test', 0, 2, 0); // ^test(0,2,0)
+> ydb.get('^test', 0, 2, 0); // write ^test(0,2,0)
 '2 bags of wheat'
 > ydb.get({global: 'test', subscripts: [0, 2, 0]}, (error, result) => {if (!error) {console.log('result:', result);}});
 undefined
@@ -99,7 +99,7 @@ undefined
 undefined
 > result: 2 bags of wheat
 
-> ydb.set('^test', 0, 2, 0, '3 bags of wheat'); // ^test(0,2,0)="3 bags of wheat"
+> ydb.set('^test', 0, 2, 0, '3 bags of wheat'); // set ^test(0,2,0)="3 bags of wheat"
 undefined
 > ydb.get({global: 'test', subscripts: [0, 2, 0]});
 { ok: true,
@@ -119,7 +119,7 @@ true
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v11.4.0 at this time), as well as every version of
+through the current release (v11.6.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards-compatible way, which might
 break Nodem for that version.
@@ -279,7 +279,7 @@ of your GT.CM client configuration, and have started the GT.CM server on the
 same ipAddress and tcpPort that you configured in the open() call in Nodem, e.g.
 
 ```bash
-$ $gtm_dist/gtcm_gnp_server -log=gtcm.log -service=127.0.0.1:6879
+$ $ydb_dist/gtcm_gnp_server -log=gtcm.log -service=127.0.0.1:6879
 ```
 
 **NOTE:** GT.CM only allows remote connections for the database access APIs, not
@@ -298,12 +298,14 @@ older byte-encoding scheme, that represents all characters in a single byte, you
 can set charset to either m, ascii, or binary, case insensitively. One thing to
 keep in mind when you do so, is that Node.js internally represents data in
 UTF-16, but interprets data in UTF-8 in most cases. You can control this through
-process.stdout.setDefaultEncoding inside of your Node.js code. Set that property
-to 'binary' or 'ascii', and it will interpret your data as a byte encoding,
-using the character glyphs in your current locale, e.g.
+the process stream encoding methods inside of your Node.js code. Call those
+methods to change the encoding to 'binary' or 'ascii', and it will interpret
+your data as a byte encoding, using the character glyphs in your current locale,
+e.g.
 
 ```javascript
-> process.stdout.setDefaultEncoding = 'binary';
+> process.stdin.setEncoding('binary');
+> process.stdout.setDefaultEncoding('binary');
 > ydb.open({charset: 'm'});
 ```
 
@@ -569,4 +571,4 @@ If you want to report any issues, visit <https://github.com/dlwicksell/nodem/iss
 [GT.M]: https://www.fisglobal.com/solutions/banking-and-wealth/services/database-engine
 [Caché]: https://www.intersystems.com/products/cache/
 [BXJS]: https://docs.intersystems.com/documentation/cache/20181/pdfs/BXJS.pdf
-[GT.CM]: http://tinco.pair.com/bhaskar/gtm/doc/books/ao/UNIX_manual/webhelp/content/ch13.html
+[GT.CM]: https://docs.yottadb.com/AdminOpsGuide/gtcm.html

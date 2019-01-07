@@ -1,4 +1,4 @@
-v4wNode() ;;2018-12-10  3:50 PM
+v4wNode() ;;2019-01-06  7:30 PM
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -6,7 +6,7 @@ v4wNode() ;;2018-12-10  3:50 PM
  ; Maintainer: David Wicksell <dlw@linux.com>
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2018 Fourth Watch Software LC
+ ; Copyright © 2012-2019 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
@@ -41,6 +41,9 @@ construct:(name,args)
  ;; @returns {string} function - Function or procedure reference ready to be used by indirection
 constructFunction:(func,args,tempArgs)
  new i,global,function
+ ;
+ if args="" quit func
+ ;
  set global="^global("_args_")",function=""
  ;
  for i=1:1:$qlength(global) do
@@ -328,7 +331,7 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  set v4wFunction=$$construct(v4wFunc,v4wInputArgs)
  ;
  ; Construct a full function reference to get around the 8192 indirection limit
- if $zlength(v4wFunction)>8183 new v4wTempArgs set v4wFunction=$$constructFunction(v4wFunc,v4wInputArgs,.v4wTempArgs)
+ if $zlength(v4wFunction)>8180 new v4wTempArgs set v4wFunction=$$constructFunction(v4wFunc,v4wInputArgs,.v4wTempArgs)
  if $get(v4wDebug,0)>1 write !,"DEBUG>> function:",! zwrite v4wFunction
  ;
  do
@@ -788,7 +791,7 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  set v4wProcedure=$$construct(v4wProc,v4wInputArgs)
  ;
  ; Construct a full procedure reference to get around the 8192 indirection limit
- if $zlength(v4wProcedure)>8183 new v4wTempArgs set v4wProcedure=$$constructFunction(v4wProc,v4wInputArgs,.v4wTempArgs)
+ if $zlength(v4wProcedure)>8192 new v4wTempArgs set v4wProcedure=$$constructFunction(v4wProc,v4wInputArgs,.v4wTempArgs)
  if $get(v4wDebug,0)>1 write !,"DEBUG>> procedure:",! zwrite v4wProcedure
  ;
  do

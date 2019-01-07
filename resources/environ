@@ -3,7 +3,7 @@
 # environ - Nodem environment script
 #
 # Written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2015,2018 Fourth Watch Software LC
+# Copyright © 2012-2015,2018-2019 Fourth Watch Software LC
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License (AGPL)
@@ -61,7 +61,7 @@ DIR=${DIR%/.}
 # GT.M call-in table
 export GTMCI="$DIR/resources/nodem.ci"
 # GT.M routines path
-export gtmroutines="$DIR/src ${gtmroutines}"
+[[ -n ${gtmroutines} ]] && export gtmroutines="$DIR/src ${gtmroutines}" || export gtmroutines="$DIR/src"
 
 # Runtime loader path for GT.M shared library, if necessary (see README.md)
 #export LD_LIBRARY_PATH=${gtm_dist}:${LD_LIBRARY_PATH}
