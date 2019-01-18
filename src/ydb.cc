@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018 Fourth Watch Software LC
+ * Copyright © 2018-2019 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -43,20 +43,16 @@ using std::vector;
  * @summary Check if global or local node has data and/or children or not
  * @param {Baton*} baton - struct containing the following members
  * @member {ydb_char_t} ret_buf - Data returned from YottaDB, via the SimpleAPI interface
- * @member {string} glvn - Global or local variable name
+ * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t data(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::data enter" << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
 
-    if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
-    }
-
-    char* var_name = (char*) baton->glvn.c_str();
+    char* var_name = (char*) baton->name.c_str();
 
     ydb_buffer_t glvn;
     glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -73,8 +69,11 @@ ydb_status_t data(nodem::Baton* baton)
     unsigned int  value = 0;
     unsigned int* ret_value = &value;
 
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
     uv_mutex_lock(&nodem::mutex_g);
     ydb_status_t stat_buf = ydb_data_s(&glvn, subs_size, subs_array, ret_value);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
     uv_mutex_unlock(&nodem::mutex_g);
 
     if (int len = snprintf(baton->ret_buf, sizeof(int), "%u", *ret_value) < 0) {
@@ -94,20 +93,16 @@ ydb_status_t data(nodem::Baton* baton)
  * @summary Get data from a global or local node, or an intrinsic special variable
  * @param {Baton*} baton - struct containing the following members
  * @member {ydb_char_t} ret_buf - Data returned from YottaDB, via the SimpleAPI interface
- * @member {string} glvn - Global, local, or intrinsic special variable name
+ * @member {string} name - Global, local, or intrinsic special variable name
  * @member {vector<string>} subs_array - Subscripts
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t get(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::get enter" << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
 
-    if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
-    }
-
-    char* var_name = (char*) baton->glvn.c_str();
+    char* var_name = (char*) baton->name.c_str();
 
     ydb_buffer_t glvn;
     glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -128,8 +123,11 @@ ydb_status_t get(nodem::Baton* baton)
     value.len_used = 0;
     value.buf_addr = (char*) &data;
 
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
     uv_mutex_lock(&nodem::mutex_g);
     ydb_status_t stat_buf = ydb_get_s(&glvn, subs_size, subs_array, &value);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
     uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(baton->ret_buf, value.buf_addr, value.len_used);
@@ -144,8 +142,9 @@ ydb_status_t get(nodem::Baton* baton)
  * @function {public} kill
  * @summary Kill a global or global node, or a local or local node, or the entire local symbol table
  * @param {Baton*} baton - struct containing the following members
- * @member {string} glvn - Global or local variable name
+ * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {uint32_t} node_only (0|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t kill(nodem::Baton* baton)
@@ -153,20 +152,23 @@ ydb_status_t kill(nodem::Baton* baton)
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::kill enter" << "\n";
 
     if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
+        cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
+        cout << "DEBUG>>> node_only: " << baton->node_only << "\n";
     }
 
     ydb_status_t stat_buf;
 
-    if (baton->glvn == "") {
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
+    if (baton->name == "") {
         ydb_buffer_t subs_array[1] = {8, 8, (char*) "v4wDebug"};
 
         uv_mutex_lock(&nodem::mutex_g);
         stat_buf = ydb_delete_excl_s(1, subs_array);
+        if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
     } else {
-        char* var_name = (char*) baton->glvn.c_str();
+        char* var_name = (char*) baton->name.c_str();
 
         ydb_buffer_t glvn;
         glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -180,10 +182,11 @@ ydb_status_t kill(nodem::Baton* baton)
                 subs_array[i].buf_addr = (char*) baton->subs_array[i].c_str();
         }
 
-        int delete_type = YDB_DEL_TREE;
+        int delete_type = baton->node_only == 1 ? YDB_DEL_NODE : YDB_DEL_TREE;
 
         uv_mutex_lock(&nodem::mutex_g);
         stat_buf = ydb_delete_s(&glvn, subs_size, subs_array, delete_type);
+        if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
     }
 
@@ -197,20 +200,16 @@ ydb_status_t kill(nodem::Baton* baton)
  * @summary Return the next global or local node, depth first
  * @param {Baton*} baton - struct containing the following members
  * @member {ydb_char_t} ret_buf - Data returned from YottaDB, via the SimpleAPI interface
- * @member {string} glvn - Global or local variable name
+ * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t next_node(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::next_node enter" << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
 
-    if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
-    }
-
-    char* var_name = (char*) baton->glvn.c_str();
+    char* var_name = (char*) baton->name.c_str();
 
     ydb_buffer_t glvn;
     glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -230,6 +229,8 @@ ydb_status_t next_node(nodem::Baton* baton)
     static char data[YDB_MAX_SUBS][YDB_MAX_STR];
     static ydb_buffer_t ret_array[YDB_MAX_SUBS];
 
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
     uv_mutex_lock(&nodem::mutex_g);
 
     for (int i = 0; i < YDB_MAX_SUBS; i++) {
@@ -241,6 +242,7 @@ ydb_status_t next_node(nodem::Baton* baton)
     ydb_status_t stat_buf = ydb_node_next_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
     if (stat_buf != YDB_OK) {
+        ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
 
         if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::next_node exit" << "\n";
@@ -270,6 +272,7 @@ ydb_status_t next_node(nodem::Baton* baton)
     value.buf_addr = (char*) &ret_data;
 
     stat_buf = ydb_get_s(&glvn, *subs_used, ret_array, &value);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
 
     uv_mutex_unlock(&nodem::mutex_g);
 
@@ -286,20 +289,16 @@ ydb_status_t next_node(nodem::Baton* baton)
  * @summary Return the next global or local node at the same level
  * @param {Baton*} baton - struct containing the following members
  * @member {ydb_char_t} ret_buf - Data returned from YottaDB, via the SimpleAPI interface
- * @member {string} glvn - Global or local variable name
+ * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t order(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::order enter" << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
 
-    if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
-    }
-
-    char* var_name = (char*) baton->glvn.c_str();
+    char* var_name = (char*) baton->name.c_str();
 
     ydb_buffer_t glvn;
     glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -319,6 +318,8 @@ ydb_status_t order(nodem::Baton* baton)
     value.len_alloc = YDB_MAX_STR;
     value.len_used = 0;
     value.buf_addr = (char*) &data;
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
 
     if (strncmp(glvn.buf_addr, "^", 1) != 0 && subs_size > 0) {
         unsigned int  value = 0;
@@ -341,6 +342,7 @@ ydb_status_t order(nodem::Baton* baton)
 
     uv_mutex_lock(&nodem::mutex_g);
     stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
     uv_mutex_unlock(&nodem::mutex_g);
 
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
@@ -349,6 +351,7 @@ ydb_status_t order(nodem::Baton* baton)
 
         uv_mutex_lock(&nodem::mutex_g);
         stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
+        if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
 
         if (value.len_used == 0) break;
@@ -367,20 +370,16 @@ ydb_status_t order(nodem::Baton* baton)
  * @summary Return the previous global or local node at the same level
  * @param {Baton*} baton - struct containing the following members
  * @member {ydb_char_t} ret_buf - Data returned from YottaDB, via the SimpleAPI interface
- * @member {string} glvn - Global or local variable name
+ * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t previous(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::previous enter" << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
 
-    if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
-    }
-
-    char* var_name = (char*) baton->glvn.c_str();
+    char* var_name = (char*) baton->name.c_str();
 
     ydb_buffer_t glvn;
     glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -401,6 +400,8 @@ ydb_status_t previous(nodem::Baton* baton)
     value.len_used = 0;
     value.buf_addr = (char*) &data;
 
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
     if (strncmp(glvn.buf_addr, "^", 1) != 0 && subs_size > 0) {
         unsigned int  value = 0;
         unsigned int* ret_value = &value;
@@ -412,7 +413,7 @@ ydb_status_t previous(nodem::Baton* baton)
         if (stat_buf == YDB_OK && *ret_value == 0) {
             baton->ret_buf[0] = '\0';
 
-            if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::order exit" << "\n";
+            if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::previous exit" << "\n";
 
             return stat_buf;
         }
@@ -422,6 +423,7 @@ ydb_status_t previous(nodem::Baton* baton)
 
     uv_mutex_lock(&nodem::mutex_g);
     stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
     uv_mutex_unlock(&nodem::mutex_g);
 
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
@@ -430,6 +432,7 @@ ydb_status_t previous(nodem::Baton* baton)
 
         uv_mutex_lock(&nodem::mutex_g);
         stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
+        if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
 
         if (value.len_used == 0) break;
@@ -448,20 +451,16 @@ ydb_status_t previous(nodem::Baton* baton)
  * @summary Return the previous global or local node, depth first
  * @param {Baton*} baton - struct containing the following members
  * @member {ydb_char_t} ret_buf - Data returned from YottaDB, via the SimpleAPI interface
- * @member {string} glvn - Global or local variable name
+ * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t previous_node(nodem::Baton* baton)
 {
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::previous_node enter" << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
 
-    if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
-    }
-
-    char* var_name = (char*) baton->glvn.c_str();
+    char* var_name = (char*) baton->name.c_str();
 
     ydb_buffer_t glvn;
     glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -481,6 +480,8 @@ ydb_status_t previous_node(nodem::Baton* baton)
     static char data[YDB_MAX_SUBS][YDB_MAX_STR];
     static ydb_buffer_t ret_array[YDB_MAX_SUBS];
 
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
     uv_mutex_lock(&nodem::mutex_g);
 
     for (int i = 0; i < YDB_MAX_SUBS; i++) {
@@ -492,6 +493,7 @@ ydb_status_t previous_node(nodem::Baton* baton)
     ydb_status_t stat_buf = ydb_node_previous_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
     if (stat_buf != YDB_OK) {
+        ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
 
         if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::previous_node exit" << "\n";
@@ -518,6 +520,7 @@ ydb_status_t previous_node(nodem::Baton* baton)
     value.buf_addr = (char*) &ret_data;
 
     stat_buf = ydb_get_s(&glvn, *subs_used, ret_array, &value);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
 
     uv_mutex_unlock(&nodem::mutex_g);
 
@@ -538,7 +541,7 @@ ydb_status_t previous_node(nodem::Baton* baton)
  * @function {public} set
  * @summary Set a global or local node, or an intrinsic special variable
  * @param {Baton*} baton - struct containing the following members
- * @member {string} glvn - Global, local, or intrinsic special variable name
+ * @member {string} name - Global, local, or intrinsic special variable name
  * @member {vector<string>} subs_array - Subscripts
  * @member {string} value - Value to set
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
@@ -548,12 +551,11 @@ ydb_status_t set(nodem::Baton* baton)
     if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::set enter" << "\n";
 
     if (nodem::debug_g > nodem::MEDIUM) {
-        cout << "DEBUG>>> glvn: " << baton->glvn.c_str() << "\n";
-        cout << "DEBUG>>> subs_array size: " << baton->subs_array.size() << "\n";
+        cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
         cout << "DEBUG>>> value: " << baton->value.c_str() << "\n";
     }
 
-    char* var_name = (char*) baton->glvn.c_str();
+    char* var_name = (char*) baton->name.c_str();
 
     ydb_buffer_t glvn;
     glvn.len_alloc = glvn.len_used = strlen(var_name);
@@ -573,8 +575,11 @@ ydb_status_t set(nodem::Baton* baton)
     data_node.len_alloc = data_node.len_used = strlen(value);
     data_node.buf_addr = value;
 
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
     uv_mutex_lock(&nodem::mutex_g);
     ydb_status_t stat_buf = ydb_set_s(&glvn, subs_size, subs_array, &data_node);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
     uv_mutex_unlock(&nodem::mutex_g);
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::set exit" << "\n";

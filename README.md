@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.13.4 - 2019 Jan 6
+Version 0.14.0 - 2019 Jan 17
 
 ## Copyright and License ##
 
@@ -43,20 +43,21 @@ aims to be API-compatible (while in 'strict' mode) with the in-process Node.js
 interface for [Caché][].
 
 All of Nodem's APIs support synchronous operation and accept arguments passed
-via a single JavaScript object, containing a few specified properties. The APIs
+via a single JavaScript object, containing a few specific properties. The APIs
 that currently support both synchronous and asynchronous operation, as well as
-accepting arguments passed by-position, are: data, get, kill, nextNode, order,
-previous, previousNode, and set. In order to use the asynchronous versions of
-those APIs, you must pass a JavaScript function, taking two arguments - error
-and result, as the last argument to the normal synchronous APIs. When passing
-arguments to those APIs by-position, the first argument would be the global,
-local, or intrinsic special variable (only supported in the get and set APIs)
-string, and the next set of arguments would be each subscript, separated as a
-different argument. In order to specify an intrinsic special variable when
-passing arguments inside of a JavaScript object, use the local property, and
-preface the name with a $. For the set API, the last non-function argument would
-be treated as the data to set in to the node. Asynchronous, and call
-by-position, support for the rest of the API is coming soon.
+accepting arguments passed by-position, are: data, function, get, kill,
+nextNode, order, previous, previousNode, procedure, and set. In order to use the
+asynchronous versions of those APIs, you must pass a JavaScript function, taking
+two arguments - error and result, as the last argument to the normal synchronous
+APIs. When passing arguments to those APIs by-position, the first argument would
+be the global, local, or intrinsic special variable (only supported in the get
+and set APIs) string, and the next set of arguments would be each subscript (or
+function/procedure argument), separated as a different argument. In order to
+specify an intrinsic special variable when passing arguments inside of a
+JavaScript object, use the local property, and preface the name with a $. For
+the set API, the last non-function argument would be treated as the data to set
+in to the node. Asynchronous, and call by-position, support for the rest of the
+API is coming soon.
 
 Nodem uses the YottaDB and GT.M C call-in interface. YottaDB has released a new,
 faster, low-level database access API, with version r1.20, called the SimpleAPI.
@@ -413,6 +414,23 @@ or
 > ydb.lock({global: 'dlw', timeout: 0});
 ```
 
+The kill API takes an optional nodeOnly argument. It can be set to true or
+false, defaulting to false. If set to true, then it will only remove the node
+that is passed to it; if set to false, then it will remove the node passed to
+it, and all of its children, or the full sub-tree, e.g.
+
+```javascript
+> ydb.kill({global: 'dlw', nodeOnly: true});
+```
+or
+```javascript
+> ydb.kill({local: 'dlw', nodeOnly: true});
+```
+
+The nodeOnly option is available when calling the kill API by passing arguments
+in a single JavaScript object, like above, but not when passing arguments
+by-position.
+
 ## Additional Features ##
 
 Nodem provides a built-in API usage help menu. By calling the help method
@@ -527,7 +545,7 @@ API                      | Description
 *globalDirectory*        | List the names of the globals in the database
 *help*                   | Display a help menu of method usage
 *increment*              | Atomically increment the value stored in a global or local node
-*kill*                   | Delete a global or local node, and all of its children; or kill all variables in the local symbol table
+*kill*                   | Delete a global or local node, and optionally, all of its children; or delete all local variables
 *localDirectory*         | List the names of the variables in the local symbol table
 *lock*                   | Lock a global or global node, or local or local node, incrementally
 *merge*                  | Merge a global or local tree/sub-tree, or data node, to a global or local tree/sub-tree, or data node
@@ -550,8 +568,8 @@ Nodem is still in development, its interface may change in future versions.
 
 ## Contact Info ##
 
-If you have any questions or feature requests, email me at <dlw@linux.com>.  
-If you want to report any issues, visit <https://github.com/dlwicksell/nodem/issues>.
+If you have any questions or feature requests, email me at <dlw@linux.com>  
+If you want to report any issues, visit <https://github.com/dlwicksell/nodem/issues>
 
 ## See Also ##
 

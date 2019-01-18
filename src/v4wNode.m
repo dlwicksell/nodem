@@ -1,4 +1,4 @@
-v4wNode() ;;2019-01-06  7:30 PM
+v4wNode() ;;2019-01-16  10:36 PM
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -340,15 +340,9 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  ;
  set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
  ;
- if v4wMode do  quit "{""result"":"_v4wResult_"}"
- . if $get(v4wDebug,0)>1 write !,"DEBUG>> function exit:",! zwrite v4wResult use $principal
+ if $get(v4wDebug,0)>1 write !,"DEBUG>> function exit:",! zwrite v4wResult use $principal
  ;
- set v4wReturn="{"
- if v4wArgs'="" set v4wReturn=v4wReturn_"""arguments"":["_$$process(v4wArgs,"pass",v4wMode)_"],"
- set v4wReturn=v4wReturn_"""result"":"_v4wResult_"}"
- ;
- if $get(v4wDebug,0)>1 write !,"DEBUG>> function exit:",! zwrite v4wReturn use $principal
- quit v4wReturn
+ quit "{""result"":"_v4wResult_"}"
  ;; @end function
  ;
  ;; @function {public} get
@@ -456,14 +450,16 @@ increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
  ;; @summary Kill a global or global node, or a local or local node, or the entire local symbol table
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
+ ;; @param {number} v4wNode (0|1) - Whether to kill only the node, or also kill child subscripts; defaults to include children
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns void
-kill(v4wGlvn,v4wSubs,v4wMode)
+kill(v4wGlvn,v4wSubs,v4wNode,v4wMode)
  use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
+ set v4wNode=$get(v4wNode,0)
  set v4wMode=$get(v4wMode,1)
- if $get(v4wDebug,0)>1 write !,"DEBUG>> kill enter:",! zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 write !,"DEBUG>> kill enter:",! zwrite v4wGlvn,v4wSubs,v4wNode,v4wMode
  ;
  new v4wName
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -472,6 +468,7 @@ kill(v4wGlvn,v4wSubs,v4wMode)
  if $get(v4wDebug,0)>1 write !,"DEBUG>> kill:",! zwrite v4wName
  ;
  if v4wGlvn="" kill (v4wDebug)
+ else  if v4wNode zkill @v4wName
  else  kill @v4wName
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> kill exit",! use $principal
@@ -679,7 +676,6 @@ order(v4wGlvn,v4wSubs,v4wMode)
  ;
  set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
  ;
- ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> order exit:",! zwrite v4wResult use $principal
  quit "{""result"":"_v4wResult_"}"
  ;; @end order
@@ -798,15 +794,9 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  . new v4wArgs,v4wDebug,v4wInputArgs,v4wMode,v4wProc,v4wRelink
  . do @v4wProcedure
  ;
- if v4wMode do  quit "{}"
- . if $get(v4wDebug,0)>1 write !,"DEBUG>> procedure exit",! use $principal
+ if $get(v4wDebug,0)>1 write !,"DEBUG>> procedure exit",! use $principal
  ;
- set v4wReturn="{"
- if v4wArgs'="" set v4wReturn=v4wReturn_"""arguments"":["_$$process(v4wArgs,"pass",v4wMode)_"]"
- set v4wReturn=v4wReturn_"}"
- ;
- if $get(v4wDebug,0)>1 write !,"DEBUG>> procedure exit:",! zwrite v4wReturn use $principal
- quit v4wReturn
+ quit
  ;; @end procedure
  ;
  ;; @function {public} retrieve

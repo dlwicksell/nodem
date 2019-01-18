@@ -1,5 +1,16 @@
 # NodeM Release Notes #
 
+## v0.14.0 - 2019 Jan 17 ##
+
+- Add full asynchronous support to the function and procedure APIs
+- Add support for calling arguments by-position to the function and procedure APIs
+- Add nodeOnly option to kill API to support zkill
+- Improve usage of gtm_cip
+- Fix possible race conditions with error handling
+- Improve debug tracing code
+- Improve error handling during subscript parsing
+- Update built-in API help method
+
 ## v0.13.4 - 2019 Jan 6 ##
 
 - Fix minor documentation mistakes

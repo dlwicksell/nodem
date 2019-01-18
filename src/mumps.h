@@ -25,11 +25,10 @@
 #define MUMPS_H
 
 extern "C" {
-    #include <gtmxc_types.h>
+#include <gtmxc_types.h>
 
 #if YDB_SIMPLE_API == 1
-    #include <libydberrors.h>
-    #include <libyottadb.h>
+#include <libydberrors.h>
 #endif
 }
 
@@ -41,23 +40,23 @@ extern "C" {
 
 namespace nodem {
 
-#ifdef LIBYOTTADB_TYPES_H
-    #define NODEM_DB "YottaDB"
+#if YDB_IMPLEMENTATION == 1
+#define NODEM_DB "YottaDB"
 #else
-    #define NODEM_DB "GT.M"
+#define NODEM_DB "GT.M"
 #endif
 
 #define NODEM_MAJOR_VERSION 0
-#define NODEM_MINOR_VERSION 13
-#define NODEM_PATCH_VERSION 4
+#define NODEM_MINOR_VERSION 14
+#define NODEM_PATCH_VERSION 0
 
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
 
 #define NODEM_VERSION NODEM_STRING(NODEM_MAJOR_VERSION) "." NODEM_STRING(NODEM_MINOR_VERSION) "." NODEM_STRING(NODEM_PATCH_VERSION)
 
-#define MSG_LEN (2048 + 1)
-#define RET_LEN (1048576 + 1)
+#define MSG_LEN 2048
+#define RET_LEN 1048576
 
 extern enum debug_t {OFF, LOW, MEDIUM, HIGH} debug_g;
 extern uv_mutex_t mutex_g;
@@ -65,37 +64,43 @@ extern uv_mutex_t mutex_g;
 /*
  * @struct Baton
  * @summary Common structure to transfer data between main thread and worker threads when Nodem APIs are called asynchronously
- * @member request
- * @member callback_p
- * @member subscripts_p
- * @member data_p
- * @member glvn
- * @member subs
- * @member value
- * @member subs_array
- * @member mode
- * @member async
- * @member local
- * @member position
- * @member status
- * @member msg_bug
- * @member ret_buf
- * @member function
- * @member function_return
+ * @member {uv_work_t} request
+ * @member {Persistent<Function>} callback_p
+ * @member {Persistent<Function>} arguments_p
+ * @member {Persistent<Function>} data_p
+ * @member {string} name
+ * @member {string} args
+ * @member {string} value
+ * @member {vector<string>} subs_array
+ * @member {mode_t} mode
+ * @member {bool} async
+ * @member {bool} local
+ * @member {bool} position
+ * @member {bool} routine
+ * @member {uint32_t} node_only
+ * @member {uint32_t} relink
+ * @member {gtm_status_t} status
+ * @member {gtm_char_t} msg_bug
+ * @member {gtm_char_t} ret_buf
+ * @member {gtm_status_t} function
+ * @member {Local<Value>} function_return
  */
 struct Baton {
     uv_work_t                    request;
     v8::Persistent<v8::Function> callback_p;
-    v8::Persistent<v8::Value>    subscripts_p;
+    v8::Persistent<v8::Value>    arguments_p;
     v8::Persistent<v8::Value>    data_p;
-    std::string                  glvn;
-    std::string                  subs;
+    std::string                  name;
+    std::string                  args;
     std::string                  value;
     std::vector<std::string>     subs_array;
     mode_t                       mode;
     bool                         async;
     bool                         local;
     bool                         position;
+    bool                         routine;
+    uint32_t                     node_only;
+    uint32_t                     relink;
     gtm_status_t                 status;
     gtm_char_t                   msg_buf[MSG_LEN];
     gtm_char_t                   ret_buf[RET_LEN];

@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018 Fourth Watch Software LC
+ * Copyright © 2018-2019 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -31,7 +31,6 @@
 namespace ydb {
 
 ydb_status_t data(nodem::Baton*);
-ydb_status_t function(nodem::Baton*);
 ydb_status_t get(nodem::Baton*);
 ydb_status_t global_directory(nodem::Baton*);
 ydb_status_t increment(nodem::Baton*);
@@ -43,7 +42,6 @@ ydb_status_t next_node(nodem::Baton*);
 ydb_status_t order(nodem::Baton*);
 ydb_status_t previous(nodem::Baton*);
 ydb_status_t previous_node(nodem::Baton*);
-ydb_status_t procedure(nodem::Baton*);
 ydb_status_t set(nodem::Baton*);
 ydb_status_t unlock(nodem::Baton*);
 

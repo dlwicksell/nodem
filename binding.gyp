@@ -2,7 +2,7 @@
 # binding.gyp - Nodem build script
 #
 # Written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2016,2018 Fourth Watch Software LC
+# Copyright © 2012-2016,2018-2019 Fourth Watch Software LC
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License (AGPL)
@@ -30,8 +30,8 @@
       ],
       'cflags': [
         '-ansi',
-        '-pedantic',
         '-error',
+        '-pedantic',
         '-std=c++11',
         '-Wno-cast-function-type',
         '-Wno-deprecated-declarations',
@@ -42,7 +42,8 @@
         'gtm_lib%': '<!(if [ -n "$ydb_dist" ]; then echo yottadb; else echo gtmshr; fi)'
       },
       'defines': [
-        'GTM_CIP_API=<!(if [ "$(echo \'w $e($tr($p($zv," ",2),"V."),1,2)\' | <(gtm_dist)/mumps -dir | grep -Ev "^$|>")" -lt 55 ]; then echo 0; else echo 1; fi)',
+        'YDB_IMPLEMENTATION=<!(if grep -iq yottadb <(gtm_dist)/gtm; then echo 1; else echo 0; fi)',
+        'GTM_CIP_API=<!(if [ "$(echo \'w $e($tr($p($zv," ",2),"V."),1,2)\' | <(gtm_dist)/mumps -dir | grep -Ev "^$|>")" -ge 55 ]; then echo 1; else echo 0; fi)',
         'YDB_SIMPLE_API=<!(if [ -e "<(gtm_dist)/ydb" ]; then echo 1; else echo 0; fi)'
       ],
       'include_dirs': [
