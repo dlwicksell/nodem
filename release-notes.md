@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.14.1 - 2019 Feb 1 ##
+
+- Add support for YottaDB r1.24
+
 ## v0.14.0 - 2019 Jan 17 ##
 
 - Add full asynchronous support to the function and procedure APIs

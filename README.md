@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.14.0 - 2019 Jan 17
+Version 0.14.1 - 2019 Feb 1
 
 ## Copyright and License ##
 
@@ -236,7 +236,7 @@ within an environment that contains routines with unfettered access to the
 system in its default environment configuration, e.g.
 
 ```javascript
-> ydb.open({routinesPath: '/home/dlw/p/r120(/home/dlw/p)'});
+> ydb.open({routinesPath: '/home/dlw/p/r124(/home/dlw/p)'});
 ```
 
 Nodem supports setting the call-in path directly in the open call, via the

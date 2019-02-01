@@ -40,6 +40,10 @@ extern "C" {
 
 namespace nodem {
 
+#if YDB_RELEASE >= 124
+#define YDB_NODE_END YDB_ERR_NODEEND
+#endif
+
 #if YDB_IMPLEMENTATION == 1
 #define NODEM_DB "YottaDB"
 #else
@@ -48,7 +52,7 @@ namespace nodem {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 14
-#define NODEM_PATCH_VERSION 0
+#define NODEM_PATCH_VERSION 1
 
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
