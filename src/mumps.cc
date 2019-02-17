@@ -5444,7 +5444,7 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
 
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror_r(errno, error, BUFSIZ))));
         return;
-    } else if (baton->status != YDB_OK) {
+    } else if (baton->status != YDB_OK && baton->status != YDB_NODE_END) {
 #else
     if (baton->status != EXIT_SUCCESS) {
 #endif
@@ -5698,7 +5698,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
 
         isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror_r(errno, error, BUFSIZ))));
         return;
-    } else if (baton->status != YDB_OK) {
+    } else if (baton->status != YDB_OK && baton->status != YDB_NODE_END) {
 #else
     if (baton->status != EXIT_SUCCESS) {
 #endif

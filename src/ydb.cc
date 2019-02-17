@@ -241,6 +241,8 @@ ydb_status_t next_node(nodem::Baton* baton)
 
     ydb_status_t stat_buf = ydb_node_next_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
+    baton->subs_array.clear();
+
     if (stat_buf != YDB_OK) {
         ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
@@ -249,8 +251,6 @@ ydb_status_t next_node(nodem::Baton* baton)
 
         return stat_buf;
     }
-
-    baton->subs_array.clear();
 
     if (*subs_used != YDB_NODE_END) {
         for (int i = 0; i < *subs_used; i++) {
@@ -492,6 +492,8 @@ ydb_status_t previous_node(nodem::Baton* baton)
 
     ydb_status_t stat_buf = ydb_node_previous_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
+    baton->subs_array.clear();
+
     if (stat_buf != YDB_OK) {
         ydb_zstatus(baton->msg_buf, MSG_LEN);
         uv_mutex_unlock(&nodem::mutex_g);
@@ -500,8 +502,6 @@ ydb_status_t previous_node(nodem::Baton* baton)
 
         return stat_buf;
     }
-
-    baton->subs_array.clear();
 
     if (*subs_used != YDB_NODE_END) {
         for (int i = 0; i < *subs_used; i++) {
