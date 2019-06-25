@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.14.3 - 2019 Jun 24 ##
+
+- Add support for Node.js 12.x
+
 ## v0.14.2 - 2019 Feb 17 ##
 
 - Fix support for YottaDB r1.24

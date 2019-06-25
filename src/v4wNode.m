@@ -1,8 +1,8 @@
-v4wNode() ;;2019-01-16  10:36 PM
+v4wNode() ;;2019-06-24  9:42 PM
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
- ; Summary:    A YottaDB/GT.M database driver and binding for Node.js
+ ; Summary:    Call-in integration routine
  ; Maintainer: David Wicksell <dlw@linux.com>
  ;
  ; Written by David Wicksell <dlw@linux.com>
@@ -277,7 +277,7 @@ stringify:(inputArray,outputString)
  ;; @subroutine {public} debug
  ;; @summary Set debugging level, defaults to off
  ;; @param {number} level (0|1|2|3) - Debugging level, 0 is off, 1 is low, 2 is medium, 3 is high
- ;; @returns void
+ ;; @returns {void}
 debug(level)
  set v4wDebug=$get(level,0)
  quit
@@ -290,7 +290,7 @@ debug(level)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - $data value; 0 for no data nor children, 1 for data, 10 for children, 11 for data and children
 data(v4wGlvn,v4wSubs,v4wNode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wNode=$get(v4wNode,1)
@@ -316,7 +316,7 @@ data(v4wGlvn,v4wSubs,v4wNode)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - The return value of the function call
 function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wRelink=$get(v4wRelink,0)
@@ -352,7 +352,7 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - The value of the data node, and whether it was defined or not
 get(v4wGlvn,v4wSubs,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMode=$get(v4wMode,1)
@@ -383,7 +383,7 @@ get(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {string} v4wHi - The high end of a range of globals in the return array, inclusive
  ;; @returns {string} {JSON} - An array of globals
 globalDirectory(v4wMax,v4wLo,v4wHi)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMax=$get(v4wMax,0)
@@ -427,7 +427,7 @@ globalDirectory(v4wMax,v4wLo,v4wHi)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - The new value of the data node that was incremented/decremented
 increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wIncr=$get(v4wIncr,1)
@@ -450,14 +450,14 @@ increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
  ;; @summary Kill a global or global node, or a local or local node, or the entire local symbol table
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wNode (0|1) - Whether to kill only the node, or also kill child subscripts; defaults to include children
+ ;; @param {number} v4wNode (-1|0|1) - Whether to kill only the node, or also kill child subscripts; defaults to include children
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
- ;; @returns void
+ ;; @returns {void}
 kill(v4wGlvn,v4wSubs,v4wNode,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
- set v4wNode=$get(v4wNode,0)
+ set v4wNode=$select($get(v4wNode,0)'=1:0,1:1)
  set v4wMode=$get(v4wMode,1)
  if $get(v4wDebug,0)>1 write !,"DEBUG>> kill enter:",! zwrite v4wGlvn,v4wSubs,v4wNode,v4wMode
  ;
@@ -482,7 +482,7 @@ kill(v4wGlvn,v4wSubs,v4wNode,v4wMode)
  ;; @param {string} v4wHi - The high end of a range of local variables in the return array, inclusive
  ;; @returns {string} {JSON} - An array of local variables
 localDirectory(v4wMax,v4wLo,v4wHi)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMax=$get(v4wMax,0)
@@ -527,7 +527,7 @@ localDirectory(v4wMax,v4wLo,v4wHi)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - Returns whether the lock was acquired or not
 lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wTimeout=$get(v4wTimeout,-1)
@@ -569,7 +569,7 @@ lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} -
 merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMode=$get(v4wMode,1)
@@ -610,7 +610,7 @@ merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - The next or previous data node
 nextNode(v4wGlvn,v4wSubs,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMode=$get(v4wMode,1)
@@ -658,7 +658,7 @@ nextNode(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - The next or previous data node
 order(v4wGlvn,v4wSubs,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMode=$get(v4wMode,1)
@@ -687,7 +687,7 @@ order(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - Returns the previous node, via calling order function and passing a -1 to the order argument
 previous(v4wGlvn,v4wSubs,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMode=$get(v4wMode,1)
@@ -716,7 +716,7 @@ previous(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  ;; @returns {string} {JSON} - Returns the previous node, via calling nextNode function and passing a -1 to the order argument
 previousNode(v4wGlvn,v4wSubs,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  ; Handle reverse $query not existing in this M implementation version (150373074: %GTM-E-INVSVN, Invalid special variable name)
  new v4wStatus
  set v4wMode=$get(v4wMode,1)
@@ -770,9 +770,9 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {string} v4wArgs - Arguments represented as a string, encoded with argument lengths
  ;; @param {number} v4wRelink (0|1) - Whether to relink the procedure/subroutine to be called, if it has changed, defaults to off
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
- ;; @returns void
+ ;; @returns {void}
 procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wRelink=$get(v4wRelink,0)
@@ -803,7 +803,7 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  ;; @summary Not yet implemented
  ;; @returns {string} {JSON} - A message that the API is not yet implemented
 retrieve()
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  quit "{""ok"":0,""status"":""retrieve not yet implemented""}"
@@ -815,9 +815,9 @@ retrieve()
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
  ;; @param {string} v4wData - Data to store in the database node or local variable node
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
- ;; @returns void
+ ;; @returns {void}
 set(v4wGlvn,v4wSubs,v4wData,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMode=$get(v4wMode,1)
@@ -844,9 +844,9 @@ set(v4wGlvn,v4wSubs,v4wData,v4wMode)
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
- ;; @returns void
+ ;; @returns {void}
 unlock(v4wGlvn,v4wSubs,v4wMode)
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wMode=$get(v4wMode,1)
@@ -870,7 +870,7 @@ unlock(v4wGlvn,v4wSubs,v4wMode)
  ;; @summary Not yet implemented
  ;; @returns {string} {JSON} - A message that the API is not yet implemented
 update()
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  quit "{""ok"":0,""status"":""update not yet implemented""}"
@@ -878,19 +878,19 @@ update()
  ;
  ;; @function {public} version
  ;; @summary Return the about/version string
- ;; @returns {string} {JSON} - The YottaDB and/or GT.M version
+ ;; @returns {string} - The YottaDB or GT.M version
 version()
- use $principal:ctrap="$zchar(3)" ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  ; Handle $zyrelease not existing in this M implementation version (150373074: %GTM-E-INVSVN, Invalid special variable name)
- set $etrap="if $ecode["",Z150373074,"" set $ecode="""" quit ""GT.M version: ""_gtmVersion"
+ set $etrap="if $ecode["",Z150373074,"" set $ecode="""" quit ""GT.M Version: ""_v4wGtmVersion"
  set $ecode=""
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> version enter",! use $principal
  ;
- new gtmVersion,yottaVersion
- set gtmVersion=$zpiece($zversion," ",2),$zextract(gtmVersion)=""
- set yottaVersion=$zpiece($zyrelease," ",2),$zextract(yottaVersion)=""
+ new v4wGtmVersion,v4wYottaVersion
+ set v4wGtmVersion=$zpiece($zversion," ",2),$zextract(v4wGtmVersion)=""
+ set v4wYottaVersion=$zpiece($zyrelease," ",2),$zextract(v4wYottaVersion)=""
  ;
  if $get(v4wDebug,0)>1 write !,"DEBUG>> version exit",! use $principal
- quit "YottaDB version: "_yottaVersion
+ quit "YottaDB Version: "_v4wYottaVersion
  ;; @end version

@@ -52,7 +52,7 @@ namespace nodem {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 14
-#define NODEM_PATCH_VERSION 2
+#define NODEM_PATCH_VERSION 3
 
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
@@ -81,7 +81,7 @@ extern uv_mutex_t mutex_g;
  * @member {bool} local
  * @member {bool} position
  * @member {bool} routine
- * @member {uint32_t} node_only
+ * @member {int32_t} node_only
  * @member {uint32_t} relink
  * @member {gtm_status_t} status
  * @member {gtm_char_t} msg_bug
@@ -103,7 +103,7 @@ struct Baton {
     bool                         local;
     bool                         position;
     bool                         routine;
-    uint32_t                     node_only;
+    int32_t                      node_only;
     uint32_t                     relink;
     gtm_status_t                 status;
     gtm_char_t                   msg_buf[MSG_LEN];
@@ -122,7 +122,16 @@ struct Baton {
  */
 class GtmValue {
 public:
-    explicit GtmValue(v8::Local<v8::Value>& val) : value{val->ToString()}, size{value->Length() + 1}, buffer{new uint8_t[size]} {}
+    explicit GtmValue(v8::Local<v8::Value>& val) :
+#if NODE_MAJOR_VERSION >= 8
+        value{val->ToString(v8::Isolate::GetCurrent()->GetCurrentContext()).ToLocalChecked()},
+#else
+        value{val->ToString()},
+#endif
+        size{value->Length() + 1},
+        buffer{new uint8_t[size]}
+    {}
+
     ~GtmValue() {delete buffer;}
 
     gtm_char_t* to_byte(void);

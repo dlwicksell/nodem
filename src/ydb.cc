@@ -1,7 +1,7 @@
 /*
  * Package:    NodeM
  * File:       ydb.cc
- * Summary:    A YottaDB/GT.M database driver and binding for Node.js
+ * Summary:    Functions that wrap calls to the SimpleAPI interface
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
@@ -66,8 +66,8 @@ ydb_status_t data(nodem::Baton* baton)
             subs_array[i].buf_addr = (char*) baton->subs_array[i].c_str();
     }
 
-    unsigned int  value = 0;
-    unsigned int* ret_value = &value;
+    unsigned int  temp_value = 0;
+    unsigned int* ret_value = &temp_value;
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
 
@@ -116,12 +116,12 @@ ydb_status_t get(nodem::Baton* baton)
             subs_array[i].buf_addr = (char*) baton->subs_array[i].c_str();
     }
 
-    char data[YDB_MAX_STR];
+    char get_data[YDB_MAX_STR];
 
     ydb_buffer_t value;
     value.len_alloc = YDB_MAX_STR;
     value.len_used = 0;
-    value.buf_addr = (char*) &data;
+    value.buf_addr = (char*) &get_data;
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
 
@@ -144,7 +144,7 @@ ydb_status_t get(nodem::Baton* baton)
  * @param {Baton*} baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
- * @member {uint32_t} node_only (0|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
+ * @member {int32_t} node_only (-1|<0>|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t kill(nodem::Baton* baton)
@@ -226,7 +226,7 @@ ydb_status_t next_node(nodem::Baton* baton)
     int  subs_test = YDB_MAX_SUBS;
     int* subs_used = &subs_test;
 
-    static char data[YDB_MAX_SUBS][YDB_MAX_STR];
+    static char next_node_data[YDB_MAX_SUBS][YDB_MAX_STR];
     static ydb_buffer_t ret_array[YDB_MAX_SUBS];
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
@@ -236,7 +236,7 @@ ydb_status_t next_node(nodem::Baton* baton)
     for (int i = 0; i < YDB_MAX_SUBS; i++) {
         ret_array[i].len_alloc = YDB_MAX_STR;
         ret_array[i].len_used = 0;
-        ret_array[i].buf_addr = (char*) &data[i][0];
+        ret_array[i].buf_addr = (char*) &next_node_data[i][0];
     }
 
     ydb_status_t stat_buf = ydb_node_next_s(&glvn, subs_size, subs_array, subs_used, ret_array);
@@ -312,18 +312,18 @@ ydb_status_t order(nodem::Baton* baton)
             subs_array[i].buf_addr = (char*) baton->subs_array[i].c_str();
     }
 
-    char data[YDB_MAX_STR];
+    char order_data[YDB_MAX_STR];
 
     ydb_buffer_t value;
     value.len_alloc = YDB_MAX_STR;
     value.len_used = 0;
-    value.buf_addr = (char*) &data;
+    value.buf_addr = (char*) &order_data;
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
 
     if (strncmp(glvn.buf_addr, "^", 1) != 0 && subs_size > 0) {
-        unsigned int  value = 0;
-        unsigned int* ret_value = &value;
+        unsigned int  temp_value = 0;
+        unsigned int* ret_value = &temp_value;
 
         uv_mutex_lock(&nodem::mutex_g);
         ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
@@ -393,18 +393,18 @@ ydb_status_t previous(nodem::Baton* baton)
             subs_array[i].buf_addr = (char*) baton->subs_array[i].c_str();
     }
 
-    char data[YDB_MAX_STR];
+    char previous_data[YDB_MAX_STR];
 
     ydb_buffer_t value;
     value.len_alloc = YDB_MAX_STR;
     value.len_used = 0;
-    value.buf_addr = (char*) &data;
+    value.buf_addr = (char*) &previous_data;
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
 
     if (strncmp(glvn.buf_addr, "^", 1) != 0 && subs_size > 0) {
-        unsigned int  value = 0;
-        unsigned int* ret_value = &value;
+        unsigned int  temp_value = 0;
+        unsigned int* ret_value = &temp_value;
 
         uv_mutex_lock(&nodem::mutex_g);
         ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
@@ -477,7 +477,7 @@ ydb_status_t previous_node(nodem::Baton* baton)
     int  subs_test = YDB_MAX_SUBS;
     int* subs_used = &subs_test;
 
-    static char data[YDB_MAX_SUBS][YDB_MAX_STR];
+    static char previous_node_data[YDB_MAX_SUBS][YDB_MAX_STR];
     static ydb_buffer_t ret_array[YDB_MAX_SUBS];
 
     if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
@@ -487,7 +487,7 @@ ydb_status_t previous_node(nodem::Baton* baton)
     for (int i = 0; i < YDB_MAX_SUBS; i++) {
         ret_array[i].len_alloc = YDB_MAX_STR;
         ret_array[i].len_used = 0;
-        ret_array[i].buf_addr = (char*) &data[i][0];
+        ret_array[i].buf_addr = (char*) &previous_node_data[i][0];
     }
 
     ydb_status_t stat_buf = ydb_node_previous_s(&glvn, subs_size, subs_array, subs_used, ret_array);

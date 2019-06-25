@@ -1,7 +1,7 @@
 /*
  * Package:    NodeM
  * File:       ydb.h
- * Summary:    A YottaDB/GT.M database driver and binding for Node.js
+ * Summary:    Functions that wrap calls to the SimpleAPI interface
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>

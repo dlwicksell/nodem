@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.14.2 - 2019 Feb 17
+Version 0.14.3 - 2019 Jun 24
 
 ## Copyright and License ##
 
@@ -34,13 +34,14 @@ Contact me if you are interested in using Nodem with a different license.
 ## Summary and Info ##
 
 Nodem is an open source addon module that integrates [Node.js][] with the
-[YottaDB][] and [GT.M][] implementations of M[UMPS], providing in-process access
-to their database systems and some language features. Nodem provides access to
-the basic global database handling operations, as well as providing the ability
-to invoke M language functions and procedures. It also supports full local
-symbol table management. Although designed for use with YottaDB and GT.M, Nodem
-aims to be API-compatible (while in 'strict' mode) with the in-process Node.js
-interface for [Caché][].
+[YottaDB][] and [GT.M][] implementations of MUMPS, providing in-process access
+to their database systems and some language features, as well as networked
+access to their core database functionality. Nodem provides access to the basic
+global database handling operations, as well as providing the ability to invoke
+M language functions and procedures. It also supports full local symbol table
+management. Although designed for use with YottaDB and GT.M, Nodem aims to be
+API-compatible (while in 'strict' mode) with the in-process Node.js interface
+for [Caché][].
 
 All of Nodem's APIs support synchronous operation and accept arguments passed
 via a single JavaScript object, containing a few specific properties. The APIs
@@ -79,7 +80,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 15975 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.14.2 (FWS); YottaDB version: 1.24'
+'Node.js Adaptor for YottaDB: Version: 0.14.3 (FWS); YottaDB Version: 1.24'
 > ydb.get({global: 'test', subscripts: [0, 2, 0]}); // write ^test(0,2,0)
 { ok: true,
   global: 'test',
@@ -120,9 +121,9 @@ true
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v11.6.0 at this time), as well as every version of
+through the current release (v12.4.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
-core, could change their APIs in a non-backwards-compatible way, which might
+core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.
 
 In order to use the Nodem addon, you will need to have YottaDB or GT.M installed
@@ -137,7 +138,7 @@ installed in your home directory. The paths will likely be different if you have
 installed this with npm.
 
 **NOTE:** If you have installed Nodem using npm, it will attempt to build
-mumps.node during installation. If there is a file in the nodem/ directory
+mumps.node during installation. If there is a file in the nodem directory
 called builderror.log, and if that file contains no build errors for mumps.node,
 it built without issue. It also attempts to pre-compile the v4wNode.m
 integration routine, and there might be warnings from that, which won't affect
@@ -161,12 +162,12 @@ In addition you will need to set a few environment variables in order for
 YottaDB/GT.M to find the call-in table and the M routine that it maps to. The
 Nodem package supplies a sample environment file, called environ. It has a
 commented out command to set $LD_LIBRARY_PATH to $gtm_dist, which you will need
-to uncomment if you need it. It is located in ~/nodem/resources/ and can be
+to uncomment if you need it. It is located in ~/nodem/resources and can be
 sourced into your working environment, either directly, or from your own
 environment scripts or profile/login script, e.g.
 
 ```bash
-$ cd ~/nodem/resources/
+$ cd ~/nodem/resources
 $ source environ
 ```
 or
@@ -175,22 +176,23 @@ $ echo "source ~/nodem/resources/environ" >> ~/.profile
 ```
 
 If you don't source the environ file, then you will need to put a copy of
-v4wNode.m into a directory that is specified in your $gtmroutines routines path,
-or in the routinesPath property in your call to the open API, so that
-YottaDB/GT.M can find it. It is located in the ~/nodem/src/ directory. Again, if
-you don't source the environ file, then you will also need to define the $GTMCI
-environment variable, or set the callinTable property in your call to the open
-API, and point it at the file nodem.ci, located in the ~/nodem/resources/
-directory, e.g.
+v4wNode.m into a directory that is specified in your $ydb_routines (only
+applicable for YottaDB) or $gtmroutines routines path, or in the routinesPath
+property in your call to the open API, so that YottaDB/GT.M can find it. It is
+located in the ~/nodem/src directory. Again, if you don't source the environ
+file, then you will also need to define the $ydb_ci (only applicable for
+YottaDB) or $GTMCI environment variable, or set the callinTable property in your
+call to the open API, and point it at the file nodem.ci, located in the
+~/nodem/resources directory, e.g.
 
 ```bash
-$ export GTMCI=~/nodem/resources/nodem.ci
-$ cp ~/nodem/src/v4wNode.m ~/p/
+$ export ydb_ci=~/nodem/resources/nodem.ci
+$ cp ~/nodem/src/v4wNode.m ~/p
 ```
 or
 ```javascript
-> const callinTable = '/home/dlw/nodem/resources/nodem.ci';
-> const routinesPath = 'home/dlw/nodem/src'; // Make sure to include your routine directories
+> const callinTable = process.env.HOME + '/nodem/resources/nodem.ci';
+> const routinesPath = process.env.HOME + '/nodem/src .'; // Make sure to include your routine directories
 > ydb.open({callinTable: callinTable, routinesPath: routinesPath});
 ```
 
@@ -216,38 +218,39 @@ $ npm update nodem
 
 The open() call works a bit differently than the Caché version; it does not
 require any arguments, and will connect with the database specified in the
-environment variable $ydb_gbldir (or $gtmgbldir). If you have more than one
-database and would like to connect to a different one than what is defined in
-your environment, you can pass an object, with a property called either
-globalDirectory or namespace, defined as the path to your global directory file
-for that database, e.g.
+environment variable $ydb_gbldir (only applicable for YottaDB) or $gtmgbldir. If
+you have more than one database and would like to connect to a different one
+than what is defined in your environment, you can pass an object, with a
+property called either globalDirectory or namespace, defined as the path to your
+global directory file for that database, e.g.
 
 ```javascript
-> ydb.open({globalDirectory: '/home/dlw/g/db_utf.gld'});
+> ydb.open({globalDirectory: process.env.HOME + '/g/db_utf.gld'});
 ```
 
 Nodem supports setting up a custom routines path, for resolving calls to other M
 functions and procedures, via the routinesPath property. Make sure that one of
 the directories in the routinesPath contains the v4wNode.m routine, located in
-the Nodem src/ directory, or its compiled object, v4wNode.o, otherwise Nodem
+the Nodem src directory, or its compiled object, v4wNode.o, otherwise Nodem
 will not be fully functional. This could be used to provide a certain level of
 security, by giving access only to certain routines, within a Nodem process,
 within an environment that contains routines with unfettered access to the
 system in its default environment configuration, e.g.
 
 ```javascript
-> ydb.open({routinesPath: '/home/dlw/p/r124(/home/dlw/p)'});
+> const HOME = process.env.HOME;
+> ydb.open({routinesPath: `${HOME}/p/r124(${HOME}/p)`});
 ```
 
 Nodem supports setting the call-in path directly in the open call, via the
 callinTable property. This can be handy if you are running Nodem in an
 environment that has other software that uses the YottaDB/GT.M call-in
 interface, and you don't want to worry about namespace issues. Nor would you
-need to set the $GTMCI environment variable, in order for NodeM to be fully
-functional, e.g.
+need to set the $ydb_ci/$GTMCI environment variable, in order for NodeM to be
+fully functional, e.g.
 
 ```javascript
-> ydb.open({callinTable: '/home/dlw/nodem/resources/nodem.ci'});
+> ydb.open({callinTable: process.env.HOME + '/nodem/resources/nodem.ci'});
 ```
 
 You can configure Nodem to function as a [GT.CM][] client, allowing Nodem to
@@ -255,22 +258,30 @@ connect with a remote database. In the open() method, you can set an ipAddress,
 and/or a tcpPort property, and Nodem will set up the environment to connect with
 a YottaDB/GT.M database on a remote server that already has a GT.CM server
 running on that address and port. If only ipAddress or tcpPort is defined, the
-other one will be set with a default value; 127.0.0.1 for ipAddress, or 6879 for
-tcpPort. Nodem will then set the $GTCM_NODEM environment variable, for that
-Nodem process only, with the address and port you set in the open() call, e.g.
+other one will be set with a default value; 127.0.0.1 for ipAddress, or 6789 for
+tcpPort. Nodem will then set the $ydb_cm_NODEM (only applicable for YottaDB) or
+$GTCM_NODEM environment variable, for that Nodem process only, with the address
+and port you set in the open() call, e.g.
 
 ```javascript
-> ydb.open({ipAddress: '127.0.0.1', tcpPort: 6879});
+> ydb.open({ipAddress: '127.0.0.1', tcpPort: 6789});
+```
+
+If you are using IPv6, you need to surround your IP address with square
+brackets, e.g.
+
+```javascript
+> ydb.open({ipAddress: '[::1]', tcpPort: 6789});
 ```
 
 You will also need to create a global directory file that maps one or more
 database segments to a data file on the remote server you want to connect with,
 noting that the prefix to the -file argument in the example below must be NODEM,
-in order to match the $GTCM_NODEM environment variable name that Nodem sets up
-for you, e.g.
+in order to match the $ydb_cm_NODEM/$GTCM_NODEM environment variable name that
+Nodem sets up for you, e.g.
 
 ```bash
-$ mumps -run GDE
+$ $ydb_dist/mumps -run GDE
 GDE> change -segment DEFAULT -file=NODEM:/home/dlw/g/gtcm-server.dat
 ```
 
@@ -280,11 +291,11 @@ of your GT.CM client configuration, and have started the GT.CM server on the
 same ipAddress and tcpPort that you configured in the open() call in Nodem, e.g.
 
 ```bash
-$ $ydb_dist/gtcm_gnp_server -log=gtcm.log -service=127.0.0.1:6879
+$ $ydb_dist/gtcm_gnp_server -log=gtcm.log -service=6789
 ```
 
 **NOTE:** GT.CM only allows remote connections for the database access APIs, not
-the function or procedure APIs. So while using Nodem in a remote GT.CM
+the function nor procedure APIs. So while using Nodem in a remote GT.CM
 configuration, any calls to the function or procedure APIs will result in local
 calls, not remote calls.
 
@@ -295,14 +306,13 @@ environment it is running in. So it is possible to work with UTF-8 encoded data
 in the database, while in Nodem, even if you haven't set up YottaDB/GT.M to work
 with UTF-8 directly. You can set it to UTF-8 mode directly by passing utf-8 or
 utf8, case insensitively, to the charset property. If you'd rather work with an
-older byte-encoding scheme, that represents all characters in a single byte, you
-can set charset to either m, ascii, or binary, case insensitively. One thing to
-keep in mind when you do so, is that Node.js internally represents data in
-UTF-16, but interprets data in UTF-8 in most cases. You can control this through
-the process stream encoding methods inside of your Node.js code. Call those
-methods to change the encoding to 'binary' or 'ascii', and it will interpret
-your data as a byte encoding, using the character glyphs in your current locale,
-e.g.
+older byte-encoding scheme, that stores all characters in a single byte, you can
+set charset to either m, ascii, or binary, case insensitively. One thing to keep
+in mind when you do so, is that Node.js internally stores data in UTF-16, but
+interprets data in UTF-8 in most cases. You can control this through the process
+stream encoding methods inside of your Node.js code. Call those methods to
+change the encoding to 'binary' or 'ascii', and it will interpret your data as a
+byte encoding, using the character glyphs in your current locale, e.g.
 
 ```javascript
 > process.stdin.setEncoding('binary');
@@ -314,7 +324,7 @@ There are currently two different data modes that Nodem supports. The mode can
 be set to either 'canonical' or 'strict'. The default is canonical, and
 interprets data using the M canonical representation. I.e. Numbers will be
 represented numerically, etc. Strict mode interprets all data as strings,
-strictly following the convention set with InterSystems' Node.js driver, e.g.
+strictly following the convention set with the Caché Node.js driver, e.g.
 
 ```javascript
 > ydb.open({mode: 'strict'});
@@ -329,13 +339,14 @@ more verbose the debug output will be, e.g.
 > ydb.open({debug: 'low'});
 ```
 
-Nodem handles several common signals by default, closing the database connection
-and stopping the Node.js process. These signals include SIGINT, SIGTERM, and
-SIGQUIT. The handling of the SIGQUIT signal will also generate a core dump of
-the process. All three signal handlers are on by default. However, you can turn
-the signal handling on or off directly, via passing true or false to a
-signalHandler object (with properties for each of the signals) for each
-individual signal, or all of them at once, e.g.
+Nodem handles several common signals by default, closing the database
+connection, resetting the controlling terminal configuration, and stopping the
+Node.js process. These signals include SIGINT, SIGTERM, and SIGQUIT. The
+handling of the SIGQUIT signal will also generate a core dump of the process.
+All three signal handlers are on by default. However, you can turn the signal
+handling on or off directly, via passing true or false to a signalHandler object
+(with properties for each of the signals) for each individual signal, or all of
+them at once, e.g.
 
 ```javascript
 > ydb.open({signalHandler: {sigint: true, sigterm: false, sigquit: false}});
@@ -349,9 +360,9 @@ Nodem supports a feature called auto-relink, which will automatically relink a
 routine object containing any function or procedure called by the function or
 procedure API. By default auto-relink is off. You can enable it in one of three
 ways. First, you can pass it as a property of the JavaScript object argument
-which is passed to the function (or procedure) API directly, with a value of
-true, or any non-zero number. This will turn on auto-relink just for that call.
-You can also disable it, by setting autoRelink to false, or 0, if it was already
+which is passed to the function or procedure API directly, with a value of true,
+or any non-zero number. This will turn on auto-relink just for that call. You
+can also disable it, by setting autoRelink to false, or 0, if it was already
 enabled by one of the global settings, e.g.
 
 ```javascript
@@ -391,14 +402,19 @@ resetTerminal property to true, or any non-zero number, e.g.
 
 Nodem has a procedure or routine API, which is similar to the function API,
 except that it is used to call M procedures or subroutines, which do not return
-any values. The procedure API accepts one argument, a JavaScript object. The
+any values. If the procedure API is called via a JavaScript object, then the
 object must contain the required procedure/routine property, set to the name of
 the procedure/routine. It may also contain an optional property, called
 arguments, which is an array of arguments to pass to the procedure/routine. It
-also supports the autoRelink option, just as described in the function API, e.g.
+can also be called by-position, just like the function API. It also supports the
+autoRelink option, just as described in the function API, e.g.
 
 ```javascript
 > ydb.procedure({procedure: 'set^v4wTest', arguments: ['dlw', 5]});
+```
+or
+```javascript
+> ydb.procedure('set^v4wTest', 'dlw', 5);
 ```
 
 The lock API takes an optional timeout argument. If you do not set a timeout, it
@@ -444,7 +460,7 @@ argument object, you define a 'local' property. For APIs that support passing
 arguments by-position, you signify that you want them to work on a global, by
 using a '^' as the first character of the first argument. For the get and set
 APIs, if the first character of the first argument is a '$', then you are
-signifying that you are working with a intrinsic special variable (ISV). There
+signifying that you are working with an intrinsic special variable (ISV). There
 is also a localDirectory API, that works the same way as the globalDirectory
 API, except that it lists the local symbols in the symbol table, rather than the
 globals in the database. One caveat is that you cannot manipulate any local
@@ -483,12 +499,12 @@ reference, or by variable, in addition to the standard passing by value. This
 will allow someone who needs to interface Nodem with legacy M APIs that require
 using local variables in this manner, the ability to do so directly in Nodem,
 rather than having to write an M wrapper around the API, and calling that from
-Nodem. In order to use this functionality, you need to pass your arguments via
-a specially formatted object, in order to instruct Nodem that you wish to pass
+Nodem. In order to use this functionality, you need to pass your arguments via a
+specially formatted object, in order to instruct Nodem that you wish to pass
 arguments differently than normal. This is necessary because if you tried to
 pass an argument by reference or by variable directly, Node.js will try to
 dereference it as a local JavaScript variable, and you would never be able to
-refer to the right symbol in the back-end database environment. The structure
+refer to the right symbol in the back-end M database environment. The structure
 of the specially formatted object is simple. It contains a 'type' property,
 which can be one of three values: 'reference', 'variable', or 'value'; and it
 also contains a 'value' property which contains the name you want to use when
@@ -574,8 +590,8 @@ If you want to report any issues, visit <https://github.com/dlwicksell/nodem/iss
 ## See Also ##
 
 * The [Node.js][] server-side JavaScript runtime.
-* The [YottaDB][] implementation of M[UMPS].
-* The [GT.M][] implementation of M[UMPS].
+* The [YottaDB][] implementation of MUMPS.
+* The [GT.M][] implementation of MUMPS.
 
 [info-image]: https://nodei.co/npm/nodem.png?downloads=true&downloadRank=true&stars=true
 [version-image]: https://img.shields.io/node/v/nodem.svg
@@ -584,9 +600,9 @@ If you want to report any issues, visit <https://github.com/dlwicksell/nodem/iss
 [npm-url]: https://npmjs.org/package/nodem
 [license]: https://github.com/dlwicksell/nodem/blob/HEAD/COPYING
 
-[Node.js]: https://nodejs.org/
-[YottaDB]: https://yottadb.com/
-[GT.M]: https://www.fisglobal.com/solutions/banking-and-wealth/services/database-engine
-[Caché]: https://www.intersystems.com/products/cache/
+[Node.js]: https://nodejs.org
+[YottaDB]: https://yottadb.com
+[GT.M]: https://sourceforge.net/projects/fis-gtm
+[Caché]: https://www.intersystems.com/products/cache
 [BXJS]: https://docs.intersystems.com/documentation/cache/20181/pdfs/BXJS.pdf
 [GT.CM]: https://docs.yottadb.com/AdminOpsGuide/gtcm.html

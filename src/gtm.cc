@@ -1,7 +1,7 @@
 /*
  * Package:    NodeM
  * File:       gtm.cc
- * Summary:    A YottaDB/GT.M database driver and binding for Node.js
+ * Summary:    Functions that wrap calls to the call-in interface
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
@@ -226,7 +226,7 @@ gtm_status_t get(nodem::Baton* baton)
  * @param {Baton*} baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
- * @member {uint32_t} node_only (<0>|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
+ * @member {int32_t} node_only (-1|<0>|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
  * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */

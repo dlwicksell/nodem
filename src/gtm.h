@@ -1,7 +1,7 @@
 /*
  * Package:    NodeM
  * File:       gtm.h
- * Summary:    A YottaDB/GT.M database driver and binding for Node.js
+ * Summary:    Functions that wrap calls to the call-in interface
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
