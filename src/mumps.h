@@ -52,7 +52,7 @@ namespace nodem {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 14
-#define NODEM_PATCH_VERSION 3
+#define NODEM_PATCH_VERSION 4
 
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number

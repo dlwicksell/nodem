@@ -1,5 +1,11 @@
 # NodeM Release Notes #
 
+## v0.14.4 - 2019 Jul 2 ##
+
+- Fix increment bug that prevented any increment from working
+- Fix set bug with negative numbers using the SimpleAPI
+- Improve debug tracing for SimpleAPI subscripts vector
+
 ## v0.14.3 - 2019 Jun 24 ##
 
 - Add support for Node.js 12.x

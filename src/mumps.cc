@@ -2019,7 +2019,13 @@ void Gtm::data(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
     }
@@ -2459,7 +2465,13 @@ void Gtm::get(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
     }
@@ -3700,7 +3712,13 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
     }
@@ -4744,7 +4762,13 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
     }
@@ -5403,7 +5427,13 @@ void Gtm::order(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
     }
@@ -5656,7 +5686,13 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
     }
@@ -5909,7 +5945,13 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& args)
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
     }
@@ -6470,13 +6512,19 @@ void Gtm::set(const FunctionCallbackInfo<Value>& args)
 #if YDB_SIMPLE_API == 1
     if (mode_g == CANONICAL && data->IsNumber()) {
         if (value.substr(0, 2) == "0.") value = value.substr(1, string::npos);
-        if (value.substr(0, 3) == "-0.") value = value.substr(2, string::npos);
+        if (value.substr(0, 3) == "-0.") value = "-" + value.substr(2, string::npos);
     }
 #endif
 
     if (debug_g > LOW) {
         cout << name_msg << gvn << "\n";
-#if YDB_SIMPLE_API == 0
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
+        }
+#else
         cout << "DEBUG>> subscripts: " << sub << "\n";
 #endif
         cout << "DEBUG>> data: " << value << endl;

@@ -111,7 +111,7 @@ inline bool boolean_value_n(v8::Isolate *isolate, v8::Local<v8::Value> value)
 #endif
 } // @end boolean_value_n function
 
-inline int number_value_n(v8::Isolate *isolate, v8::Local<v8::Value> value)
+inline double number_value_n(v8::Isolate *isolate, v8::Local<v8::Value> value)
 {
 #if NODE_MAJOR_VERSION >= 7
     return value->NumberValue(isolate->GetCurrentContext()).ToChecked();
