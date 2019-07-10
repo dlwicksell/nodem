@@ -37,12 +37,13 @@ gtm_char_t gtm_procedure_g[] = "procedure";
 
 #if YDB_SIMPLE_API == 0
 #if GTM_CIP_API == 1
-ci_name_descriptor data_access_g, get_access_g, kill_access_g, next_node_access_g,
+ci_name_descriptor data_access_g, get_access_g, increment_access_g, kill_access_g, next_node_access_g,
                    order_access_g, previous_access_g, previous_node_access_g, set_access_g;
 #endif
 
 gtm_char_t gtm_data_g[] = "data";
 gtm_char_t gtm_get_g[] = "get";
+gtm_char_t gtm_increment_g[] = "increment";
 gtm_char_t gtm_kill_g[] = "kill";
 gtm_char_t gtm_next_node_g[] = "next_node";
 gtm_char_t gtm_order_g[] = "order";
@@ -219,6 +220,48 @@ gtm_status_t get(nodem::Baton* baton)
 
     return stat_buf;
 } // @end get function
+
+/*
+ * @function {public} increment
+ * @summary Increment or decrement the number in a global or local node
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_char_t} ret_buf - Data returned from YottaDB/GT.M, via the call-in interface
+ * @member {string} name - Global or local variable name
+ * @member {string} args - Subscripts
+ * @member {gtm_double_t} increment - Number to increment or decrement by
+ * @member {mode_t} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+gtm_status_t increment(nodem::Baton* baton)
+{
+    if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> gtm::increment enter" << "\n";
+
+    if (nodem::debug_g > nodem::MEDIUM) {
+        cout << "DEBUG>>> name: " << baton->name << "\n";
+        cout << "DEBUG>>> subscripts: " << baton->args << "\n";
+        cout << "DEBUG>>> increment: " << baton->incr << "\n";
+        cout << "DEBUG>>> mode: " << baton->mode << "\n";
+    }
+
+    gtm_status_t stat_buf;
+
+    uv_mutex_lock(&nodem::mutex_g);
+#if GTM_CIP_API == 1
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using gtm_cip" << "\n";
+
+    stat_buf = gtm_cip(&increment_access_g, baton->ret_buf, baton->name.c_str(), baton->args.c_str(), baton->incr, baton->mode);
+#else
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using gtm_ci" << "\n";
+
+    stat_buf = gtm_ci(gtm_increment_g, baton->ret_buf, baton->name.c_str(), baton->args.c_str(), baton->incr, baton->mode);
+#endif
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(baton->msg_buf, MSG_LEN);
+    uv_mutex_unlock(&nodem::mutex_g);
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> gtm::increment exit" << "\n";
+
+    return stat_buf;
+} // @end increment function
 
 /*
  * @function {public} kill

@@ -600,8 +600,10 @@ static Local<Value> data_return(Baton* baton)
         cout << "DEBUG>> async: " << baton->async << "\n";
         cout << "DEBUG>> name: " << baton->name << "\n";
 
-        Local<Value> subscript_string = json_method(subscripts, "stringify");
-        cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify");
+            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        }
     }
 
 #if YDB_SIMPLE_API == 1
@@ -795,8 +797,10 @@ static Local<Value> get_return(Baton* baton)
         cout << "DEBUG>> async: " << baton->async << "\n";
         cout << "DEBUG>> name: " << baton->name << "\n";
 
-        Local<Value> subscript_string = json_method(subscripts, "stringify");
-        cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify");
+            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        }
     }
 
 #if YDB_SIMPLE_API == 1
@@ -884,6 +888,119 @@ static Local<Value> get_return(Baton* baton)
 } // @end get_return function
 
 /*
+ * @function {private} increment_return
+ * @summary Increment or decrement the number in a global or local node
+ * @param {Baton*} baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, 1 is undefined node
+ * @member {gtm_char_t} ret_buf - Data returned from increment call
+ * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
+ * @member {bool} local - Whether the API was called on a local variable, or a global variable
+ * @member {bool} async - Whether the API was called asynchronously, or synchronously
+ * @member {string} name - The name of the global or local variable
+ * @member {gtm_double_t} increment - Number to increment or decrement by
+ * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
+ * @returns {Local<Value>} return_object - Data returned to Node.js
+ */
+static Local<Value> increment_return(Baton* baton)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (debug_g > OFF) cout << "\nDEBUG> increment_return enter" << "\n";
+
+    Local<Value> subscripts = Local<Value>::New(isolate, baton->arguments_p);
+
+    if (debug_g > LOW) {
+        cout << "DEBUG>> status: " << baton->status << "\n";
+        cout << "DEBUG>> ret_buf: " << baton->ret_buf << "\n";
+        cout << "DEBUG>> position: " << baton->position << "\n";
+        cout << "DEBUG>> local: " << baton->local << "\n";
+        cout << "DEBUG>> async: " << baton->async << "\n";
+        cout << "DEBUG>> name: " << baton->name << "\n";
+
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify");
+            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        }
+    }
+
+#if YDB_SIMPLE_API == 1
+    Local<Object> temp_object = Object::New(isolate);
+    string data(baton->ret_buf);
+
+    if (is_number(data)) {
+        temp_object->Set(String::NewFromUtf8(isolate, "data"), Number::New(isolate, atof(baton->ret_buf)));
+    } else {
+        if (utf8_g == true) {
+            temp_object->Set(String::NewFromUtf8(isolate, "data"), String::NewFromUtf8(isolate, baton->ret_buf));
+        } else {
+            temp_object->Set(String::NewFromUtf8(isolate, "data"), GtmValue::from_byte(baton->ret_buf));
+        }
+    }
+#else
+    Local<String> json_string;
+
+    if (utf8_g == true) {
+        json_string = String::NewFromUtf8(isolate, baton->ret_buf);
+    } else {
+        json_string = GtmValue::from_byte(baton->ret_buf);
+    }
+
+    if (debug_g > OFF) cout << "DEBUG> increment_return JSON string: " << *(UTF8_VALUE_TEMP_N(isolate, json_string)) << "\n";
+
+#if NODE_MAJOR_VERSION >= 1
+    TryCatch try_catch(isolate);
+#else
+    TryCatch try_catch;
+#endif
+
+    Local<Object> temp_object;
+    Local<Value> json = json_method(json_string, "parse");
+
+    if (try_catch.HasCaught()) {
+        return scope.Escape(try_catch.Exception());
+    } else {
+        temp_object = to_object_n(isolate, json);
+    }
+#endif
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> name = String::NewFromUtf8(isolate, baton->name.c_str());
+
+    if (baton->position) {
+        if (debug_g > OFF) cout << "\nDEBUG> increment_return exit" << "\n";
+
+        if (baton->async && mode_g == STRICT) {
+            return_object->Set(String::NewFromUtf8(isolate, "result"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
+
+            return scope.Escape(return_object);
+        } else {
+            return scope.Escape(temp_object->Get(String::NewFromUtf8(isolate, "data")));
+        }
+    } else {
+        if (mode_g == STRICT) {
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+        } else {
+            return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
+        }
+
+        if (baton->local) {
+            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
+        } else {
+            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(name));
+        }
+
+        if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
+
+        return_object->Set(String::NewFromUtf8(isolate, "data"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
+    }
+
+    if (debug_g > OFF) cout << "\nDEBUG> increment_return exit" << "\n";
+
+    return scope.Escape(return_object);
+} // @end increment_return function
+
+/*
  * @function {private} kill_return
  * @summary Return data about removing a global or global node, or a local or local node, or the entire local symbol table
  * @param {Baton*} baton - struct containing the following members
@@ -910,8 +1027,10 @@ static Local<Value> kill_return(Baton* baton)
         cout << "DEBUG>> async: " << baton->async << "\n";
         cout << "DEBUG>> name: " << baton->name << "\n";
 
-        Local<Value> subscript_string = json_method(subscripts, "stringify");
-        cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify");
+            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        }
     }
 
     Local<Object> return_object = Object::New(isolate);
@@ -1144,8 +1263,10 @@ static Local<Value> order_return(Baton* baton)
         cout << "DEBUG>> async: " << baton->async << "\n";
         cout << "DEBUG>> name: " << baton->name << "\n";
 
-        Local<Value> subscript_string = json_method(subscripts, "stringify");
-        cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify");
+            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        }
     }
 
 #if YDB_SIMPLE_API == 1
@@ -1261,8 +1382,10 @@ static Local<Value> previous_return(Baton* baton)
         cout << "DEBUG>> async: " << baton->async << "\n";
         cout << "DEBUG>> name: " << baton->name << "\n";
 
-        Local<Value> subscript_string = json_method(subscripts, "stringify");
-        cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify");
+            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        }
     }
 
 #if YDB_SIMPLE_API == 1
@@ -1603,8 +1726,10 @@ static Local<Value> set_return(Baton* baton)
         cout << "DEBUG>> async: " << baton->async << "\n";
         cout << "DEBUG>> name: " << baton->name << "\n";
 
-        Local<Value> subscript_string = json_method(subscripts, "stringify");
-        cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify");
+            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subscript_string)) << "\n";
+        }
 
         cout << "DEBUG>> data: " << *(UTF8_VALUE_TEMP_N(isolate, data)) << "\n";
     }
@@ -3076,8 +3201,9 @@ void Gtm::help(const FunctionCallbackInfo<Value>& args)
             << endl;
     } else if (to_string_n(isolate, args[0])->StrictEquals(String::NewFromUtf8(isolate, "increment"))) {
         cout << "increment method:\n"
-            "\tAtomically increment a global or local data node\n"
-            "\n\tRequired arguments:\n"
+            "\tAtomically increment or decrement a global or local data node\n"
+            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
             "\t\tsubscripts:\t{optional} {array {string|number}},\n"
@@ -3096,6 +3222,12 @@ void Gtm::help(const FunctionCallbackInfo<Value>& args)
             "\t\terrorCode|ErrorCode:\t\t{number},\n"
             "\t\terrorMessage|ErrorMessage:\t{string}\n"
             "\t}\n"
+            "\n\tArguments - via argument position:\n"
+            "\t^global|local, [subscripts+], increment\n"
+            "\n\tReturns on success:\n"
+            "\t{string|number}\n"
+            "\n\tReturns on failure:\n"
+            "\t{exception string}\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
             "\n\tFor more information about the increment method, please refer to the README.md file\n"
             << endl;
@@ -3322,28 +3454,63 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         return;
     }
 
-    if (args.Length() == 0) {
-        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an argument")));
-        return;
-    } else if (!args[0]->IsObject()) {
-        isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Argument must be an object")));
+    bool async = false;
+    unsigned int args_count = args.Length();
+
+    if (args[args_count - 1]->IsFunction()) {
+        --args_count;
+        async = true;
+    }
+
+    if (args_count == 0) {
+        isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate, "Need to supply an additional argument")));
         return;
     }
 
-    Local<Object> arg_object = to_object_n(isolate, args[0]);
-    Local<Value> glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+    Local<Value> glvn;
+    Local<Value> subscripts = Undefined(isolate);
+    Local<Value> increment = Number::New(isolate, 1);
     bool local = false;
+    bool position = false;
 
-    if (glvn->IsUndefined()) {
-        glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+    if (args[0]->IsObject()) {
+        Local<Object> arg_object = to_object_n(isolate, args[0]);
+        glvn = arg_object->Get(String::NewFromUtf8(isolate, "global"));
+
+        if (glvn->IsUndefined()) {
+            glvn = arg_object->Get(String::NewFromUtf8(isolate, "local"));
+            local = true;
+        }
 
         if (glvn->IsUndefined()) {
             isolate->ThrowException(Exception::SyntaxError(String::NewFromUtf8(isolate,
                     "Need to supply a 'global' or 'local' property")));
             return;
-        } else {
-            local = true;
         }
+
+        subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
+
+        if (!arg_object->Get(String::NewFromUtf8(isolate, "increment"))->IsUndefined()) {
+            increment = to_number_n(isolate, arg_object->Get(String::NewFromUtf8(isolate, "increment")));
+        }
+    } else {
+        glvn = args[0];
+        if (args_count > 1) increment = args[args_count - 1];
+
+        if (args_count > 2) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_count - 2);
+
+            for (unsigned int i = 1; i < args_count - 1; i++) {
+                temp_subscripts->Set(i - 1, args[i]);
+            }
+
+            subscripts = temp_subscripts;
+        }
+
+        position = true;
+
+        string test = *(UTF8_VALUE_TEMP_N(isolate, glvn));
+        if (test[0] != '^') local = true;
     }
 
     if (!glvn->IsString()) {
@@ -3364,30 +3531,33 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         return;
     }
 
-    Local<Value> subscripts = arg_object->Get(String::NewFromUtf8(isolate, "subscripts"));
     Local<Value> subs = Undefined(isolate);
+    vector<string> subs_array;
 
     if (subscripts->IsUndefined()) {
         subs = String::Empty(isolate);
     } else if (subscripts->IsArray()) {
-        subs = encode_arguments(subscripts);
+#if YDB_SIMPLE_API == 1
+        bool error = false;
+        subs_array = build_subscripts(subscripts, error);
 
-        if (subs->IsUndefined()) {
-            Local<String> error_message = String::NewFromUtf8(isolate, "Property 'subscripts' contains invalid data");
+        if (error) {
+            Local<String> error_message = String::NewFromUtf8(isolate, "Subscripts contain invalid data");
             isolate->ThrowException(Exception::SyntaxError(error_message));
             return;
         }
+#else
+        subs = encode_arguments(subscripts);
+
+        if (subs->IsUndefined()) {
+            Local<String> error_message = String::NewFromUtf8(isolate, "Subscripts contain invalid data");
+            isolate->ThrowException(Exception::SyntaxError(error_message));
+            return;
+        }
+#endif
     } else {
         isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate, "Property 'subscripts' must be an array")));
         return;
-    }
-
-    Local<Value> increment;
-
-    if (arg_object->Get(String::NewFromUtf8(isolate, "increment"))->IsUndefined()) {
-        increment = Number::New(isolate, 1);
-    } else {
-        increment = to_number_n(isolate, arg_object->Get(String::NewFromUtf8(isolate, "increment")));
     }
 
     const char* name_msg;
@@ -3395,7 +3565,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
 
     if (local) {
         if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local is an invalid name")));
             return;
         }
 
@@ -3403,12 +3573,12 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         name = localize_name(glvn);
 
         if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'local' cannot begin with 'v4w'")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
         if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
-            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Property 'global' is an invalid name")));
+            isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, "Global is an invalid name")));
             return;
         }
 
@@ -3416,138 +3586,120 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& args)
         name = globalize_name(glvn);
     }
 
-    if (debug_g > OFF) cout << "\nDEBUG> call into " NODEM_DB << endl;
+    string gvn, sub;
+
+    if (utf8_g == true) {
+        gvn = *(UTF8_VALUE_TEMP_N(isolate, name));
+        sub = *(UTF8_VALUE_TEMP_N(isolate, subs));
+    } else {
+        GtmValue gtm_name {name};
+        GtmValue gtm_subs {subs};
+
+        gvn = gtm_name.to_byte();
+        sub = gtm_subs.to_byte();
+    }
 
     if (debug_g > LOW) {
-        cout << "DEBUG>> increment: " << number_value_n(isolate, increment) << "\n";
-        cout << "DEBUG>> mode: " << mode_g << "\n";
-    }
-
-    gtm_status_t stat_buf;
-    gtm_char_t gtm_increment[] = "increment";
-
-    static gtm_char_t ret_buf[RET_LEN];
-
-#if GTM_CIP_API == 1
-    ci_name_descriptor access;
-
-    access.rtn_name.address = gtm_increment;
-    access.rtn_name.length = 9;
-    access.handle = NULL;
-
-    if (utf8_g == true) {
-        if (debug_g > LOW) {
-            cout << name_msg << *(UTF8_VALUE_TEMP_N(isolate, name)) << "\n";
-            cout << "DEBUG>> subscripts: " << *(UTF8_VALUE_TEMP_N(isolate, subs)) << endl;
+        cout << name_msg << gvn << "\n";
+#if YDB_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                cout << "DEBUG>> subscripts[" << i << "]: " << subs_array[i] << "\n";
+            }
         }
-
-        uv_mutex_lock(&mutex_g);
-        stat_buf = gtm_cip(&access, ret_buf, *(UTF8_VALUE_TEMP_N(isolate, name)), *(UTF8_VALUE_TEMP_N(isolate, subs)),
-          number_value_n(isolate, increment), mode_g);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-
-        if (debug_g > LOW) {
-            cout << name_msg << gtm_name.to_byte() << "\n";
-            cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
-        }
-
-        uv_mutex_lock(&mutex_g);
-        stat_buf = gtm_cip(&access, ret_buf, gtm_name.to_byte(), gtm_subs.to_byte(),
-          number_value_n(isolate, increment), mode_g);
-    }
 #else
-    if (utf8_g == true) {
-        if (debug_g > LOW) {
-            cout << name_msg << *String::Utf8Value(name) << "\n";
-            cout << "DEBUG>> subscripts: " << *String::Utf8Value(subs) << endl;
-        }
-
-        uv_mutex_lock(&mutex_g);
-        stat_buf = gtm_ci(gtm_increment, ret_buf, *String::Utf8Value(name),
-          *String::Utf8Value(subs), number_value_n(isolate, increment), mode_g);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-
-        if (debug_g > LOW) {
-            cout << name_msg << gtm_name.to_byte() << "\n";
-            cout << "DEBUG>> subscripts: " << gtm_subs.to_byte() << endl;
-        }
-
-        uv_mutex_lock(&mutex_g);
-        stat_buf = gtm_ci(gtm_increment, ret_buf, gtm_name.to_byte(), gtm_subs.to_byte(),
-          number_value_n(isolate, increment), mode_g);
-    }
+        cout << "DEBUG>> subscripts: " << sub << endl;
 #endif
 
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_char_t msg_buf[MSG_LEN];
-        gtm_zstatus(msg_buf, MSG_LEN);
-        uv_mutex_unlock(&mutex_g);
-
-        args.GetReturnValue().Set(error_status(msg_buf, false, false));
-        return;
-    } else {
-        uv_mutex_unlock(&mutex_g);
+        cout << "DEBUG>> increment: " << number_value_n(isolate, increment) << "\n";
     }
+
+    Baton* baton;
+
+    if (async) {
+        baton = new Baton();
+
+        baton->callback_p.Reset(isolate, Local<Function>::Cast(args[args_count]));
+    } else {
+        static Baton new_baton;
+        baton = &new_baton;
+
+        baton->callback_p.Reset();
+    }
+
+    baton->request.data = baton;
+    baton->arguments_p.Reset(isolate, subscripts);
+    baton->data_p.Reset(isolate, Undefined(isolate));
+    baton->name = gvn;
+    baton->args = sub;
+    baton->incr = number_value_n(isolate, increment);
+    baton->subs_array = subs_array;
+    baton->mode = mode_g;
+    baton->async = async;
+    baton->local = local;
+    baton->position = position;
+    baton->status = 0;
+#if YDB_SIMPLE_API == 1
+    baton->function = &ydb::increment;
+#else
+    baton->function = &gtm::increment;
+#endif
+    baton->function_return = &increment_return;
+
+    if (debug_g > OFF) cout << "\nDEBUG> call into " NODEM_DB << endl;
+    if (debug_g > LOW) cout << "DEBUG>> mode: " << mode_g << "\n";
+
+    if (async) {
+        uv_queue_work(uv_default_loop(), &baton->request, async_work, async_after);
+
+        args.GetReturnValue().Set(Undefined(isolate));
+        return;
+    }
+
+#if YDB_SIMPLE_API == 1
+    baton->status = ydb::increment(baton);
+#else
+    baton->status = gtm::increment(baton);
+#endif
 
     if (debug_g > OFF) cout << "\nDEBUG> return from " NODEM_DB << "\n";
 
-    Local<String> json_string;
+#if YDB_SIMPLE_API == 1
+    if (baton->status == -1) {
+        baton->arguments_p.Reset();
+        baton->data_p.Reset();
 
-    if (utf8_g == true) {
-        json_string = String::NewFromUtf8(isolate, ret_buf);
-    } else {
-        json_string = GtmValue::from_byte(ret_buf);
-    }
+        char error[BUFSIZ];
 
-    if (debug_g > OFF) cout << "\nDEBUG> Gtm::increment JSON string: " << *(UTF8_VALUE_TEMP_N(isolate, json_string)) << "\n";
-
-#if NODE_MAJOR_VERSION >= 1
-    TryCatch try_catch(isolate);
-#else
-    TryCatch try_catch;
-#endif
-
-    Local<Object> temp_object;
-    Local<Value> json = json_method(json_string, "parse");
-
-    if (try_catch.HasCaught()) {
-        args.GetReturnValue().Set(try_catch.Exception());
+        isolate->ThrowException(Exception::Error(String::NewFromUtf8(isolate, strerror_r(errno, error, BUFSIZ))));
         return;
-    } else {
-        temp_object = to_object_n(isolate, json);
+    } else if (baton->status != YDB_OK) {
+#else
+    if (baton->status != EXIT_SUCCESS) {
+#endif
+        if (position) {
+            isolate->ThrowException(Exception::Error(to_string_n(isolate, error_status(baton->msg_buf, position, async))));
+            args.GetReturnValue().Set(Undefined(isolate));
+        } else {
+            args.GetReturnValue().Set(error_status(baton->msg_buf, position, async));
+        }
+
+        baton->arguments_p.Reset();
+        baton->data_p.Reset();
+
+        return;
     }
 
-    Local<Object> return_object = Object::New(isolate);
+    if (debug_g > LOW) cout << "DEBUG>> call into increment_return" << "\n";
 
-    if (mode_g == STRICT) {
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Number::New(isolate, 1));
+    Local<Value> return_object = increment_return(baton);
 
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(glvn));
-        }
-    } else {
-        return_object->Set(String::NewFromUtf8(isolate, "ok"), Boolean::New(isolate, true));
-
-        if (local) {
-            return_object->Set(String::NewFromUtf8(isolate, "local"), name);
-        } else {
-            return_object->Set(String::NewFromUtf8(isolate, "global"), localize_name(glvn));
-        }
-    }
-
-    if (!subscripts->IsUndefined()) return_object->Set(String::NewFromUtf8(isolate, "subscripts"), subscripts);
-
-    return_object->Set(String::NewFromUtf8(isolate, "data"), temp_object->Get(String::NewFromUtf8(isolate, "data")));
+    baton->arguments_p.Reset();
+    baton->data_p.Reset();
 
     args.GetReturnValue().Set(return_object);
 
-    if (debug_g > OFF) cout << "\nDEBUG> Gtm::increment exit" << endl;
+    if (debug_g > OFF) cout << "DEBUG> Gtm::increment exit" << endl;
 
     return;
 } // @end Gtm::increment method
@@ -5151,6 +5303,10 @@ void Gtm::open(const FunctionCallbackInfo<Value>& args)
     gtm::get_access_g.rtn_name.address = gtm::gtm_get_g;
     gtm::get_access_g.rtn_name.length = 3;
     gtm::get_access_g.handle = NULL;
+
+    gtm::increment_access_g.rtn_name.address = gtm::gtm_increment_g;
+    gtm::increment_access_g.rtn_name.length = 9;
+    gtm::increment_access_g.handle = NULL;
 
     gtm::kill_access_g.rtn_name.address = gtm::gtm_kill_g;
     gtm::kill_access_g.rtn_name.length = 4;

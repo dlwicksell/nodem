@@ -139,6 +139,65 @@ ydb_status_t get(nodem::Baton* baton)
 } // @end get function
 
 /*
+ * @function {public} increment
+ * @summary Increment or decrement the number in a global or local node
+ * @param {Baton*} baton - struct containing the following members
+ * @member {ydb_char_t} ret_buf - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {string} name - Global or local variable name
+ * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_double_t} increment - Number to increment or decrement by
+ * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+ydb_status_t increment(nodem::Baton* baton)
+{
+    if (nodem::debug_g > nodem::LOW) cout << "\nDEBUG>> ydb::increment enter" << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> name: " << baton->name.c_str() << "\n";
+    if (nodem::debug_g > nodem::MEDIUM) cout << "DEBUG>>> increment: " << baton->incr << "\n";
+
+    char* var_name = (char*) baton->name.c_str();
+
+    ydb_buffer_t glvn;
+    glvn.len_alloc = glvn.len_used = strlen(var_name);
+    glvn.buf_addr = var_name;
+
+    ydb_buffer_t subs_array[YDB_MAX_SUBS];
+    unsigned int subs_size = baton->subs_array.size();
+
+    for (unsigned int i = 0; i < subs_size; i++) {
+            subs_array[i].len_alloc = subs_array[i].len_used = baton->subs_array[i].length();
+            subs_array[i].buf_addr = (char*) baton->subs_array[i].c_str();
+    }
+
+    char incr_val[YDB_MAX_STR];
+    snprintf(incr_val, YDB_MAX_STR, "%.16g", baton->incr);
+
+    ydb_buffer_t incr;
+    incr.len_alloc = incr.len_used = strlen(incr_val);
+    incr.buf_addr = (char*) &incr_val;
+
+    char increment_data[YDB_MAX_STR];
+
+    ydb_buffer_t value;
+    value.len_alloc = YDB_MAX_STR;
+    value.len_used = 0;
+    value.buf_addr = (char*) &increment_data;
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> call using simpleAPI" << "\n";
+
+    uv_mutex_lock(&nodem::mutex_g);
+    ydb_status_t stat_buf = ydb_incr_s(&glvn, subs_size, subs_array, &incr, &value);
+    if (stat_buf != YDB_OK) ydb_zstatus(baton->msg_buf, MSG_LEN);
+    uv_mutex_unlock(&nodem::mutex_g);
+
+    strncpy(baton->ret_buf, value.buf_addr, value.len_used);
+    baton->ret_buf[value.len_used] = '\0';
+
+    if (nodem::debug_g > nodem::LOW) cout << "DEBUG>> ydb::increment exit" << "\n";
+
+    return stat_buf;
+} // @end increment function
+
+/*
  * @function {public} kill
  * @summary Kill a global or global node, or a local or local node, or the entire local symbol table
  * @param {Baton*} baton - struct containing the following members

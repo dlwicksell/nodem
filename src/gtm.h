@@ -38,12 +38,13 @@ extern gtm_char_t gtm_procedure_g[];
 
 #if YDB_SIMPLE_API == 0
 #if GTM_CIP_API == 1
-extern ci_name_descriptor data_access_g, get_access_g, kill_access_g, next_node_access_g,
+extern ci_name_descriptor data_access_g, get_access_g, increment_access_g, kill_access_g, next_node_access_g,
                           order_access_g, previous_access_g, previous_node_access_g, set_access_g;
 #endif
 
 extern gtm_char_t gtm_data_g[];
 extern gtm_char_t gtm_get_g[];
+extern gtm_char_t gtm_increment_g[];
 extern gtm_char_t gtm_kill_g[];
 extern gtm_char_t gtm_next_node_g[];
 extern gtm_char_t gtm_order_g[];
@@ -56,7 +57,6 @@ gtm_status_t function(nodem::Baton*);
 gtm_status_t procedure(nodem::Baton*);
 
 gtm_status_t global_directory(nodem::Baton*);
-gtm_status_t increment(nodem::Baton*);
 gtm_status_t local_directory(nodem::Baton*);
 gtm_status_t lock(nodem::Baton*);
 gtm_status_t merge(nodem::Baton*);
@@ -65,6 +65,7 @@ gtm_status_t unlock(nodem::Baton*);
 #if YDB_SIMPLE_API == 0
 gtm_status_t data(nodem::Baton*);
 gtm_status_t get(nodem::Baton*);
+gtm_status_t increment(nodem::Baton*);
 gtm_status_t kill(nodem::Baton*);
 gtm_status_t next_node(nodem::Baton*);
 gtm_status_t order(nodem::Baton*);

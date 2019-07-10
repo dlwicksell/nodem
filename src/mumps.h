@@ -51,8 +51,8 @@ namespace nodem {
 #endif
 
 #define NODEM_MAJOR_VERSION 0
-#define NODEM_MINOR_VERSION 14
-#define NODEM_PATCH_VERSION 4
+#define NODEM_MINOR_VERSION 15
+#define NODEM_PATCH_VERSION 0
 
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
@@ -105,6 +105,7 @@ struct Baton {
     bool                         routine;
     int32_t                      node_only;
     uint32_t                     relink;
+    gtm_double_t                 incr;
     gtm_status_t                 status;
     gtm_char_t                   msg_buf[MSG_LEN];
     gtm_char_t                   ret_buf[RET_LEN];

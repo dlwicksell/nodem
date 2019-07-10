@@ -1,5 +1,11 @@
 # NodeM Release Notes #
 
+## v0.15.0 - 2019 Jul 9 ##
+
+- Add full asynchronous support to the increment API
+- Add SimpleAPI support to the increment API
+- Add support for calling arguments by-position to the increment API
+
 ## v0.14.4 - 2019 Jul 2 ##
 
 - Fix increment bug that prevented any increment from working
