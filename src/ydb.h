@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2019 Fourth Watch Software LC
+ * Copyright © 2018-2020 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -21,7 +21,7 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#if YDB_SIMPLE_API == 1
+#if NODEM_SIMPLE_API == 1
 
 #ifndef YDB_H
 #define YDB_H
@@ -30,23 +30,18 @@
 
 namespace ydb {
 
-ydb_status_t data(nodem::Baton*);
-ydb_status_t get(nodem::Baton*);
-ydb_status_t global_directory(nodem::Baton*);
-ydb_status_t increment(nodem::Baton*);
-ydb_status_t kill(nodem::Baton*);
-ydb_status_t local_directory(nodem::Baton*);
-ydb_status_t lock(nodem::Baton*);
-ydb_status_t merge(nodem::Baton*);
-ydb_status_t next_node(nodem::Baton*);
-ydb_status_t order(nodem::Baton*);
-ydb_status_t previous(nodem::Baton*);
-ydb_status_t previous_node(nodem::Baton*);
-ydb_status_t set(nodem::Baton*);
-ydb_status_t unlock(nodem::Baton*);
+ydb_status_t data(nodem::GtmBaton*);
+ydb_status_t get(nodem::GtmBaton*);
+ydb_status_t set(nodem::GtmBaton*);
+ydb_status_t kill(nodem::GtmBaton*);
+ydb_status_t order(nodem::GtmBaton*);
+ydb_status_t previous(nodem::GtmBaton*);
+ydb_status_t next_node(nodem::GtmBaton*);
+ydb_status_t previous_node(nodem::GtmBaton*);
+ydb_status_t increment(nodem::GtmBaton*);
 
 } // @end ydb namespace
 
 #endif // @end YDB_H
 
-#endif // @end YDB_SIMPLE_API
+#endif // @end NODEM_SIMPLE_API

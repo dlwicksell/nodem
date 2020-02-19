@@ -3,7 +3,7 @@
 # environ - Nodem environment script
 #
 # Written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2015,2018-2019 Fourth Watch Software LC
+# Copyright © 2012-2015,2018-2020 Fourth Watch Software LC
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License (AGPL)
@@ -22,7 +22,7 @@
 # YottaDB/GT.M environment configured.
 #
 # *** NOTE ***
-# This environment script will only work if you are running the BASH shell
+# This environment script will only work if you are running the Bash shell
 #
 # In order to use this environment script, you would typically add a line to
 # your ~/.profile or ~/.bash_profile login script, to source it in your current
@@ -34,34 +34,46 @@
 # on your system. No matter where you installed it, the following environment
 # variables should be set up correctly, without change, to be able to use it.
 #
-# You also need to have the $gtm_dist environment variable set correctly, in
-# order to compile, link, and use Nodem. You also need the $gtmgbldir
-# environment variable set correctly, pointing to your global directory file, in
-# order to connect to the YottaDB/GT.M database with Nodem APIs. The following
-# environment variables are also needed; $GTMCI points to the call-in table, and
-# $gtmroutines must contain the path to the v4wNode.m source file, or v4wNode.o
-# object file.
+# You need to have the $ydb_dist/$gtm_dist environment variable set correctly,
+# in order to compile, link, and use Nodem. You also need the
+# $ydb_gbldir/$gtmgbldir environment variable set correctly, pointing to your
+# global directory file, in order to use the full Nodem API. The following
+# environment variables are also needed; $ydb_ci/$GTMCI points to the Call-in
+# table, and $ydb_routines/$gtmroutines must contain the path to the v4wNode.m
+# source file, or v4wNode.o object file.
 #
-# Since $gtm_dist needs to correctly point to your YottaDB/GT.M installation
-# root directory, in order to compile Nodem in the first place, you likely will
-# not need to set up LD_LIBRARY_PATH, as the path in $gtm_dist is embedded as a
-# RUNPATH directly in the Nodem library, so the dynamic linker should be able to
-# load the YottaDB/GT.M shared library at runtime without having to set it.
-# However, if you compile Nodem in one environment, and want to run it in a
-# different environment, which has YottaDB or GT.M installed in a different
-# location, you will need to either set LD_LIBRARY_PATH to the distribution
-# root, or else add that directory to the ldcache, as discussed in the README.md
-# file.
+# Since $ydb_dist/$gtm_dist needs to correctly point to your YottaDB/GT.M
+# installation root directory, in order to compile Nodem in the first place,
+# you likely will not need to set up $LD_LIBRARY_PATH, as the path in
+# $ydb_dist/$gtm_dist is embedded as a RUNPATH directly in the Nodem library,
+# so the dynamic linker should be able to load the YottaDB/GT.M shared library
+# at run-time without having to set it. However, if you compile Nodem in one
+# environment, and want to run it in a different environment, which has YottaDB
+# or GT.M installed in a different location, you will need to either set
+# $LD_LIBRARY_PATH to the distribution root, or else add that directory to the
+# ldcache, as discussed in the README.md file.
 
 DIR=$(dirname $(dirname ${BASH_SOURCE[0]}))
 [[ $DIR =~ $(pwd) ]] || DIR=$(pwd)/$DIR
 DIR=${DIR%/.}
 [[ $(basename $DIR) == "resources" ]] && DIR=${DIR%/resources}
 
-# GT.M call-in table
-export GTMCI="$DIR/resources/nodem.ci"
-# GT.M routines path
-[[ -n ${gtmroutines} ]] && export gtmroutines="$DIR/src ${gtmroutines}" || export gtmroutines="$DIR/src"
+# YottaDB/GT.M Call-in table
+export ydb_ci="$DIR/resources/nodem.ci"
+export GTMCI="${ydb_ci}"
 
-# Runtime loader path for GT.M shared library, if necessary (see README.md)
-#export LD_LIBRARY_PATH=${gtm_dist}:${LD_LIBRARY_PATH}
+# YottaDB/GT.M routines path
+if [[ -n ${ydb_routines} ]]
+then
+    export ydb_routines="$DIR/src ${ydb_routines}"
+    export gtmroutines="${ydb_routines}"
+elif [[ -n ${gtmroutines} ]]
+then
+    export gtmroutines="$DIR/src ${gtmroutines}"
+else
+    export ydb_routines="$DIR/src"
+    export gtmroutines="${ydb_routines}"
+fi
+
+# Runtime loader path for YottaDB/GT.M shared library, if necessary (see README.md)
+#export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}:${LD_LIBRARY_PATH}

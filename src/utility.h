@@ -1,11 +1,11 @@
 /*
  * Package:    NodeM
  * File:       utility.h
- * Summary:    Utility functions and macros to manage V8 changes
+ * Summary:    Utility functions
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2019 Fourth Watch Software LC
+ * Copyright © 2019-2020 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -24,119 +24,60 @@
 #ifndef UTILITY_H
 #define UTILITY_H
 
-#include <node.h>
+#include <iostream>
+#include <sstream>
 
 namespace nodem {
 
-#if NODE_MAJOR_VERSION >= 9
-    #define UTF8_VALUE_TEMP_N(isolate, value) v8::String::Utf8Value(v8::Isolate::GetCurrent(), value)
-    #define UTF8_VALUE_N(isolate, name, value) v8::String::Utf8Value name(v8::Isolate::GetCurrent(), value)
-#else
-    #define UTF8_VALUE_TEMP_N(isolate, value) v8::String::Utf8Value(value)
-    #define UTF8_VALUE_N(isolate, name, value) v8::String::Utf8Value name(value)
-#endif
-
-inline v8::Local<v8::String> concat_n(v8::Isolate *isolate, v8::Local<v8::String> first, v8::Local<v8::String> second)
+/*
+ * @template {private} nodem::logger
+ * @summary Add debug tracing data to custom error stream object
+ * @param {ostream} stream - Error stream for debug tracing messages
+ * @param {T} value - Data to put in to the error stream
+ * @returns {void}
+ */
+template<class T>
+inline static void logger(std::ostream& stream, T value)
 {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12
-    return v8::String::Concat(isolate, first, second);
-#else
-    return v8::String::Concat(first, second);
-#endif
-} // @end concat_n function
+    stream << value;
+    return;
+} // @end nodem::logger template function
 
-inline v8::Local<v8::Value> call_n(v8::Isolate *isolate, v8::Local<v8::Function> method,
-  v8::Local<v8::Value> json, int num, v8::Local<v8::Value>* data)
+/*
+ * @template {private} nodem::logger
+ * @summary Recurse through a variadic list of arguments, putting each one in to a custom error stream object
+ * @param {ostream} stream - Error stream for debug tracing messages
+ * @param {T} value - Next data argument to put in to the error stream
+ * @param {variadic} {A} args - Variable arguments to the debugging logger
+ * @returns {void}
+ */
+template<class T, class... A>
+inline static void logger(std::ostream& stream, T value, A... args)
 {
-#if NODE_MAJOR_VERSION >= 3
-    return method->Call(isolate->GetCurrentContext(), json, num, data).ToLocalChecked();
-#else
-    return method->Call(json, num, data);
-#endif
-} // @end call_n function
+    logger(stream, value);
+    logger(stream, args...);
+    return;
+} // @end nodem::logger variadic template function
 
-inline v8::Local<v8::Function> get_function_n(v8::Isolate *isolate, v8::Local<v8::FunctionTemplate> function)
+/*
+ * @template {private} nodem::debug_log
+ * @summary Output debug information to the stderr stream, with support for threads, preventing intermixing of output
+ * @param {variadic} {A} args - Variable arguments to the debugging logger
+ * @returns {void}
+ */
+template<class... A>
+static void debug_log(A... args)
 {
-#if NODE_MAJOR_VERSION >= 3
-    return function->GetFunction(isolate->GetCurrentContext()).ToLocalChecked();
-#else
-    return function->GetFunction();
-#endif
-} // @end get_function_n function
+    std::ostringstream stream;
+    stream << "[" << gettid() << "] DEBUG";
 
-inline bool has_n(v8::Isolate *isolate, v8::Local<v8::Object> object, v8::Local<v8::String> string)
-{
-#if NODE_MAJOR_VERSION >= 7
-    return object->Has(isolate->GetCurrentContext(), string).ToChecked();
-#else
-    return object->Has(string);
-#endif
-} // @end has_n function
+    logger(stream, args...);
 
-inline v8::Local<v8::String> to_string_n(v8::Isolate *isolate, v8::Local<v8::Value> name)
-{
-#if NODE_MAJOR_VERSION >= 9
-    return name->ToString(isolate->GetCurrentContext()).ToLocalChecked();
-#else
-    return name->ToString();
-#endif
-} // @end to_string_n function
+    stream << std::endl;
 
-inline v8::Local<v8::Number> to_number_n(v8::Isolate *isolate, v8::Local<v8::Value> name)
-{
-#if NODE_MAJOR_VERSION >= 7 || NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8
-    return name->ToNumber(isolate->GetCurrentContext()).ToLocalChecked();
-#else
-    return name->ToNumber();
-#endif
-} // @end to_number_n function
-
-inline v8::Local<v8::Object> to_object_n(v8::Isolate *isolate, v8::Local<v8::Value> name)
-{
-#if NODE_MAJOR_VERSION >= 9
-    return name->ToObject(isolate->GetCurrentContext()).ToLocalChecked();
-#else
-    return name->ToObject();
-#endif
-} // @end to_object_n function
-
-inline bool boolean_value_n(v8::Isolate *isolate, v8::Local<v8::Value> value)
-{
-#if NODE_MAJOR_VERSION >= 12
-    return value->BooleanValue(isolate);
-#elif NODE_MAJOR_VERSION >= 7
-    return value->BooleanValue(isolate->GetCurrentContext()).ToChecked();
-#else
-    return value->BooleanValue();
-#endif
-} // @end boolean_value_n function
-
-inline double number_value_n(v8::Isolate *isolate, v8::Local<v8::Value> value)
-{
-#if NODE_MAJOR_VERSION >= 7
-    return value->NumberValue(isolate->GetCurrentContext()).ToChecked();
-#else
-    return value->NumberValue();
-#endif
-} // @end number_value_n function
-
-inline unsigned int uint32_value_n(v8::Isolate *isolate, v8::Local<v8::Value> value)
-{
-#if NODE_MAJOR_VERSION >= 7
-    return value->Uint32Value(isolate->GetCurrentContext()).ToChecked();
-#else
-    return value->Uint32Value();
-#endif
-} // @end uint32_value_n function
-
-inline int utf8_length_n(v8::Isolate *isolate, v8::Local<v8::String> string)
-{
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12
-    return string->Utf8Length(isolate);
-#else
-    return string->Utf8Length();
-#endif
-} // @end utf8_length_n function
+    std::clog << stream.str();
+    return;
+} // @end nodem::debug_log variadic template function
 
 } // @end namespace nodem
 

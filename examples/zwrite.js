@@ -2,7 +2,7 @@
  * zwrite.js - A zwrite clone
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2016,2018 Fourth Watch Software LC
+ * Copyright © 2012-2016,2018,2020 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -18,7 +18,7 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  *
  * Dumps the contents of a full global in a similar format to the zwrite command
- * in YottaDB/Gt.M.
+ * in YottaDB/GT.M.
  *
  * Pass the name of the global you want to dump, or don't pass any argument and
  * it will use a default of ^v4wTest. You can optionally supply the following
@@ -91,7 +91,18 @@ process.argv.forEach(function(argument) {
 
 gtm.open({mode: mode, charset: charset, debug: debug});
 
-process.env.gtmroutines = '. ' + process.env.gtmroutines;
+if (process.env.ydb_routines !== undefined) {
+    process.env.ydb_routines = '. ' + process.env.ydb_routines;
+} else {
+    process.env.ydb_routines = '.';
+}
+
+if (process.env.gtmroutines !== undefined) {
+    process.env.gtmroutines = '. ' + process.env.gtmroutines;
+} else {
+    process.env.gtmroutines = '.';
+}
+
 var version = gtm.version();
 
 if (typeof version === 'object') {

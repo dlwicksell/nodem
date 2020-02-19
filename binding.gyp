@@ -2,7 +2,7 @@
 # binding.gyp - Nodem build script
 #
 # Written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2016,2018-2019 Fourth Watch Software LC
+# Copyright © 2012-2016,2018-2020 Fourth Watch Software LC
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License (AGPL)
@@ -29,33 +29,41 @@
         'src/ydb.cc'
       ],
       'cflags': [
-        '-ansi',
         '-error',
         '-pedantic',
         '-std=c++11',
         '-Wno-cast-function-type',
-        '-Wno-deprecated-declarations',
         '-Wno-expansion-to-defined'
       ],
       'variables': {
-        'gtm_dist%': '<!(if [ -n "$ydb_dist" ]; then echo $ydb_dist; else echo ${gtm_dist:-.}; fi)',
-        'gtm_lib%': '<!(if [ -n "$ydb_dist" ]; then echo yottadb; else echo gtmshr; fi)'
+        'dist%': '<!(if [ -n "$ydb_dist" ]; then echo $ydb_dist; else echo ${gtm_dist:-.}; fi)',
+        'lib%': '<!(if [ -n "$ydb_dist" -a -e "$ydb_dist/ydb" ]; then echo yottadb; else echo gtmshr; fi)'
       },
       'defines': [
-        'YDB_IMPLEMENTATION=<!(if grep -iq yottadb <(gtm_dist)/gtm; then echo 1; else echo 0; fi)',
-        'GTM_CIP_API=<!(if [ "$(echo \'w $e($tr($p($zv," ",2),"V."),1,2)\' | <(gtm_dist)/mumps -dir | grep -Ev "^$|>")" -ge 55 ]; then echo 1; else echo 0; fi)',
-        'YDB_SIMPLE_API=<!(if [ -e "<(gtm_dist)/ydb" ]; then echo 1; else echo 0; fi)'
+        'NODEM_YDB=<!(if grep -iq yottadb <(dist)/gtm; then echo 1; else echo 0; fi)',
+        'NODEM_CIP_API=<!(if [ "$(echo \'w +$tr($p($zv," ",2),"V.-")\' | <(dist)/mumps -dir | grep -Ev "^$|>")" -ge 54002 ]; then echo 1; else echo 0; fi)',
+        'NODEM_SIMPLE_API=<!(if [ -e "<(dist)/ydb" ]; then echo 1; else echo 0; fi)'
       ],
       'include_dirs': [
-        '<(gtm_dist)'
+        '<(dist)'
       ],
       'libraries': [
-        '-L<(gtm_dist)',
-        '-l<(gtm_lib)'
+        '-L<(dist)',
+        '-l<(lib)'
       ],
       'ldflags': [
-        '-Wl,-rpath,<(gtm_dist),--enable-new-dtags'
-      ]
+        '-Wl,-rpath,<(dist),--enable-new-dtags'
+      ],
+      'configurations': {
+        'Release': {
+          'cflags': [
+            '-Wno-deprecated-declarations'
+          ],
+          'ldflags': [
+            '-Wl,-s'
+          ]
+        }
+      }
     }
   ]
 }

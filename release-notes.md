@@ -1,5 +1,26 @@
 # NodeM Release Notes #
 
+## v0.16.0 - 2020 Feb 18 ##
+
+- Add full synchronous and asynchronous support for the worker_threads API
+- Add configure API
+- Reimplement debug tracing
+  - Add debug code in utility.h
+  - Add worker thread support
+  - Add asynchronous support
+  - Change debug output to write to stderr
+    - Make it work when running M code
+  - Change structure for debug messages
+    - Start with thread ID or MUMPS in square brackets
+- Add threadpoolSize option to the open API
+- Add tid property to the output for the open API
+- Improve performance
+- Move utility.h to nodem.h
+- Restructure most of code base
+- Add support for Node.js 12.x and 13.x
+- Add version check in debug mode for v4wNode.m
+- Add support for extended global references for the SimpleAPI
+
 ## v0.15.0 - 2019 Jul 9 ##
 
 - Add full asynchronous support to the increment API
@@ -65,14 +86,14 @@
   - Add support for full debug tracing to CLI
   - Improve error handling
   - Improve argument handling
-- Update gtm.hh and gtm.cc 
+- Update gtm.hh and gtm.cc
   - Add support for data, previous, nextNode, and previousNode to enable asynchronous versions
   - Improve efficiency of debug tracing code
 - Update ydb.hh and ydb.cc
   - Add support for data, previous, nextNode, and previousNode to enable asynchronous versions
   - Ignore local variables that begin with the 'v4w' namespace in order and previous
   - Improve efficiency of debug tracing code
-- Update v4wNode.m 
+- Update v4wNode.m
   - Ignore local variables that begin with the 'v4w' namespace in order and previous
   - Improve previousNode handling for versions of YottaDB and GT.M that do not implement it
   - Add ok property to the JSON returned by previousNode, retrieve, and update
@@ -121,7 +142,7 @@
 
 ## v0.11.0 - 2018 Apr 10 ##
 
-- Improve support for legacy MUMPS APIs
+- Improve support for legacy Mumps APIs
 - Add support for passing arguments by reference, and by local variable, to function and procedures
 - Add documentation and examples about new functionality in README.md
 - Fix typo and restructure documentation in README.md
@@ -145,7 +166,7 @@
 - Add new help method, with a list of APIs, and more detailed call information for each API
 - Add support to the open API for new configuration settings
   - Add 'routinePath' configuration to change the routine look-up path when using the function and procedure methods
-  - Add 'callinPath' configuration to make it easier to support environments running more than just Nodem with the call-in interface
+  - Add 'callinPath' configuration to make it easier to support environments running more than just Nodem with the Call-in interface
   - Add 'debug' configuration to turn on debug tracing
   - Add 'charset' configuration to enable changing the character set encoding directly in the API
   - Remove 'path' configuration, as it was unhelpful, and misleading
@@ -208,4 +229,4 @@
 - Update package.json with new script options
   - Add debug script
   - Improve preinstall, install, and postinstall script error handling
-- Update nodem.ci call-in table with new function and new function prototypes
+- Update nodem.ci Call-in table with new function and new function prototypes
