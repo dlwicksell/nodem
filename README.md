@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.16.1 - 2020 Feb 20
+Version 0.16.2 - 2020 Feb 21
 
 ## Copyright and License ##
 
@@ -106,7 +106,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.16.1 (FWS); YottaDB Version: 1.28'
+'Node.js Adaptor for YottaDB: Version: 0.16.2 (FWS); YottaDB Version: 1.28'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 { ok: true,
   global: 'v4wTest',

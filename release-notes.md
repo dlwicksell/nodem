@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.16.2 - 2020 Feb 21 ##
+
+- Fix error/warning handling in postinstall.js
+
 ## v0.16.1 - 2020 Feb 20 ##
 
 - Fix potential application crash [SIGSEGV] when calling the configure API with no arguments on older versions of Node.js
