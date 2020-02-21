@@ -24,10 +24,17 @@
 #ifndef UTILITY_H
 #define UTILITY_H
 
+#include <unistd.h>
+
 #include <iostream>
 #include <sstream>
 
 namespace nodem {
+
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30 || __GLIBC__ < 2
+#    include <sys/syscall.h>
+#    define gettid() syscall(SYS_gettid)
+#endif
 
 /*
  * @template {private} nodem::logger

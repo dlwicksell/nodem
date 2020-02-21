@@ -24,7 +24,6 @@
 #if NODEM_SIMPLE_API == 1
 
 #include "ydb.h"
-#include "utility.h"
 
 using std::cerr;
 using std::string;

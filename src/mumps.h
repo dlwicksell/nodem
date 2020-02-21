@@ -24,6 +24,8 @@
 #ifndef MUMPS_H
 #define MUMPS_H
 
+#include "utility.h"
+
 #include <node.h>
 #include <node_object_wrap.h>
 #include <uv.h>
@@ -44,8 +46,6 @@ extern "C" {
 #    endif
 #endif
 
-#include <unistd.h>
-
 #include <cstring>
 
 #include <string>
@@ -63,7 +63,7 @@ extern "C" {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 16
-#define NODEM_PATCH_VERSION 0
+#define NODEM_PATCH_VERSION 1
 
 #define NODEM_STRING(number) NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number

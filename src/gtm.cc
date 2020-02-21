@@ -22,7 +22,6 @@
  */
 
 #include "gtm.h"
-#include "utility.h"
 
 using std::cerr;
 

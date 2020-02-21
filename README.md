@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.16.0 - 2020 Feb 18
+Version 0.16.1 - 2020 Feb 20
 
 ## Copyright and License ##
 
@@ -106,19 +106,19 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.16.0 (FWS); YottaDB Version: 1.28'
+'Node.js Adaptor for YottaDB: Version: 0.16.1 (FWS); YottaDB Version: 1.28'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 { ok: true,
-  global: 'test',
+  global: 'v4wTest',
   subscripts: [ 0, 2, 0 ],
   data: '2 bags of wheat',
   defined: 1 }
 > ydb.get('^v4wTest', 0, 2, 0); // write ^v4wTest(0,2,0)
 '2 bags of wheat'
-> ydb.get({global: 'test', subscripts: [0, 2, 0]}, (error, result) => {if (!error) {console.log('result:', result);}});
+> ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}, (error, result) => {if (!error) {console.log('result:', result);}});
 undefined
 > result: { ok: true,
-  global: 'test',
+  global: 'v4wTest',
   subscripts: [ 0, 2, 0 ],
   data: '2 bags of wheat',
   defined: 1 }
@@ -129,13 +129,13 @@ undefined
 
 > ydb.set('^v4wTest', 0, 2, 0, '3 bags of wheat'); // set ^v4wTest(0,2,0)="3 bags of wheat"
 undefined
-> ydb.get({global: 'test', subscripts: [0, 2, 0]});
+> ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]});
 { ok: true,
-  global: 'test',
+  global: 'v4wTest',
   subscripts: [ 0, 2, 0 ],
   data: '3 bags of wheat',
   defined: 1 }
-> ydb.get({global: 'test', subscripts: ['']});
+> ydb.get({global: 'v4wTest', subscripts: ['']});
 { ok: false,
   errorCode: 150373498,
   errorMessage:

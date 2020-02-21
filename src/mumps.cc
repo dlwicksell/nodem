@@ -23,7 +23,6 @@
 
 #include "mumps.h"
 #include "nodem.h"
-#include "utility.h"
 #include "gtm.h"
 #include "ydb.h"
 
@@ -2390,7 +2389,6 @@ void Gtm::open(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   charset: ", encoding);
         }
 
-
         if (has_n(isolate, arg_object, new_string_n(isolate, "signalHandler"))) {
             if (get_n(isolate, arg_object, new_string_n(isolate, "signalHandler"))->IsObject()) {
                 Local<Object> signal_handlers =
@@ -2520,7 +2518,6 @@ void Gtm::open(const FunctionCallbackInfo<Value>& info)
 
         flockfile(stderr);
     }
-
 
 #if NODEM_SIMPLE_API == 1
     if (ydb_init() != YDB_OK) {
@@ -2664,7 +2661,10 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    Local<Object> arg_object = to_object_n(isolate, info[0]);
+    Local<Object> arg_object = Object::New(isolate);
+
+    if (info[0]->IsObject())
+        arg_object = to_object_n(isolate, info[0]);
 
     if (has_n(isolate, arg_object, new_string_n(isolate, "debug"))) {
         UTF8_VALUE_N(isolate, debug, get_n(isolate, arg_object, new_string_n(isolate, "debug")));
@@ -2711,19 +2711,17 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
     if (gtm_state->debug > LOW)
         debug_log(">>   autoRelink: ", std::boolalpha, gtm_state->auto_relink);
 
-    UTF8_VALUE_N(isolate, nodem_mode, get_n(isolate, arg_object, new_string_n(isolate, "mode")));
+    if (has_n(isolate, arg_object, new_string_n(isolate, "mode"))) {
+        UTF8_VALUE_N(isolate, nodem_mode, get_n(isolate, arg_object, new_string_n(isolate, "mode")));
 
-    if (strcasecmp(*nodem_mode, "strict") == 0) {
-        gtm_state->mode = STRICT;
+        if (strcasecmp(*nodem_mode, "strict") == 0) {
+            gtm_state->mode = STRICT;
+        } else if (strcasecmp(*nodem_mode, "canonical") == 0) {
+            gtm_state->mode = CANONICAL;
+        }
+    }
 
-        if (gtm_state->debug > LOW)
-            debug_log(">>   mode: strict");
-    } else if (strcasecmp(*nodem_mode, "canonical") == 0) {
-        gtm_state->mode = CANONICAL;
-
-        if (gtm_state->debug > LOW)
-            debug_log(">>   mode: canonical");
-    } else if (gtm_state->debug > LOW) {
+    if (gtm_state->debug > LOW) {
         if (gtm_state->mode == CANONICAL) {
             debug_log(">>   mode: canonical");
         } else {
@@ -2731,27 +2729,35 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
         }
     }
 
-    Local<Value> charset = get_n(isolate, arg_object, new_string_n(isolate, "charset"));
+    if (has_n(isolate, arg_object, new_string_n(isolate, "charset"))) {
+        Local<Value> charset = get_n(isolate, arg_object, new_string_n(isolate, "charset"));
+        UTF8_VALUE_N(isolate, data_charset, charset);
 
-    if (charset->IsUndefined())
-        charset = get_n(isolate, arg_object, new_string_n(isolate, "encoding"));
+        if (strcasecmp(*data_charset, "m") == 0 || strcasecmp(*data_charset, "binary") == 0 ||
+          strcasecmp(*data_charset, "ascii") == 0) {
+            gtm_state->utf8 = false;
+        } else if (strcasecmp(*data_charset, "utf-8") == 0 || strcasecmp(*data_charset, "utf8") == 0) {
+            gtm_state->utf8 = true;
+        }
+    } else if (has_n(isolate, arg_object, new_string_n(isolate, "encoding"))) {
+        Local<Value> encoding = get_n(isolate, arg_object, new_string_n(isolate, "encoding"));
+        UTF8_VALUE_N(isolate, data_encoding, encoding);
 
-    UTF8_VALUE_N(isolate, data_charset, charset);
-
-    if (strcasecmp(*data_charset, "m") == 0 || strcasecmp(*data_charset, "binary") == 0 ||
-      strcasecmp(*data_charset, "ascii") == 0) {
-        gtm_state->utf8 = false;
-    } else if (strcasecmp(*data_charset, "utf-8") == 0 || strcasecmp(*data_charset, "utf8") == 0) {
-        gtm_state->utf8 = true;
+        if (strcasecmp(*data_encoding, "m") == 0 || strcasecmp(*data_encoding, "binary") == 0 ||
+          strcasecmp(*data_encoding, "ascii") == 0) {
+            gtm_state->utf8 = false;
+        } else if (strcasecmp(*data_encoding, "utf-8") == 0 || strcasecmp(*data_encoding, "utf8") == 0) {
+            gtm_state->utf8 = true;
+        }
     }
 
     if (gtm_state->debug > LOW) {
-        char* encoding = (char*) "utf-8";
+        char* charset = (char*) "utf-8";
 
         if (gtm_state->utf8 == false)
-            encoding = (char*) "m";
+            charset = (char*) "m";
 
-        debug_log(">>   charset: ", encoding);
+        debug_log(">>   charset: ", charset);
     }
 
     if (has_n(isolate, arg_object, new_string_n(isolate, "debug"))) {

@@ -1,9 +1,17 @@
 # NodeM Release Notes #
 
+## v0.16.1 - 2020 Feb 20 ##
+
+- Fix potential application crash [SIGSEGV] when calling the configure API with no arguments on older versions of Node.js
+- Fix compiler error on systems with older GLIBC version
+- Rework error handling in postinstall.js
+
 ## v0.16.0 - 2020 Feb 18 ##
 
 - Add full synchronous and asynchronous support for the worker_threads API
-- Add configure API
+- Add configure API, which can be called as often as wanted, to change database connection options
+  - Add charset, mode, autoRelink, and debug properties to configure
+- Make charset, mode, autoRelink, and debug properties in open and configure work per-thread
 - Reimplement debug tracing
   - Add debug code in utility.h
   - Add worker thread support
