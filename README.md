@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.16.2 - 2020 Feb 21
+Version 0.17.0 - 2020 May 27
 
 ## Copyright and License ##
 
@@ -48,31 +48,28 @@ via a single JavaScript object, containing specific per-API properties, usually
 'global' or 'local', and 'subscripts' or 'arguments'. The APIs that currently
 support both synchronous and asynchronous operation, as well as accepting
 arguments passed by-position, are: 'data', 'get', 'set', 'kill', 'order',
-'previous', 'nextNode', 'previousNode', 'increment', 'function' and
-'procedure'. In order to use the asynchronous versions of those APIs, you must
-pass a JavaScript function, taking two arguments - 'error' and 'result', as the
-last argument to the API. When passing arguments to those APIs by-position, the
-first argument would be the global, local, or intrinsic special variable (only
-supported in the 'get' and 'set' APIs) string, and the next set of arguments
-would be each subscript (or function/procedure argument), separated as a
-different argument. In order to specify an intrinsic special variable (in the
-'get' or 'set' API) when passing arguments inside of a JavaScript object, use
-the 'local' property, and preface the name with a '$'. For the 'set' API, the
-last non-function argument would be treated as the data to set into the node.
-Asynchronous, and call by-position, support for the rest of the API ('version',
-'merge', 'lock', 'unlock', 'globalDirectory', and 'localDirectory') is coming
-soon.
+'previous', 'nextNode', 'previousNode', 'increment', 'lock', 'unlock',
+'function', and 'procedure'. In order to use the asynchronous versions of those
+APIs, you must pass a JavaScript function, taking two arguments - conventionally
+'error' and 'result' - as the last argument to the API. When passing arguments
+to those APIs by-position, the first argument would be the global, local, or
+intrinsic special variable (only supported in the 'get' and 'set' APIs) string,
+and the next set of arguments would be each subscript (or function/procedure
+argument), separated as a different argument. In order to specify an intrinsic
+special variable (in the 'get' or 'set' API) when passing arguments inside of a
+JavaScript object, use the 'local' property, and preface the name with a '$'.
+For the 'set' API, the last non-function argument would be treated as the data
+to set into the node. Asynchronous support for the rest of the API ('version',
+'merge', 'globalDirectory', and 'localDirectory') is coming soon.
 
 Nodem uses the YottaDB and GT.M C Call-in interface. YottaDB has released a
-faster, low-level database access API, with version r1.20, called the
-SimpleAPI. Nodem uses YottaDB's SimpleAPI for the 'data', 'get', 'set', 'kill',
-'order', 'previous', 'nextNode', 'previousNode', and 'increment' APIs, when it
-is available, and falls back to the Call-in interface when it is not.
-SimpleAPI support for the rest of the API ('lock', and 'unlock'), as
-applicable, is coming soon.
+faster, low-level database access API, with version r1.20, called the SimpleAPI.
+Nodem uses YottaDB's SimpleAPI for the 'data', 'get', 'set', 'kill', 'order',
+'previous', 'nextNode', 'previousNode', 'increment', 'lock', and 'unlock' APIs,
+when it is available, and falls back to the Call-in interface when it is not.
 
 Nodem now supports the Worker Threads [API][worker-threads], for both
-synchronous and asynchronous APIs. Since YottaDB and GT.M are single-threaded,
+synchronous and asynchronous calls. Since YottaDB and GT.M are single-threaded,
 opening and closing a connection to their database and runtime, should only be
 done once per process lifetime. Nodem's 'open' and 'close' APIs will only work
 when called from the main thread of the process. In order to work with the
@@ -104,50 +101,58 @@ Using Nodem with YottaDB, in the Node.js REPL:
 > const ydb = require('nodem').Ydb(); // Create YottaDB connection instance - use Gtm() when connecting to GT.M
 undefined
 > ydb.open(); // Open connection to YottaDB
-{ ok: true, pid: 12345 }
+{ ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.16.2 (FWS); YottaDB Version: 1.28'
+'Node.js Adaptor for YottaDB: Version: 0.17.0 (ABI=83) [FWS]; YottaDB Version: 1.28'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
-{ ok: true,
+{
+  ok: true,
   global: 'v4wTest',
   subscripts: [ 0, 2, 0 ],
   data: '2 bags of wheat',
-  defined: 1 }
+  defined: true
+}
 > ydb.get('^v4wTest', 0, 2, 0); // write ^v4wTest(0,2,0)
 '2 bags of wheat'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}, (error, result) => {if (!error) {console.log('result:', result);}});
 undefined
-> result: { ok: true,
+> result: {
+  ok: true,
   global: 'v4wTest',
   subscripts: [ 0, 2, 0 ],
   data: '2 bags of wheat',
-  defined: 1 }
+  defined: true
+}
 
 > ydb.get('^v4wTest', 0, 2, 0, (error, result) => {if (!error) {console.log('result:', result);}});
 undefined
 > result: 2 bags of wheat
 
 > ydb.set('^v4wTest', 0, 2, 0, '3 bags of wheat'); // set ^v4wTest(0,2,0)="3 bags of wheat"
-undefined
+true
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]});
-{ ok: true,
+{
+  ok: true,
   global: 'v4wTest',
   subscripts: [ 0, 2, 0 ],
   data: '3 bags of wheat',
-  defined: 1 }
+  defined: true
+}
 > ydb.get({global: 'v4wTest', subscripts: ['']});
-{ ok: false,
+{
+  ok: false,
   errorCode: 150373498,
   errorMessage:
-   '(SimpleAPI),%YDB-E-NULSUBSC, DB access failed because Null subscripts are not allowed for current region,%YDB-I-GVIS, \t\tGlobal variable: ^v4wTest("")' }
+   '(SimpleAPI),%YDB-E-NULSUBSC, DB access failed because Null subscripts are not allowed for current region,%YDB-I-GVIS, \t\tGlobal variable: ^v4wTest("")'
+}
 > ydb.close(); // Close connection to YottaDB, releasing resources and restoring terminal settings
-true
+undefined
 ```
 
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v13.9.0 at this time), as well as every version of
+through the current release (v14.3.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.
@@ -355,22 +360,23 @@ or
 ```javascript
 > process.stdin.setEncoding('binary');
 > process.stdout.setDefaultEncoding('binary');
-> ydb.configure({charset: 'm'}); // For current thread
+> ydb.configure({charset: 'm'}); // For the current thread
 ```
 
-There are currently two different data modes that Nodem supports. The mode can
-be set to either 'canonical' or 'strict'. The default is 'canonical', and
+There are currently three different data modes that Nodem supports. The mode can
+be set to 'canonical', 'string', or 'strict'. The default is 'canonical', and
 interprets data using the M canonical representation. I.e. Numbers will be
-represented numerically, rather than as strings. Strict mode interprets all
-data as strings, strictly following the convention set with the Caché Node.js
-driver, e.g.
+represented numerically, rather than as strings, and numbers collate before
+strings. The other two modes, 'string' and 'strict' interpret all data as
+strings, with 'strict' mode also strictly following the API conventions set with
+the Caché Node.js driver, e.g.
 
 ```javascript
-> ydb.open({mode: 'strict'}); // For all threads
+> ydb.open({mode: 'string'}); // For all threads
 ```
 or
 ```javascript
-> ydb.configure({mode: 'strict'}); // For current thread
+> ydb.configure({mode: 'strict'}); // For the current thread
 ```
 
 Nodem also has a debug tracing mode, in case something doesn't seem to be
@@ -388,7 +394,7 @@ or
 ```
 or
 ```javascript
-> ydb.configure({debug: 'high'}); // For current thread
+> ydb.configure({debug: 'high'}); // For the current thread
 ```
 
 Nodem handles several common signals that are typically used to stop processes,
@@ -468,7 +474,7 @@ pre-allocated thread pool is.
 
 **NOTE:** The Node.js core worker_thread API, which also allocates threads from
 the same worker thread pool in libuv, allows complete control of creating and
-destroying threads, and does not follow the threadpoolSize (which just sets the
+destroying threads, and does not utilize the threadpoolSize (which just sets the
 libuv environment variable 'UV_THREADPOOL_SIZE') set in the Nodem 'open' API.
 
 YottaDB/GT.M changes some settings of its controlling terminal device, and
@@ -566,13 +572,15 @@ the call, and then clearing the symbol table, e.g.
 > ydb.localDirectory();
 [ 'U' ]
 > ydb.procedure({procedure: 'AGET^ORWORR', arguments: [, 9, '2^0', 13, 0]});
-{ ok: true,
+{
+  ok: true,
   procedure: 'AGET^ORWORR',
-  arguments: [ <1 empty item>, 9, '2^0', 13, 0 ] }
+  arguments: [ <1 empty item>, 9, '2^0', 13, 0 ]
+}
 > ydb.localDirectory();
 [ 'DILOCKTM', 'DISYS', 'DT', 'DTIME', 'DUZ', 'IO', 'U', 'XPARSYS' ]
 > ydb.kill();
-undefined
+true
 > ydb.localDirectory();
 []
 ```
@@ -604,33 +612,41 @@ passing arguments in this fashion, e.g.
 > const arg = {type: 'reference', value: 'LIST'};
 undefined
 > ydb.procedure({procedure: 'LISTALL^ORWPT', arguments: [arg, 'A', 1]});
-{ ok: true,
+{
+  ok: true,
   procedure: 'LISTALL^ORWPT',
-  arguments: [ { type: 'reference', value: 'LIST' }, 'A', 1 ] }
+  arguments: [ { type: 'reference', value: 'LIST' }, 'A', 1 ]
+}
 > ydb.localDirectory();
 [ 'LIST', 'U' ]
 > ydb.data({local: 'LIST'});
 { ok: true, local: 'LIST', defined: 10 }
 > ydb.nextNode({local: 'LIST'});
-{ ok: true,
+{
+  ok: true,
   local: 'LIST',
   subscripts: [ 1 ],
   data: '1^ZZ PATIENT,TEST ONE^^^^ZZ PATIENT,TEST ONE',
-  defined: 1 }
+  defined: true
+}
 > ydb.nextNode({local: 'LIST', subscripts: [1]});
-{ ok: true,
+{
+  ok: true,
   local: 'LIST',
   subscripts: [ 2 ],
   data: '3^ZZ PATIENT,TEST THREE^^^^ZZ PATIENT,TEST THREE',
-  defined: 1 }
+  defined: true
+}
 > ydb.nextNode({local: 'LIST', subscripts: [2]});
-{ ok: true,
+{
+  ok: true,
   local: 'LIST',
   subscripts: [ 3 ],
   data: '2^ZZ PATIENT,TEST TWO^^^^ZZ PATIENT,TEST TWO',
-  defined: 1 }
+  defined: true
+}
 > ydb.nextNode({local: 'LIST', subscripts: [3]});
-{ ok: true, local: 'LIST', defined: 0 }
+{ ok: true, local: 'LIST', defined: false }
 ```
 
 ## Interface ##

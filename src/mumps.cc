@@ -111,10 +111,11 @@ void clean_shutdown(const int signal_num)
     if (gtm_state_g == OPEN) {
         if (uv_mutex_trylock(&mutex_g) == 0) {
 #if NODEM_SIMPLE_API == 1
-            if (ydb_exit() != YDB_OK)
+            ydb_exit();
 #else
-            if (gtm_exit() != EXIT_SUCCESS)
+            gtm_exit();
 #endif
+
             uv_mutex_unlock(&mutex_g);
         }
 
@@ -146,7 +147,7 @@ void clean_shutdown(const int signal_num)
 /*
  * @function {private} nodem::reset_handler
  * @summary Reset the SIGINT signal when running YottaDB r1.26 or newer (this is a hack)
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {bool} reset_handler - Flag that controls whether to reset the signal handlers
  * @returns {void}
  */
@@ -174,8 +175,8 @@ inline static void reset_handler(GtmState* gtm_state)
  * @function {private} nodem::is_number
  * @summary Check if a value returned from YottaDB's SimpleAPI is a canonical number
  * @param {string} data - The data value to be tested
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
- * @member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {boolean} - Whether the data value is a canonical number or not
  */
 inline static bool is_number(const string data, GtmState* gtm_state)
@@ -191,7 +192,9 @@ inline static bool is_number(const string data, GtmState* gtm_state)
      * This is why anything over 16 characters needs to be treated as a string
      */
 
-    if (gtm_state->mode == STRICT) return false; // In strict mode, all data is treated as a string
+    // In string and strict modes, all data is treated as a string
+    if (gtm_state->mode == STRICT || gtm_state->mode == STRING)
+        return false;
 
     bool flag = false;
     size_t neg_cnt = count(data.begin(), data.end(), '-');
@@ -206,8 +209,7 @@ inline static bool is_number(const string data, GtmState* gtm_state)
     if (data.length() > 16 || data[data.length() - 1] == '.')
         flag = false;
 
-    if (gtm_state->mode && flag && !data.empty() &&
-            all_of(data.begin(), data.end(), [](char c) {return (std::isdigit(c) || c == '-' || c == '.');})) {
+    if (flag && !data.empty() && all_of(data.begin(), data.end(), [](char c) {return (std::isdigit(c) || c == '-' || c == '.');})) {
         if ((data[0] == '0' && data.length() > 1) || (decp_cnt == 1 && data[data.length() - 1] == '0')) {
             return false;
         } else {
@@ -224,7 +226,7 @@ inline static bool is_number(const string data, GtmState* gtm_state)
  * @summary Call a method on the built-in Node.js JSON object
  * @param {Local<Value>} data - A JSON string containing the data to parse or a JavaScript object to stringify
  * @param {string} type - The name of the method to call on JSON
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {Local<Value>} - An object containing the output data
  */
@@ -258,9 +260,9 @@ static Local<Value> json_method(Local<Value> data, const string type, GtmState* 
  * @param {gtm_char_t*} error - A character string representing the YottaDB/GT.M run-time error
  * @param {bool} position - Whether the API was called by positional arguments or not
  * @param {bool} async - Whether the API was called asynchronously or not
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} result - An object containing the formatted error content
  */
 static Local<Value> error_status(gtm_char_t* error, const bool position, const bool async, GtmState* gtm_state)
@@ -278,7 +280,7 @@ static Local<Value> error_status(gtm_char_t* error, const bool position, const b
     char* error_msg;
     char* code = strtok_r(error, ",", &error_msg);
 
-    unsigned int error_code = atoi(code);
+    int error_code = atoi(code);
 
     if (strstr(error_msg, "%YDB-E-CTRAP") != NULL || strstr(error_msg, "%GTM-E-CTRAP") != NULL)
         clean_shutdown(SIGINT); // Handle SIGINT caught by YottaDB or GT.M
@@ -316,7 +318,7 @@ static Local<Value> error_status(gtm_char_t* error, const bool position, const b
  * @function {private} nodem::invalid_name
  * @summary If a variable name contains subscripts, it is not valid, and cannot be used
  * @param {char*} name - The name to test against
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {bool} - Whether the name is invalid
  */
@@ -344,7 +346,7 @@ static bool invalid_name(const char* name, GtmState* gtm_state)
  * @function {private} nodem::invalid_local
  * @summary If a local variable name starts with v4w, it is not valid, and cannot be manipulated
  * @param {char*} name - The name to test against
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {bool} - Whether the local name is invalid
  */
@@ -372,7 +374,7 @@ static bool invalid_local(const char* name, GtmState* gtm_state)
  * @function {private} nodem::globalize_name
  * @summary If a variable name (or function/procedure) doesn't start with (or contain) the optional '^' character, add it for output
  * @param {Local<Value>} name - The name to be normalized for output
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {Local<Value>} [new_name|name] - A string containing the normalized name
  */
@@ -410,7 +412,7 @@ static Local<Value> globalize_name(const Local<Value> name, GtmState* gtm_state)
  * @function {private} nodem::localize_name
  * @summary If a variable name starts with the optional '^' character, strip it off for output
  * @param {Local<Value>} name - The name to be normalized for output
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {Local<Value>} [data_name|name] - A string containing the normalized name
  */
@@ -446,7 +448,7 @@ static Local<Value> localize_name(const Local<Value> name, GtmState* gtm_state)
  * @function {private} nodem::encode_arguments
  * @summary Encode an array of arguments for parsing in v4wNode.m
  * @param {Local<Value>} arguments - The array of subscripts or arguments to be encoded
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @member {bool} utf8 - UTF-8 character encoding; defaults to true
  * @param {boolean} function <false> - Whether the arguments to encode are from the function or procedure call or not
@@ -584,7 +586,7 @@ static Local<Value> encode_arguments(const Local<Value> arguments, GtmState* gtm
  * @summary Build an array of subscritps for passing to the SimpleAPI
  * @param {Local<Value>} subscripts - The array of subscripts to be built
  * @param {bool&} error - If this is set to true, it signals an error with subscript data
- * @param {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @param {GtmState*} gtm_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @member {bool} utf8 - UTF-8 character encoding; defaults to true
  * @returns {vector<string>} [build_array] - The built array of subscripts
@@ -676,7 +678,7 @@ Local<String> GtmValue::from_byte(gtm_char_t buffer[])
     MaybeLocal<String> string = String::NewFromOneByte(isolate, reinterpret_cast<const uint8_t*>(buffer), NewStringType::kNormal);
 
     if (string.IsEmpty()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Unable to convert from a byte buffer")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Unable to convert from a byte buffer to UTF-8")));
         return String::Empty(isolate);
     } else {
         return string.ToLocalChecked();
@@ -696,10 +698,10 @@ Local<String> GtmValue::from_byte(gtm_char_t buffer[])
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> data(GtmBaton* gtm_baton)
@@ -728,8 +730,6 @@ static Local<Value> data(GtmBaton* gtm_baton)
 #if NODEM_SIMPLE_API == 1
     Local<Object> temp_object = Object::New(isolate);
 
-    string data(gtm_baton->result);
-
     set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, atof(gtm_baton->result)));
 #else
     Local<String> json_string;
@@ -753,7 +753,7 @@ static Local<Value> data(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -812,10 +812,10 @@ static Local<Value> data(GtmBaton* gtm_baton)
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> get(GtmBaton* gtm_baton)
@@ -846,9 +846,17 @@ static Local<Value> get(GtmBaton* gtm_baton)
     Local<Object> temp_object = Object::New(isolate);
 
     if (gtm_baton->status == YDB_ERR_GVUNDEF || gtm_baton->status == YDB_ERR_LVUNDEF) {
-        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
+        if (gtm_baton->mode == STRICT) {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
+        } else {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
+        }
     } else {
-        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
+        if (gtm_baton->mode == STRICT) {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
+        } else {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
+        }
     }
 
     string data(gtm_baton->result);
@@ -884,7 +892,7 @@ static Local<Value> get(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -943,9 +951,9 @@ static Local<Value> get(GtmBaton* gtm_baton)
  * @member {string} name - The name of the global or local variable
  * @member {Local<Value>} data - V8 object containing the data to store in the node that was called
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> set(GtmBaton* gtm_baton)
@@ -987,8 +995,7 @@ static Local<Value> set(GtmBaton* gtm_baton)
         } else if (gtm_baton->gtm_state->mode == STRICT) {
             return scope.Escape(Number::New(isolate, 0));
         } else {
-            Local<Value> ret_data = Undefined(isolate);
-
+            Local<Value> ret_data = Boolean::New(isolate, true);
             return scope.Escape(ret_data);
         }
     } else {
@@ -1032,9 +1039,9 @@ static Local<Value> set(GtmBaton* gtm_baton)
  * @member {string} name - The name of the global or local variable
  * @member {int32_t} node_only - Whether the API was called on a single node only, or on a node and all its children
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> kill(GtmBaton* gtm_baton)
@@ -1062,14 +1069,7 @@ static Local<Value> kill(GtmBaton* gtm_baton)
     Local<Object> return_object = Object::New(isolate);
     Local<String> name = new_string_n(isolate, gtm_baton->name.c_str());
 
-    if (name->StrictEquals(new_string_n(isolate, ""))) {
-        Local<Value> ret_data = Undefined(isolate);
-
-        if (gtm_baton->gtm_state->mode == STRICT)
-            ret_data = Number::New(isolate, 0);
-
-        return scope.Escape(ret_data);
-    } else if (gtm_baton->position) {
+    if (name->StrictEquals(new_string_n(isolate, "")) || gtm_baton->position) {
         if (gtm_baton->gtm_state->debug > OFF)
             debug_log(">  kill exit");
 
@@ -1080,8 +1080,7 @@ static Local<Value> kill(GtmBaton* gtm_baton)
         } else if (gtm_baton->gtm_state->mode == STRICT) {
             return scope.Escape(Number::New(isolate, 0));
         } else {
-            Local<Value> ret_data = Undefined(isolate);
-
+            Local<Value> ret_data = Boolean::New(isolate, true);
             return scope.Escape(ret_data);
         }
     } else {
@@ -1126,10 +1125,10 @@ static Local<Value> kill(GtmBaton* gtm_baton)
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> order(GtmBaton* gtm_baton)
@@ -1157,8 +1156,6 @@ static Local<Value> order(GtmBaton* gtm_baton)
 
 #if NODEM_SIMPLE_API == 1
     Local<Object> temp_object = Object::New(isolate);
-    set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
-
     string data(gtm_baton->result);
 
     if (is_number(data, gtm_baton->gtm_state)) {
@@ -1192,7 +1189,7 @@ static Local<Value> order(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -1255,10 +1252,10 @@ static Local<Value> order(GtmBaton* gtm_baton)
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> previous(GtmBaton* gtm_baton)
@@ -1286,8 +1283,6 @@ static Local<Value> previous(GtmBaton* gtm_baton)
 
 #if NODEM_SIMPLE_API == 1
     Local<Object> temp_object = Object::New(isolate);
-    set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
-
     string data(gtm_baton->result);
 
     if (is_number(data, gtm_baton->gtm_state)) {
@@ -1321,7 +1316,7 @@ static Local<Value> previous(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -1385,10 +1380,10 @@ static Local<Value> previous(GtmBaton* gtm_baton)
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
  * @member {vector<string>} {ydb only} subs_array - The subscripts of the next node
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> next_node(GtmBaton* gtm_baton)
@@ -1412,9 +1407,17 @@ static Local<Value> next_node(GtmBaton* gtm_baton)
     Local<Object> temp_object = Object::New(isolate);
 
     if (gtm_baton->status == YDB_NODE_END) {
-        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
+        if (gtm_baton->mode == STRICT) {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
+        } else {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
+        }
     } else {
-        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
+        if (gtm_baton->mode == STRICT) {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
+        } else {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
+        }
     }
 
     if (gtm_baton->status != YDB_NODE_END) {
@@ -1473,7 +1476,7 @@ static Local<Value> next_node(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -1546,10 +1549,10 @@ static Local<Value> next_node(GtmBaton* gtm_baton)
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
  * @member {vector<string>} {ydb only} subs_array - The subscripts of the previous node
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> previous_node(GtmBaton* gtm_baton)
@@ -1573,9 +1576,17 @@ static Local<Value> previous_node(GtmBaton* gtm_baton)
     Local<Object> temp_object = Object::New(isolate);
 
     if (gtm_baton->status == YDB_NODE_END) {
-        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
+        if (gtm_baton->mode == STRICT) {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
+        } else {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
+        }
     } else {
-        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
+        if (gtm_baton->mode == STRICT) {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
+        } else {
+            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
+        }
     }
 
     if (gtm_baton->status != YDB_NODE_END) {
@@ -1634,7 +1645,7 @@ static Local<Value> previous_node(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -1701,20 +1712,18 @@ static Local<Value> previous_node(GtmBaton* gtm_baton)
 
 /*
  * @function {private} nodem::increment
- * @summary Increment or decrement the number in a global or local node
+ * @summary Return the value of an incremented or decremented number in a global or local node
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_status_t} status - Return code; 0 is success, 1 is undefined node
  * @member {gtm_char_t*} result - Data returned from increment call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
- * @member {gtm_double_t} increment - Number to increment or decrement by
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> increment(GtmBaton* gtm_baton)
@@ -1728,7 +1737,6 @@ static Local<Value> increment(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
-        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   result: ", gtm_baton->result);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
@@ -1776,7 +1784,7 @@ static Local<Value> increment(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -1824,6 +1832,222 @@ static Local<Value> increment(GtmBaton* gtm_baton)
 } // @end nodem::increment function
 
 /*
+ * @function {private} nodem::lock
+ * @summary Return data about an incremental lock of a global or local node
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_char_t*} result - Data returned from lock call
+ * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
+ * @member {bool} local - Whether the API was called on a local variable, or a global variable
+ * @member {bool} async - Whether the API was called asynchronously, or synchronously
+ * @member {string} name - The name of the global or local variable
+ * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @returns {Local<Value>} return_object - Data returned to Node.js
+ */
+static Local<Value> lock(GtmBaton* gtm_baton)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  lock enter");
+
+    Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
+
+    if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   result: ", gtm_baton->result);
+        debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
+        debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
+        debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
+        debug_log(">>   name: ", gtm_baton->name);
+
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify", gtm_baton->gtm_state);
+            debug_log(">>   subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, subscript_string)));
+        }
+    }
+
+#if NODEM_SIMPLE_API == 1
+    Local<Object> temp_object = Object::New(isolate);
+    string data(gtm_baton->result);
+
+    if (is_number(data, gtm_baton->gtm_state)) {
+        set_n(isolate, temp_object, new_string_n(isolate, "result"), Number::New(isolate, atof(gtm_baton->result)));
+    } else {
+        if (gtm_baton->gtm_state->utf8 == true) {
+            set_n(isolate, temp_object, new_string_n(isolate, "result"), new_string_n(isolate, gtm_baton->result));
+        } else {
+            set_n(isolate, temp_object, new_string_n(isolate, "result"), GtmValue::from_byte(gtm_baton->result));
+        }
+    }
+#else
+    Local<String> json_string;
+
+    if (gtm_baton->gtm_state->utf8 == true) {
+        json_string = new_string_n(isolate, gtm_baton->result);
+    } else {
+        json_string = GtmValue::from_byte(gtm_baton->result);
+    }
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  lock JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
+
+#if NODE_MAJOR_VERSION >= 1
+    TryCatch try_catch(isolate);
+#else
+    TryCatch try_catch;
+#endif
+
+    Local<Object> temp_object;
+    Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
+
+    if (try_catch.HasCaught()) {
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
+        return scope.Escape(try_catch.Exception());
+    } else {
+        temp_object = to_object_n(isolate, json);
+    }
+#endif
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> name = new_string_n(isolate, gtm_baton->name.c_str());
+
+    if (gtm_baton->position) {
+        if (gtm_baton->gtm_state->debug > OFF)
+            debug_log(">  lock exit");
+
+        Local<Value> result = get_n(isolate, temp_object, new_string_n(isolate, "result"));
+
+        if (gtm_baton->gtm_state->mode == STRICT)
+            result = to_string_n(isolate, result);
+
+        if (gtm_baton->async && gtm_baton->gtm_state->mode == STRICT) {
+            set_n(isolate, return_object, new_string_n(isolate, "result"), result);
+
+            return scope.Escape(return_object);
+        } else {
+            return scope.Escape(result);
+        }
+    } else {
+        if (gtm_baton->gtm_state->mode == STRICT) {
+            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
+        } else {
+            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+        }
+
+        if (gtm_baton->local) {
+            set_n(isolate, return_object, new_string_n(isolate, "local"), name);
+        } else {
+            set_n(isolate, return_object, new_string_n(isolate, "global"), localize_name(name, gtm_baton->gtm_state));
+        }
+
+        if (gtm_baton->gtm_state->mode == STRICT) {
+            if (!subscripts->IsUndefined()) {
+                Local<Value> temp_subscripts = get_n(isolate, temp_object, new_string_n(isolate, "subscripts"));
+
+                if (!temp_subscripts->IsUndefined()) {
+                    set_n(isolate, return_object, new_string_n(isolate, "subscripts"), temp_subscripts);
+                } else {
+                    set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
+                }
+            }
+        } else {
+            if (!subscripts->IsUndefined())
+                set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
+        }
+
+        set_n(isolate, return_object, new_string_n(isolate, "result"),
+          to_number_n(isolate, get_n(isolate, temp_object, new_string_n(isolate, "result"))));
+    }
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  lock exit");
+
+    return scope.Escape(return_object);
+} // @end nodem::lock function
+
+/*
+ * @function {private} nodem::unlock
+ * @summary Return data about unlocking a global or local node, or releasing all locks
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
+ * @member {bool} local - Whether the API was called on a local variable, or a global variable
+ * @member {bool} async - Whether the API was called asynchronously, or synchronously
+ * @member {string} name - The name of the global or local variable
+ * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @returns {Local<Value>} return_object - Data returned to Node.js
+ */
+static Local<Value> unlock(GtmBaton* gtm_baton)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  unlock enter");
+
+    Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
+
+    if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
+        debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
+        debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
+        debug_log(">>   name: ", gtm_baton->name);
+
+        if (!subscripts->IsUndefined()) {
+            Local<Value> subscript_string = json_method(subscripts, "stringify", gtm_baton->gtm_state);
+            debug_log(">>   subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, subscript_string)));
+        }
+    }
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> name = new_string_n(isolate, gtm_baton->name.c_str());
+
+    if (name->StrictEquals(new_string_n(isolate, "")) || gtm_baton->position) {
+        if (gtm_baton->gtm_state->debug > OFF)
+            debug_log(">  unlock exit");
+
+        if (gtm_baton->async && gtm_baton->gtm_state->mode == STRICT) {
+            set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "0"));
+
+            return scope.Escape(return_object);
+        } else if (gtm_baton->gtm_state->mode == STRICT) {
+            return scope.Escape(new_string_n(isolate, "0"));
+        } else {
+            Local<Value> ret_data = Number::New(isolate, 0);
+            return scope.Escape(ret_data);
+        }
+    } else {
+        if (gtm_baton->gtm_state->mode == STRICT) {
+            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
+        } else {
+            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+        }
+
+        if (gtm_baton->local) {
+            set_n(isolate, return_object, new_string_n(isolate, "local"), name);
+        } else {
+            set_n(isolate, return_object, new_string_n(isolate, "global"), localize_name(name, gtm_baton->gtm_state));
+        }
+
+        if (!subscripts->IsUndefined())
+            set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
+
+        set_n(isolate, return_object, new_string_n(isolate, "result"), Number::New(isolate, 0));
+    }
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  unlock exit");
+
+    return scope.Escape(return_object);
+} // @end nodem::unlock function
+
+/*
  * @function {private} nodem::function
  * @summary Return value from an arbitrary extrinsic function
  * @param {GtmBaton*} gtm_baton - struct containing the following members
@@ -1834,10 +2058,10 @@ static Local<Value> increment(GtmBaton* gtm_baton)
  * @member {string} name - The name of the global or local variable
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
  * @member {string} relink - Whether to relink the function before calling it
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> function(GtmBaton* gtm_baton)
@@ -1857,8 +2081,10 @@ static Local<Value> function(GtmBaton* gtm_baton)
         debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
         debug_log(">>   name: ", gtm_baton->name);
 
-        Local<Value> argument_string = json_method(arguments, "stringify", gtm_baton->gtm_state);
-        debug_log(">>   arguments: ", *(UTF8_VALUE_TEMP_N(isolate, argument_string)));
+        if (!arguments->IsUndefined()) {
+            Local<Value> argument_string = json_method(arguments, "stringify", gtm_baton->gtm_state);
+            debug_log(">>   arguments: ", *(UTF8_VALUE_TEMP_N(isolate, argument_string)));
+        }
 
         debug_log(">>   relink: ", gtm_baton->relink);
     }
@@ -1884,7 +2110,7 @@ static Local<Value> function(GtmBaton* gtm_baton)
     Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         return scope.Escape(try_catch.Exception());
     } else {
         temp_object = to_object_n(isolate, json);
@@ -1937,9 +2163,9 @@ static Local<Value> function(GtmBaton* gtm_baton)
  * @member {string} name - The name of the global or local variable
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
  * @member {string} relink - Whether to relink the procedure before calling it
- * @member {GtmState*} gtm_state - Per-thread state class containig the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @nested-member {mode_t} mode - Data mode: STRICT or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> procedure(GtmBaton* gtm_baton)
@@ -1958,8 +2184,10 @@ static Local<Value> procedure(GtmBaton* gtm_baton)
         debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
         debug_log(">>   name: ", gtm_baton->name);
 
-        Local<Value> argument_string = json_method(arguments, "stringify", gtm_baton->gtm_state);
-        debug_log(">>   arguments: ", *(UTF8_VALUE_TEMP_N(isolate, argument_string)));
+        if (!arguments->IsUndefined()) {
+            Local<Value> argument_string = json_method(arguments, "stringify", gtm_baton->gtm_state);
+            debug_log(">>   arguments: ", *(UTF8_VALUE_TEMP_N(isolate, argument_string)));
+        }
 
         debug_log(">>   relink: ", gtm_baton->relink);
     }
@@ -1979,7 +2207,6 @@ static Local<Value> procedure(GtmBaton* gtm_baton)
             return scope.Escape(String::Empty(isolate));
         } else {
             Local<Value> ret_data = Undefined(isolate);
-
             return scope.Escape(ret_data);
         }
     } else {
@@ -2353,16 +2580,23 @@ void Gtm::open(const FunctionCallbackInfo<Value>& info)
 
             if (gtm_state->debug > LOW)
                 debug_log(">>   mode: strict");
+        } else if (strcasecmp(*nodem_mode, "string") == 0) {
+            mode_g = gtm_state->mode = STRING;
+
+            if (gtm_state->debug > LOW)
+                debug_log(">>   mode: string");
         } else if (strcasecmp(*nodem_mode, "canonical") == 0) {
             mode_g = gtm_state->mode = CANONICAL;
 
             if (gtm_state->debug > LOW)
                 debug_log(">>   mode: canonical");
         } else if (gtm_state->debug > LOW) {
-            if (gtm_state->mode == CANONICAL) {
-                debug_log(">>   mode: canonical");
-            } else {
+            if (gtm_state->mode == STRICT) {
                 debug_log(">>   mode: strict");
+            } else if (gtm_state->mode == STRING) {
+                debug_log(">>   mode: string");
+            } else {
+                debug_log(">>   mode: canonical");
             }
         }
 
@@ -2605,6 +2839,10 @@ void Gtm::open(const FunctionCallbackInfo<Value>& info)
 #else
     stat_buf = gtm_ci(debug, gtm_state->debug);
 #endif
+
+    if (gtm_state->debug > LOW)
+        debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
@@ -2716,16 +2954,20 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
 
         if (strcasecmp(*nodem_mode, "strict") == 0) {
             gtm_state->mode = STRICT;
+        } else if (strcasecmp(*nodem_mode, "string") == 0) {
+            gtm_state->mode = STRING;
         } else if (strcasecmp(*nodem_mode, "canonical") == 0) {
             gtm_state->mode = CANONICAL;
         }
     }
 
     if (gtm_state->debug > LOW) {
-        if (gtm_state->mode == CANONICAL) {
-            debug_log(">>   mode: canonical");
-        } else {
+        if (gtm_state->mode == STRICT) {
             debug_log(">>   mode: strict");
+        } else if (gtm_state->mode == STRING) {
+            debug_log(">>   mode: string");
+        } else {
+            debug_log(">>   mode: canonical");
         }
     }
 
@@ -2778,6 +3020,10 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
 #else
         stat_buf = gtm_ci(debug, gtm_state->debug);
 #endif
+
+        if (gtm_state->debug > LOW)
+            debug_log(">>   stat_buf: ", stat_buf);
+
         if (stat_buf != EXIT_SUCCESS) {
             gtm_char_t msg_buf[ERR_LEN];
             gtm_zstatus(msg_buf, ERR_LEN);
@@ -2953,17 +3199,17 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\tipAddress|ip_address:\t\t{string} <none>,\n"
             "\t\ttcpPort|tcp_port:\t\t{number|string} <none>,\n"
             "\t\tcharset|encoding:\t\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
-            "\t\tmode:\t\t\t\t{string} [<canonical>|strict]/i,\n"
+            "\t\tmode:\t\t\t\t{string} [<canonical>|string|strict]/i,\n"
             "\t\tautoRelink:\t\t\t{boolean} <false>,\n"
-            "\t\tthreadpoolSize:\t\t\t{number} [1-1024] <4>,\n"
             "\t\tdebug:\t\t\t\t{boolean} <false>|{string} [<off>|low|medium|high]/i|{number} [<0>|1|2|3],\n"
+            "\t\tthreadpoolSize:\t\t\t{number} [1-1024] <4>,\n"
             "\t\tsignalHandler:\t\t\t{boolean} <true>|{object {boolean} sigint,sigterm,sigquit/i} [<true>|false] [<1>|0]\n"
             "\t}\n"
             "\n\tReturns on success:\n"
             "\t{\n"
             "\t\tok:\t\t{boolean} true|{number} 1,\n"
             "\t\tresult:\t\t{optional} {number} 1,\n"
-            "\t\tpid|gtm_pid:\t{number}|{string}\n"
+            "\t\tpid|gtm_pid:\t{number}|{string},\n"
             "\t\ttid|gtm_tid:\t{number}|{string}\n"
             "\t}\n"
             "\n\tReturns on failure:\n"
@@ -2977,16 +3223,16 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\n\tRequired arguments: {None}\n"
             "\n\tOptional arguments:\n"
             "\t{\n"
-            "\t\tcharset|encoding:\t\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
-            "\t\tmode:\t\t\t\t{string} [<canonical>|strict]/i,\n"
-            "\t\tautoRelink:\t\t\t{boolean} <false>,\n"
-            "\t\tdebug:\t\t\t\t{boolean} <false>|{string} [<off>|low|medium|high]/i|{number} [<0>|1|2|3],\n"
+            "\t\tcharset|encoding:\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
+            "\t\tmode:\t\t\t{string} [<canonical>|string|strict]/i,\n"
+            "\t\tautoRelink:\t\t{boolean} <false>,\n"
+            "\t\tdebug:\t\t\t{boolean} <false>|{string} [<off>|low|medium|high]/i|{number} [<0>|1|2|3]\n"
             "\t}\n"
             "\n\tReturns on success:\n"
             "\t{\n"
             "\t\tok:\t\t{boolean} true|{number} 1,\n"
             "\t\tresult:\t\t{optional} {number} 1,\n"
-            "\t\tpid|gtm_pid:\t{number}|{string}\n"
+            "\t\tpid|gtm_pid:\t{number}|{string},\n"
             "\t\ttid|gtm_tid:\t{number}|{string}\n"
             "\t}\n"
             "\n\tReturns on failure:\n"
@@ -3019,7 +3265,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "data"))) {
         cout << "data method:\n"
             "\tDisplay information about the existence of data and/or children in global or local variables\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3050,7 +3296,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "get"))) {
         cout << "get method:\n"
             "\tRetrieve the data stored at a global or local node, or intrinsic special variable (ISV)\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3062,7 +3308,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\tglobal|local:\t{string},\n"
             "\t\tsubscripts:\t{optional} {array {string|number}},\n"
             "\t\tdata:\t\t{string|number},\n"
-            "\t\tdefined:\t{number} [0|1]\n"
+            "\t\tdefined:\t{boolean} [false|true]|{number} [0|1]\n"
             "\t}\n"
             "\n\tReturns on failure:\n"
             "\t{\n"
@@ -3082,7 +3328,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "set"))) {
         cout << "set method:\n"
             "\tStore data in a global or local node, or intrinsic special variable (ISV)\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3106,7 +3352,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\n\tArguments - via argument position:\n"
             "\t^global|$ISV|local, [subscripts+], data\n"
             "\n\tReturns on success:\n"
-            "\t{undefined}|{number} 0\n"
+            "\t{boolean} true|{number} 0\n"
             "\n\tReturns on failure:\n"
             "\t{exception string}\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
@@ -3115,7 +3361,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "kill"))) {
         cout << "kill method:\n"
             "\tRemove data stored in a global or global node, or in a local or local node, or remove all local variables\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tRequired arguments: {None} - Without an argument, will clear the entire local symbol table for that process\n"
             "\tReturns on success: {undefined}|{number} 0\n"
             "\n\tOptional arguments - via object:\n"
@@ -3140,7 +3386,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\n\tArguments - via argument position:\n"
             "\t^global|local, [subscripts+]\n"
             "\n\tReturns on success:\n"
-            "\t{undefined}|{number} 0\n"
+            "\t{boolean} true|{number} 0\n"
             "\n\tReturns on failure:\n"
             "\t{exception string}\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
@@ -3192,7 +3438,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "order"))) {
         cout << "order or next method:\n"
             "\tRetrieve the next node, at the current subscript depth\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3223,7 +3469,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "previous"))) {
         cout << "previous method:\n"
             "\tRetrieve the previous node, at the current subscript depth\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3254,7 +3500,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "nextNode"))) {
         cout << "nextNode or next_node method:\n"
             "\tRetrieve the next node, regardless of subscript depth\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3266,7 +3512,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\tglobal|local:\t{string},\n"
             "\t\tsubscripts:\t{optional} {array {string|number}},\n"
             "\t\tdata:\t\t{string|number},\n"
-            "\t\tdefined:\t{number} [0|1]\n"
+            "\t\tdefined:\t{boolean} [false|true]|{number} [0|1]\n"
             "\t}\n"
             "\n\tReturns on failure:\n"
             "\t{\n"
@@ -3286,7 +3532,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "previousNode"))) {
         cout << "previousNode or previous_node method:\n"
             "\tRetrieve the previous node, regardless of subscript depth\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3298,7 +3544,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\tglobal|local:\t{string},\n"
             "\t\tsubscripts:\t{optional} {array {string|number}},\n"
             "\t\tdata:\t\t{string|number},\n"
-            "\t\tdefined:\t{number} [0|1]\n"
+            "\t\tdefined:\t{boolean} [false|true]|{number} [0|1]\n"
             "\t}\n"
             "\n\tReturns on failure:\n"
             "\t{\n"
@@ -3318,7 +3564,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "increment"))) {
         cout << "increment method:\n"
             "\tAtomically increment or decrement a global or local data node\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
@@ -3339,7 +3585,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\terrorMessage|ErrorMessage:\t{string}\n"
             "\t}\n"
             "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+], increment\n"
+            "\t^global|local, [subscripts+]\n"
             "\n\tReturns on success:\n"
             "\t{string|number}\n"
             "\n\tReturns on failure:\n"
@@ -3349,14 +3595,15 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "lock"))) {
         cout << "lock method:\n"
-            "\tLock a local or global tree, or sub-tree, or individual node - locks are advisory, not mandatory\n"
-            "\n\tRequired arguments:\n"
+            "\tLock a local or global tree, or individual node, incrementally - locks are advisory, not mandatory\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
             "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\ttimeout:\t{optional} {number}\n"
+            "\t\ttimeout:\t{optional} {number} <-1>\n"
             "\t}\n"
-            "\n\tOptional arguments: Timeout {number} as second argument\n"
+            "\n\tOptional arguments: Timeout {number} <-1> as second argument\n"
             "\n\tReturns on success:\n"
             "\t{\n"
             "\t\tok:\t\t{boolean} true|{number} 1,\n"
@@ -3370,15 +3617,22 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\terrorCode|ErrorCode:\t\t{number},\n"
             "\t\terrorMessage|ErrorMessage:\t{string}\n"
             "\t}\n"
+            "\n\tArguments - via argument position:\n"
+            "\t^global|local, [subscripts+]\n"
+            "\n\tReturns on success:\n"
+            "\t{string|number} [0|1]\n"
+            "\n\tReturns on failure:\n"
+            "\t{exception string}\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
             "\n\tFor more information about the lock method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "unlock"))) {
         cout << "unlock method:\n"
-            "\tUnlock a local or global tree, or sub-tree, or individual node, or release all locks held by process\n"
+            "\tUnlock a local or global tree, or individual node, incrementally; or release all locks held by process\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tRequired arguments: {None} - Without an argument, will clear the entire lock table for that process\n"
-            "\tReturns on success: {number}|{string} 0\n"
-            "\n\tOptional arguments:\n"
+            "\tReturns on success: {undefined}|{number} 0\n"
+            "\n\tOptional arguments - via object:\n"
             "\t{\n"
             "\t\tglobal|local:\t{required} {string},\n"
             "\t\tsubscripts:\t{optional} {array {string|number}}\n"
@@ -3388,7 +3642,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\tok:\t\t{boolean} true|{number} 1,\n"
             "\t\tglobal|local:\t{string},\n"
             "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tresult:\t\t{number} 0\n"
+            "\t\tresult:\t\t{optional} {number} 0\n"
             "\t}\n"
             "\n\tReturns on failure:\n"
             "\t{\n"
@@ -3396,13 +3650,19 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\terrorCode|ErrorCode:\t\t{number},\n"
             "\t\terrorMessage|ErrorMessage:\t{string}\n"
             "\t}\n"
+            "\n\tArguments - via argument position:\n"
+            "\t^global|local, [subscripts+]\n"
+            "\n\tReturns on success:\n"
+            "\t{boolean} true|{string} 0\n"
+            "\n\tReturns on failure:\n"
+            "\t{exception string}\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
             "\n\tFor more information about the unlock method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "function"))) {
         cout << "function method:\n"
             "\tCall an extrinsic function in " NODEM_DB " code\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tfunction:\t{required} {string},\n"
@@ -3434,7 +3694,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "procedure"))) {
         cout << "procedure or routine method:\n"
             "\tCall a procedure/routine/subroutine label in " NODEM_DB " code\n"
-            "\tPassing a function, with two arguments (error and result), as the last argument, will call the API asynchronously\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments - via object:\n"
             "\t{\n"
             "\t\tprocedure|routine:\t{required} {string},\n"
@@ -3446,7 +3706,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t\tok:\t\t\t{boolean} true|{number} 1,\n"
             "\t\tprocedure|routine:\t{string},\n"
             "\t\targuments:\t\t{optional} {array {string|number|empty}},\n"
-            "\t\tresult:\t\t\t{optional} {string} 0\n"
+            "\t\tresult:\t\t\t{optional} {string} ''\n"
             "\t}\n"
             "\n\tReturns on failure:\n"
             "\t{\n"
@@ -3457,7 +3717,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\n\tArguments - via argument position:\n"
             "\tprocedure, [arguments+]\n"
             "\n\tReturns on success:\n"
-            "\t{undefined}|{string} 0\n"
+            "\t{undefined}|{string} ''\n"
             "\n\tReturns on failure:\n"
             "\t{exception string}\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
@@ -3524,10 +3784,10 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
         cout << "NodeM: Gtm object API help menu - methods:\n"
 #endif
             "\nopen\t\tOpen connection to the database - all methods, except for help and version, require an open connection\n"
-            "configure\t\tConfigure per-thread parameters of the connection to the database\n"
+            "configure\tConfigure per-thread parameters of the connection to the database\n"
             "close\t\tClose connection to the database - once closed, cannot be reopened during the current process\n"
             "version\t\tDisplay version information - includes database version if connection has been established (AKA about)\n"
-            "data\t\tDisplay information about the existence of data and/or children in globals or local variables\n"
+            "data\t\tDisplay information about the existence of data and/or children in global or local variables\n"
             "get\t\tRetrieve the data stored at a global or local node, or intrinsic special variable (ISV)\n"
             "set\t\tStore data in a global or local node, or intrinsic special variable (ISV)\n"
             "kill\t\tRemove data stored in a global or global node, or in a local or local node; or remove all local variables\n"
@@ -3537,8 +3797,8 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "nextNode\tRetrieve the next node, regardless of subscript depth\n"
             "previousNode\tRetrieve the previous node, regardless of subscript depth\n"
             "increment\tAtomically increment a global or local data node\n"
-            "lock\t\tLock a global or local tree, or sub-tree, or individual node - locks are advisory, not mandatory\n"
-            "unlock\t\tUnlock a global or local tree, or sub-tree, or individual node; or release all locks held by process\n"
+            "lock\t\tLock a global or local tree, or individual node, incrementally - locks are advisory, not mandatory\n"
+            "unlock\t\tUnlock a global or local tree, or individual node, incrementally; or release all locks held by process\n"
             "function\tCall an extrinsic function in " NODEM_DB " code\n"
             "procedure\tCall a procedure/routine/subroutine label in " NODEM_DB " code (AKA routine)\n"
             "globalDirectory\tList globals stored in the database\n"
@@ -3570,7 +3830,7 @@ void Gtm::version(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::version enter");
 
     Local<String> nodem_version = new_string_n(isolate,
-      "Node.js Adaptor for " NODEM_DB ": Version: " NODEM_VERSION " (FWS)");
+      "Node.js Adaptor for " NODEM_DB ": Version: " NODEM_VERSION " (ABI=" NODEM_STRING(NODE_MODULE_VERSION) ") [FWS]");
 
     if (gtm_state_g < OPEN) {
         info.GetReturnValue().Set(nodem_version);
@@ -3627,6 +3887,9 @@ void Gtm::version(const FunctionCallbackInfo<Value>& info)
             cerr << strerror_r(errno, error, BUFSIZ);
         }
     }
+
+    if (gtm_state->debug > LOW)
+        debug_log(">>   stat_buf: ", stat_buf);
 
     if (stat_buf != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
@@ -3709,8 +3972,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-              "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -3764,21 +4026,19 @@ void Gtm::data(const FunctionCallbackInfo<Value>& info)
         subs_array = build_subscripts(subscripts, error, gtm_state);
 
         if (error) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #else
         subs = encode_arguments(subscripts, gtm_state);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -3823,6 +4083,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -3998,8 +4259,7 @@ void Gtm::get(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-              "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -4065,7 +4325,7 @@ void Gtm::get(const FunctionCallbackInfo<Value>& info)
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -4110,6 +4370,7 @@ void Gtm::get(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -4272,7 +4533,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
 
     Local<Value> glvn;
     Local<Value> subscripts = Undefined(isolate);
-    Local<Value> data_value, data_node;
+    Local<Value> data_value;
     bool local = false;
     bool position = false;
 
@@ -4286,8 +4547,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -4348,21 +4608,19 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
         subs_array = build_subscripts(subscripts, error, gtm_state);
 
         if (error) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #else
         subs = encode_arguments(subscripts, gtm_state);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -4370,6 +4628,8 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
         isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'data' property")));
         return;
     }
+
+    Local<Value> data_node;
 
 #if NODEM_SIMPLE_API == 1
     data_node = data_value;
@@ -4381,8 +4641,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (data_node->IsUndefined()) {
-        Local<String> error_message = new_string_n(isolate, "Property 'data' contains invalid data");
-        isolate->ThrowException(Exception::SyntaxError(error_message));
+        isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Property 'data' contains invalid data")));
         return;
     }
 
@@ -4440,6 +4699,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -4603,7 +4863,7 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& info)
     bool position = false;
     int32_t node_only = -1;
 
-    if (info[0]->IsObject()) {
+    if (info[0]->IsObject() && !info[0]->IsFunction()) {
         Local<Object> arg_object = to_object_n(isolate, info[0]);
         glvn = get_n(isolate, arg_object, new_string_n(isolate, "global"));
 
@@ -4613,8 +4873,7 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -4678,13 +4937,12 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& info)
             subs = encode_arguments(subscripts, gtm_state);
 
             if (subs->IsUndefined()) {
-                Local<String> error_message = new_string_n(isolate, "Property 'subscripts' contains invalid data");
-                isolate->ThrowException(Exception::SyntaxError(error_message));
+                isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
                 return;
             }
 #endif
         } else if (!subscripts->IsUndefined()) {
-            isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+            isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
             return;
         }
     }
@@ -4730,6 +4988,7 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -4925,8 +5184,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Global in 'from' must be a string")));
         return;
     } else if (from_glvn->StrictEquals(new_string_n(isolate, ""))) {
-        isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                "Global in 'from' must not be an empty string")));
+        isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Global in 'from' must not be an empty string")));
         return;
     }
 
@@ -4961,13 +5219,13 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         from_subs = encode_arguments(from_subscripts, gtm_state);
 
         if (from_subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Property 'subscripts' in 'from' object contains invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
+              "Property 'subscripts' in 'from' object contains invalid data")));
             return;
         }
     } else {
         isolate->ThrowException(Exception::TypeError(new_string_n(isolate,
-                "Property 'subscripts' in 'from' must be an array")));
+          "Property 'subscripts' in 'from' must contain an array")));
         return;
     }
 
@@ -4980,13 +5238,12 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         to_subs = encode_arguments(to_subscripts, gtm_state);
 
         if (to_subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Property 'subscripts' in 'to' object contains invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
+              "Property 'subscripts' in 'to' object contains invalid data")));
             return;
         }
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate,
-                "Property 'subscripts' in 'to' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' in 'to' must contain an array")));
         return;
     }
 
@@ -5003,8 +5260,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         from_name = localize_name(from_glvn, gtm_state);
 
         if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, from_name)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate,
-              "Property 'local' in 'from' cannot begin with 'v4w'")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' in 'from' cannot begin with 'v4w'")));
             return;
         }
     } else {
@@ -5030,8 +5286,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         to_name = localize_name(to_glvn, gtm_state);
 
         if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, to_name)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate,
-                    "Property 'local' in 'to' cannot begin with 'v4w'")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' in 'to' cannot begin with 'v4w'")));
             return;
         }
     } else {
@@ -5170,6 +5425,9 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         }
     }
 
+    if (gtm_state->debug > LOW)
+        debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
@@ -5206,7 +5464,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
     Local<Value> json = json_method(json_string, "parse", gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         info.GetReturnValue().Set(try_catch.Exception());
         return;
     } else {
@@ -5321,8 +5579,7 @@ void Gtm::order(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -5376,21 +5633,19 @@ void Gtm::order(const FunctionCallbackInfo<Value>& info)
         subs_array = build_subscripts(subscripts, error, gtm_state);
 
         if (error) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #else
         subs = encode_arguments(subscripts, gtm_state);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -5435,6 +5690,7 @@ void Gtm::order(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -5610,8 +5866,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -5665,21 +5920,19 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& info)
         subs_array = build_subscripts(subscripts, error, gtm_state);
 
         if (error) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #else
         subs = encode_arguments(subscripts, gtm_state);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -5724,6 +5977,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -5899,8 +6153,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -5954,21 +6207,19 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& info)
         subs_array = build_subscripts(subscripts, error, gtm_state);
 
         if (error) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #else
         subs = encode_arguments(subscripts, gtm_state);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -6013,6 +6264,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -6188,8 +6440,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
@@ -6243,21 +6494,19 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& info)
         subs_array = build_subscripts(subscripts, error, gtm_state);
 
         if (error) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #else
         subs = encode_arguments(subscripts, gtm_state);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Subscripts contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -6302,6 +6551,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -6478,24 +6728,24 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
         subscripts = get_n(isolate, arg_object, new_string_n(isolate, "subscripts"));
 
-        if (!get_n(isolate, arg_object, new_string_n(isolate, "increment"))->IsUndefined())
-            increment = to_number_n(isolate, get_n(isolate, arg_object, new_string_n(isolate, "increment")));
+        if (has_n(isolate, arg_object, new_string_n(isolate, "increment"))) {
+            increment = get_n(isolate, arg_object, new_string_n(isolate, "increment"));
+        } else if (gtm_state->mode == STRICT && args_cnt > 1) {
+            increment = info[1];
+        }
     } else {
         glvn = info[0];
-        if (args_cnt > 1)
-            increment = info[args_cnt - 1];
 
-        if (args_cnt > 2) {
-            Local<Array> temp_subscripts = Array::New(isolate, args_cnt - 2);
+        if (args_cnt > 1) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_cnt - 1);
 
-            for (unsigned int i = 1; i < args_cnt - 1; i++) {
+            for (unsigned int i = 1; i < args_cnt; i++) {
                 set_n(isolate, temp_subscripts, i - 1, info[i]);
             }
 
@@ -6508,6 +6758,9 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& info)
         if (test[0] != '^')
             local = true;
     }
+
+    if (!increment->IsNumber())
+        increment = Number::New(isolate, 0);
 
     if (!glvn->IsString()) {
         if (local) {
@@ -6550,7 +6803,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& info)
         }
 #endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
     }
 
@@ -6595,6 +6848,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& info)
 
     if (gtm_state->debug > LOW) {
         debug_log(name_msg, gvn);
+
 #if NODEM_SIMPLE_API == 1
         if (subs_array.size()) {
             for (unsigned int i = 0; i < subs_array.size(); i++) {
@@ -6632,7 +6886,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& info)
     gtm_baton->data_p.Reset(isolate, Undefined(isolate));
     gtm_baton->name = gvn;
     gtm_baton->args = sub;
-    gtm_baton->incr = number_value_n(isolate, increment);
+    gtm_baton->option = number_value_n(isolate, increment);
     gtm_baton->subs_array = subs_array;
     gtm_baton->mode = gtm_state->mode;
     gtm_baton->async = async;
@@ -6736,34 +6990,83 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& info)
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::lock enter");
 
+#if YDB_RELEASE >= 126
+    reset_handler(gtm_state);
+#endif
+
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
         return;
     }
 
-    if (info.Length() == 0) {
-        isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply an argument")));
-        return;
-    } else if (!info[0]->IsObject()) {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Argument must be an object")));
+    bool async = false;
+    unsigned int args_cnt = info.Length();
+
+    if (info[args_cnt - 1]->IsFunction()) {
+        --args_cnt;
+        async = true;
+    }
+
+    if (args_cnt == 0) {
+        isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply an additional argument")));
         return;
     }
 
-    Local<Object> arg_object = to_object_n(isolate, info[0]);
-    Local<Value> glvn = get_n(isolate, arg_object, new_string_n(isolate, "global"));
+    Local<Value> glvn;
+    Local<Value> subscripts = Undefined(isolate);
+    Local<Value> timeout = Number::New(isolate, -1);
     bool local = false;
+    bool position = false;
 
-    if (glvn->IsUndefined()) {
-        glvn = get_n(isolate, arg_object, new_string_n(isolate, "local"));
+    if (info[0]->IsObject()) {
+        Local<Object> arg_object = to_object_n(isolate, info[0]);
+        glvn = get_n(isolate, arg_object, new_string_n(isolate, "global"));
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
-            return;
-        } else {
+            glvn = get_n(isolate, arg_object, new_string_n(isolate, "local"));
             local = true;
         }
+
+        if (glvn->IsUndefined()) {
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
+            return;
+        }
+
+        subscripts = get_n(isolate, arg_object, new_string_n(isolate, "subscripts"));
+
+        if (has_n(isolate, arg_object, new_string_n(isolate, "timeout"))) {
+            timeout = get_n(isolate, arg_object, new_string_n(isolate, "timeout"));
+
+            if (number_value_n(isolate, timeout) < 0)
+                timeout = Number::New(isolate, 0);
+        } else if (gtm_state->mode == STRICT && args_cnt > 1) {
+            timeout = info[1];
+
+            if (number_value_n(isolate, timeout) < 0)
+                timeout = Number::New(isolate, 0);
+        }
+    } else {
+        glvn = info[0];
+
+        if (args_cnt > 1) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_cnt - 1);
+
+            for (unsigned int i = 1; i < args_cnt; i++) {
+                set_n(isolate, temp_subscripts, i - 1, info[i]);
+            }
+
+            subscripts = temp_subscripts;
+        }
+
+        position = true;
+
+        string test = *(UTF8_VALUE_TEMP_N(isolate, glvn));
+        if (test[0] != '^')
+            local = true;
     }
+
+    if (!timeout->IsNumber())
+        timeout = Number::New(isolate, 0);
 
     if (!glvn->IsString()) {
         if (local) {
@@ -6783,38 +7086,31 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    Local<Value> subscripts = get_n(isolate, arg_object, new_string_n(isolate, "subscripts"));
     Local<Value> subs = Undefined(isolate);
+    vector<string> subs_array;
 
     if (subscripts->IsUndefined()) {
         subs = String::Empty(isolate);
     } else if (subscripts->IsArray()) {
+#if NODEM_SIMPLE_API == 1
+        bool error = false;
+        subs_array = build_subscripts(subscripts, error, gtm_state);
+
+        if (error) {
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
+            return;
+        }
+#else
         subs = encode_arguments(subscripts, gtm_state);
 
         if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Property 'subscripts' contains invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
             return;
         }
+#endif
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
         return;
-    }
-
-    Local<Value> timeout;
-
-    if (info.Length() > 1) {
-        timeout = to_number_n(isolate, info[1]);
-
-        if (number_value_n(isolate, timeout) < 0)
-            timeout = Number::New(isolate, 0);
-    } else if (has_n(isolate, arg_object, new_string_n(isolate, "timeout"))) {
-        timeout = to_number_n(isolate, get_n(isolate, arg_object, new_string_n(isolate, "timeout")));
-
-        if (number_value_n(isolate, timeout) < 0)
-            timeout = Number::New(isolate, 0);
-    } else {
-        timeout = Number::New(isolate, -1);
     }
 
     const char* name_msg;
@@ -6822,7 +7118,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& info)
 
     if (local) {
         if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' is an invalid name")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
 
@@ -6830,12 +7126,12 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& info)
         name = localize_name(glvn, gtm_state);
 
         if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' cannot begin with 'v4w'")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
         if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'global' is an invalid name")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
 
@@ -6843,199 +7139,138 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& info)
         name = globalize_name(glvn, gtm_state);
     }
 
+    string gvn, sub;
+
+    if (gtm_state->utf8 == true) {
+        gvn = *(UTF8_VALUE_TEMP_N(isolate, name));
+        sub = *(UTF8_VALUE_TEMP_N(isolate, subs));
+    } else {
+        GtmValue gtm_name {name};
+        GtmValue gtm_subs {subs};
+
+        gvn = gtm_name.to_byte();
+        sub = gtm_subs.to_byte();
+    }
+
+    if (gtm_state->debug > LOW) {
+        debug_log(name_msg, gvn);
+
+#if NODEM_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                debug_log(">>   subscripts[", i, "]: ", subs_array[i]);
+            }
+        }
+#else
+        debug_log(">>   subscripts: ", sub);
+#endif
+
+        debug_log(">>   timeout: ", number_value_n(isolate, timeout));
+    }
+
+    GtmBaton* gtm_baton;
+    GtmBaton new_baton;
+
+    if (async) {
+        gtm_baton = new GtmBaton();
+
+        gtm_baton->callback_p.Reset(isolate, Local<Function>::Cast(info[args_cnt]));
+
+        gtm_baton->error = new gtm_char_t[ERR_LEN];
+        gtm_baton->result = new gtm_char_t[RES_LEN];
+    } else {
+        gtm_baton = &new_baton;
+
+        gtm_baton->callback_p.Reset();
+
+        gtm_baton->error = gtm_state->error;
+        gtm_baton->result = gtm_state->result;
+    }
+
+    gtm_baton->request.data = gtm_baton;
+    gtm_baton->arguments_p.Reset(isolate, subscripts);
+    gtm_baton->data_p.Reset(isolate, Undefined(isolate));
+    gtm_baton->name = gvn;
+    gtm_baton->args = sub;
+    gtm_baton->option = number_value_n(isolate, timeout);
+    gtm_baton->subs_array = subs_array;
+    gtm_baton->mode = gtm_state->mode;
+    gtm_baton->async = async;
+    gtm_baton->local = local;
+    gtm_baton->position = position;
+    gtm_baton->status = 0;
+#if NODEM_SIMPLE_API == 1
+    gtm_baton->gtm_function = &ydb::lock;
+#else
+    gtm_baton->gtm_function = &gtm::lock;
+#endif
+    gtm_baton->ret_function = &nodem::lock;
+    gtm_baton->gtm_state = gtm_state;
+
     if (gtm_state->debug > OFF)
         debug_log(">  call into " NODEM_DB);
 
-    if (gtm_state->debug > LOW) {
-        debug_log(">>   timeout: ", number_value_n(isolate, timeout));
+    if (gtm_state->debug > LOW)
         debug_log(">>   mode: ", gtm_state->mode);
-    }
 
-    gtm_status_t stat_buf;
-    gtm_char_t lock[] = "lock";
-
-    static gtm_char_t ret_buf[RES_LEN];
-
-#if NODEM_CIP_API == 1
-    ci_name_descriptor access;
-
-    access.rtn_name.address = lock;
-    access.rtn_name.length = strlen(lock);
-    access.handle = NULL;
-
-    if (gtm_state->utf8 == true) {
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, *(UTF8_VALUE_TEMP_N(isolate, name)));
-            debug_log(">>   subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, subs)));
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_cip(&access, ret_buf, *(UTF8_VALUE_TEMP_N(isolate, name)), *(UTF8_VALUE_TEMP_N(isolate, subs)),
-          number_value_n(isolate, timeout), gtm_state->mode);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, gtm_name.to_byte());
-            debug_log(">>   subscripts: ", gtm_subs.to_byte());
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_cip(&access, ret_buf, gtm_name.to_byte(), gtm_subs.to_byte(),
-          number_value_n(isolate, timeout), gtm_state->mode);
-    }
+    if (async) {
+#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+        uv_queue_work(GetCurrentEventLoop(isolate), &gtm_baton->request, async_work, async_after);
 #else
-    if (gtm_state->utf8 == true) {
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, *(UTF8_VALUE_TEMP_N(isolate, name)));
-            debug_log(">>   subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, subs)));
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_ci(lock, ret_buf, *(UTF8_VALUE_TEMP_N(isolate, name)), *(UTF8_VALUE_TEMP_N(isolate, subs)),
-          number_value_n(isolate, timeout), gtm_state->mode);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, gtm_name.to_byte());
-            debug_log(">>   subscripts: ", gtm_subs.to_byte());
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_ci(lock, ret_buf, gtm_name.to_byte(), gtm_subs.to_byte(),
-          number_value_n(isolate, timeout), gtm_state->mode);
-    }
+        uv_queue_work(uv_default_loop(), &gtm_baton->request, async_work, async_after);
 #endif
 
-    if (gtm_state->debug > LOW) {
-        funlockfile(stderr);
+        if (gtm_state->debug > OFF)
+            debug_log(">  Gtm::lock exit\n");
 
-        if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
-            char error[BUFSIZ];
-            cerr << strerror_r(errno, error, BUFSIZ);
-        }
-    }
-
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_char_t msg_buf[ERR_LEN];
-        gtm_zstatus(msg_buf, ERR_LEN);
-
-        uv_mutex_unlock(&mutex_g);
-
-        info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
+        info.GetReturnValue().Set(Undefined(isolate));
         return;
     }
+
+#if NODEM_SIMPLE_API == 1
+    gtm_baton->status = ydb::lock(gtm_baton);
+#else
+    gtm_baton->status = gtm::lock(gtm_baton);
+#endif
 
     if (gtm_state->debug > OFF)
         debug_log(">  return from " NODEM_DB);
 
-    Local<String> json_string;
+#if NODEM_SIMPLE_API == 1
+    if (gtm_baton->status == -1) {
+        gtm_baton->arguments_p.Reset();
+        gtm_baton->data_p.Reset();
 
-    if (gtm_state->utf8 == true) {
-        json_string = new_string_n(isolate, ret_buf);
-    } else {
-        json_string = GtmValue::from_byte(ret_buf);
-    }
+        char error[BUFSIZ];
 
-    uv_mutex_unlock(&mutex_g);
-
-    if (gtm_state->debug > OFF)
-        debug_log(">  Gtm::lock JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
-
-#if NODE_MAJOR_VERSION >= 1
-    TryCatch try_catch(isolate);
-#else
-    TryCatch try_catch;
-#endif
-
-    Local<Object> temp_object;
-    Local<Value> json = json_method(json_string, "parse", gtm_state);
-
-    if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
-        info.GetReturnValue().Set(try_catch.Exception());
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, strerror_r(errno, error, BUFSIZ))));
         return;
-    } else {
-        temp_object = to_object_n(isolate, json);
+    } else if (gtm_baton->status != YDB_OK) {
+#else
+    if (gtm_baton->status != EXIT_SUCCESS) {
+#endif
+        if (position) {
+            isolate->ThrowException(Exception::Error(
+              to_string_n(isolate, error_status(gtm_baton->error, position, async, gtm_state))));
+
+            info.GetReturnValue().Set(Undefined(isolate));
+        } else {
+            info.GetReturnValue().Set(error_status(gtm_baton->error, position, async, gtm_state));
+        }
+
+        gtm_baton->arguments_p.Reset();
+        gtm_baton->data_p.Reset();
+
+        return;
     }
 
-    Local<Object> return_object = Object::New(isolate);
+    if (gtm_state->debug > LOW)
+        debug_log(">>   call into lock");
 
-    if (gtm_state->mode == STRICT) {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
+    Local<Value> return_object = nodem::lock(gtm_baton);
 
-        if (local) {
-            set_n(isolate, return_object, new_string_n(isolate, "local"), name);
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "global"), glvn);
-        }
-
-        if (!subscripts->IsUndefined()) {
-            Local<Value> temp_subscripts = get_n(isolate, temp_object, new_string_n(isolate, "subscripts"));
-
-            if (!temp_subscripts->IsUndefined()) {
-                set_n(isolate, return_object, new_string_n(isolate, "subscripts"), temp_subscripts);
-            } else {
-                set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
-            }
-        }
-    } else {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-
-        if (local) {
-            set_n(isolate, return_object, new_string_n(isolate, "local"), name);
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "global"), localize_name(glvn, gtm_state));
-        }
-
-        if (!subscripts->IsUndefined())
-            set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
-    }
-
-    set_n(isolate, return_object, new_string_n(isolate, "result"), get_n(isolate, temp_object, new_string_n(isolate, "result")));
+    gtm_baton->arguments_p.Reset();
+    gtm_baton->data_p.Reset();
 
     info.GetReturnValue().Set(return_object);
 
@@ -7061,19 +7296,29 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::unlock enter");
 
+#if YDB_RELEASE >= 126
+    reset_handler(gtm_state);
+#endif
+
     if (gtm_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
         return;
     }
 
+    bool async = false;
+    unsigned int args_cnt = info.Length();
+
+    if (info[args_cnt - 1]->IsFunction()) {
+        --args_cnt;
+        async = true;
+    }
+
     Local<Value> glvn = Undefined(isolate);
     Local<Value> subscripts = Undefined(isolate);
     bool local = false;
+    bool position = false;
 
-    if (info.Length() > 0 && !info[0]->IsObject()) {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Argument must be an object")));
-        return;
-    } else if (info.Length() > 0) {
+    if (info[0]->IsObject() && !info[0]->IsFunction()) {
         Local<Object> arg_object = to_object_n(isolate, info[0]);
         glvn = get_n(isolate, arg_object, new_string_n(isolate, "global"));
 
@@ -7083,13 +7328,33 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
         }
 
         if (glvn->IsUndefined()) {
-            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                    "Need to supply a 'global' or 'local' property")));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'global' or 'local' property")));
             return;
         }
 
         subscripts = get_n(isolate, arg_object, new_string_n(isolate, "subscripts"));
+    } else if (args_cnt > 0) {
+        glvn = info[0];
+
+        if (args_cnt > 1) {
+            Local<Array> temp_subscripts = Array::New(isolate, args_cnt - 1);
+
+            for (unsigned int i = 1; i < args_cnt; i++) {
+                set_n(isolate, temp_subscripts, i - 1, info[i]);
+            }
+
+            subscripts = temp_subscripts;
+        }
+
+        position = true;
+
+        string test = *(UTF8_VALUE_TEMP_N(isolate, glvn));
+        if (test[0] != '^')
+            local = true;
     }
+
+    Local<Value> subs = String::Empty(isolate);
+    vector<string> subs_array;
 
     if (!glvn->IsUndefined() && !glvn->IsString()) {
         if (local) {
@@ -7099,24 +7364,39 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
         }
 
         return;
+    } else if (glvn->StrictEquals(new_string_n(isolate, ""))) {
+        if (local) {
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Local must not be an empty string")));
+        } else {
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Global must not be an empty string")));
+        }
+
+        return;
     } else if (glvn->IsUndefined()) {
         glvn = String::Empty(isolate);
         local = true;
-    }
+    } else {
+        if (subscripts->IsArray()) {
+#if NODEM_SIMPLE_API == 1
+            bool error = false;
+            subs_array = build_subscripts(subscripts, error, gtm_state);
 
-    Local<Value> subs = String::Empty(isolate);
+            if (error) {
+                isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
+                return;
+            }
+#else
+            subs = encode_arguments(subscripts, gtm_state);
 
-    if (subscripts->IsArray()) {
-        subs = encode_arguments(subscripts, gtm_state);
-
-        if (subs->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Property 'subscripts' contains invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            if (subs->IsUndefined()) {
+                isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Subscripts contain invalid data")));
+                return;
+            }
+#endif
+        } else if (!subscripts->IsUndefined()) {
+            isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must contain an array")));
             return;
         }
-    } else if (!subscripts->IsUndefined()) {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'subscripts' must be an array")));
-        return;
     }
 
     const char* name_msg;
@@ -7124,7 +7404,7 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
 
     if (local) {
         if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' is an invalid name")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
 
@@ -7132,12 +7412,12 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
         name = localize_name(glvn, gtm_state);
 
         if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' cannot begin with 'v4w'")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
         if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), gtm_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'global' is an invalid name")));
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
 
@@ -7145,167 +7425,137 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
         name = globalize_name(glvn, gtm_state);
     }
 
+    string gvn, sub;
+
+    if (gtm_state->utf8 == true) {
+        gvn = *(UTF8_VALUE_TEMP_N(isolate, name));
+        sub = *(UTF8_VALUE_TEMP_N(isolate, subs));
+    } else {
+        GtmValue gtm_name {name};
+        GtmValue gtm_subs {subs};
+
+        gvn = gtm_name.to_byte();
+        sub = gtm_subs.to_byte();
+    }
+
+    if (gtm_state->debug > LOW) {
+        debug_log(name_msg, gvn);
+
+#if NODEM_SIMPLE_API == 1
+        if (subs_array.size()) {
+            for (unsigned int i = 0; i < subs_array.size(); i++) {
+                debug_log(">>   subscripts[", i, "]: ", subs_array[i]);
+            }
+        }
+#else
+        debug_log(">>   subscripts: ", sub);
+#endif
+    }
+
+    GtmBaton* gtm_baton;
+    GtmBaton new_baton;
+
+    if (async) {
+        gtm_baton = new GtmBaton();
+
+        gtm_baton->callback_p.Reset(isolate, Local<Function>::Cast(info[args_cnt]));
+
+        gtm_baton->error = new gtm_char_t[ERR_LEN];
+        gtm_baton->result = new gtm_char_t[RES_LEN];
+    } else {
+        gtm_baton = &new_baton;
+
+        gtm_baton->callback_p.Reset();
+
+        gtm_baton->error = gtm_state->error;
+        gtm_baton->result = gtm_state->result;
+    }
+
+    gtm_baton->request.data = gtm_baton;
+    gtm_baton->arguments_p.Reset(isolate, subscripts);
+    gtm_baton->data_p.Reset(isolate, Undefined(isolate));
+    gtm_baton->name = gvn;
+    gtm_baton->args = sub;
+    gtm_baton->subs_array = subs_array;
+    gtm_baton->mode = gtm_state->mode;
+    gtm_baton->async = async;
+    gtm_baton->local = local;
+    gtm_baton->position = position;
+    gtm_baton->status = 0;
+#if NODEM_SIMPLE_API == 1
+    gtm_baton->gtm_function = &ydb::unlock;
+#else
+    gtm_baton->gtm_function = &gtm::unlock;
+#endif
+    gtm_baton->ret_function = &nodem::unlock;
+    gtm_baton->gtm_state = gtm_state;
+
     if (gtm_state->debug > OFF)
         debug_log(">  call into " NODEM_DB);
 
     if (gtm_state->debug > LOW)
         debug_log(">>   mode: ", gtm_state->mode);
 
-    gtm_status_t stat_buf;
-    gtm_char_t unlock[] = "unlock";
-
-#if NODEM_CIP_API == 1
-    ci_name_descriptor access;
-
-    access.rtn_name.address = unlock;
-    access.rtn_name.length = strlen(unlock);
-    access.handle = NULL;
-
-    if (gtm_state->utf8 == true) {
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, *(UTF8_VALUE_TEMP_N(isolate, name)));
-            debug_log(">>   subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, subs)));
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_cip(&access, *(UTF8_VALUE_TEMP_N(isolate, name)), *(UTF8_VALUE_TEMP_N(isolate, subs)), gtm_state->mode);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, gtm_name.to_byte());
-            debug_log(">>   subscripts: ", gtm_subs.to_byte());
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_cip(&access, gtm_name.to_byte(), gtm_subs.to_byte(), gtm_state->mode);
-    }
+    if (async) {
+#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+        uv_queue_work(GetCurrentEventLoop(isolate), &gtm_baton->request, async_work, async_after);
 #else
-    if (gtm_state->utf8 == true) {
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, *(UTF8_VALUE_TEMP_N(isolate, name)));
-            debug_log(">> subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, subs)));
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_ci(unlock, *(UTF8_VALUE_TEMP_N(isolate, name)), *(UTF8_VALUE_TEMP_N(isolate, subs)), gtm_state->mode);
-    } else {
-        GtmValue gtm_name {name};
-        GtmValue gtm_subs {subs};
-
-        if (gtm_state->debug > LOW) {
-            debug_log(name_msg, gtm_name.to_byte());
-            debug_log(">> subscripts: ", gtm_subs.to_byte());
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_ci(unlock, gtm_name.to_byte(), gtm_subs.to_byte(), gtm_state->mode);
-    }
+        uv_queue_work(uv_default_loop(), &gtm_baton->request, async_work, async_after);
 #endif
 
-    if (gtm_state->debug > LOW) {
-        funlockfile(stderr);
+        if (gtm_state->debug > OFF)
+            debug_log(">  Gtm::unlock exit\n");
 
-        if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
-            char error[BUFSIZ];
-            cerr << strerror_r(errno, error, BUFSIZ);
-        }
-    }
-
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_char_t msg_buf[ERR_LEN];
-        gtm_zstatus(msg_buf, ERR_LEN);
-
-        uv_mutex_unlock(&mutex_g);
-
-        info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
+        info.GetReturnValue().Set(Undefined(isolate));
         return;
     }
 
-    uv_mutex_unlock(&mutex_g);
+#if NODEM_SIMPLE_API == 1
+    gtm_baton->status = ydb::unlock(gtm_baton);
+#else
+    gtm_baton->status = gtm::unlock(gtm_baton);
+#endif
 
     if (gtm_state->debug > OFF)
         debug_log(">  return from " NODEM_DB);
 
-    if (name->StrictEquals(new_string_n(isolate, ""))) {
-        Local<Value> ret_data;
+#if NODEM_SIMPLE_API == 1
+    if (gtm_baton->status == -1) {
+        gtm_baton->arguments_p.Reset();
+        gtm_baton->data_p.Reset();
 
-        if (gtm_state->mode == STRICT) {
-            ret_data = new_string_n(isolate, "0");
+        char error[BUFSIZ];
+
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, strerror_r(errno, error, BUFSIZ))));
+        return;
+    } else if (gtm_baton->status != YDB_OK) {
+#else
+    if (gtm_baton->status != EXIT_SUCCESS) {
+#endif
+        if (position) {
+            isolate->ThrowException(Exception::Error(
+              to_string_n(isolate, error_status(gtm_baton->error, position, async, gtm_state))));
+
+            info.GetReturnValue().Set(Undefined(isolate));
         } else {
-            ret_data = Number::New(isolate, 0);
+            info.GetReturnValue().Set(error_status(gtm_baton->error, position, async, gtm_state));
         }
 
-        info.GetReturnValue().Set(ret_data);
-    } else {
-        Local<Object> return_object = Object::New(isolate);
+        gtm_baton->arguments_p.Reset();
+        gtm_baton->data_p.Reset();
 
-        if (gtm_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-
-            if (local) {
-                set_n(isolate, return_object, new_string_n(isolate, "local"), name);
-            } else {
-                set_n(isolate, return_object, new_string_n(isolate, "global"), glvn);
-            }
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-
-            if (local) {
-                set_n(isolate, return_object, new_string_n(isolate, "local"), name);
-            } else {
-                set_n(isolate, return_object, new_string_n(isolate, "global"), localize_name(glvn, gtm_state));
-            }
-        }
-
-        if (!subscripts->IsUndefined())
-            set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
-
-        set_n(isolate, return_object, new_string_n(isolate, "result"), Number::New(isolate, 0));
-
-        info.GetReturnValue().Set(return_object);
+        return;
     }
+
+    if (gtm_state->debug > LOW)
+        debug_log(">>   call into unlock");
+
+    Local<Value> return_object = nodem::unlock(gtm_baton);
+
+    gtm_baton->arguments_p.Reset();
+    gtm_baton->data_p.Reset();
+
+    info.GetReturnValue().Set(return_object);
 
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::unlock exit\n");
@@ -7402,12 +7652,9 @@ void Gtm::function(const FunctionCallbackInfo<Value>& info)
             return;
         }
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'arguments' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'arguments' must contain an array")));
         return;
     }
-
-    if (gtm_state->debug > OFF)
-        debug_log(">  call into " NODEM_DB);;
 
     Local<Value> name = globalize_name(function, gtm_state);
 
@@ -7572,7 +7819,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& info)
 
             if (procedure->IsUndefined()) {
                 isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate,
-                        "Need to supply a 'procedure' or 'routine' property")));
+                  "Need to supply a 'procedure' or 'routine' property")));
                 return;
             } else {
                 routine = true;
@@ -7615,17 +7862,13 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& info)
         args = encode_arguments(arguments, gtm_state, true);
 
         if (args->IsUndefined()) {
-            Local<String> error_message = new_string_n(isolate, "Arguments contain invalid data");
-            isolate->ThrowException(Exception::SyntaxError(error_message));
+            isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Arguments contain invalid data")));
             return;
         }
     } else {
-        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'arguments' must be an array")));
+        isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "Property 'arguments' must contain an array")));
         return;
     }
-
-    if (gtm_state->debug > OFF)
-        debug_log(">  call into " NODEM_DB);
 
     Local<Value> name = globalize_name(procedure, gtm_state);
 
@@ -7905,6 +8148,9 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
         }
     }
 
+    if (gtm_state->debug > LOW)
+        debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
@@ -7940,7 +8186,7 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
     Local<Value> json = json_method(json_string, "parse", gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         info.GetReturnValue().Set(try_catch.Exception());
     } else {
         info.GetReturnValue().Set(Local<Array>::Cast(json));
@@ -8136,6 +8382,9 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
         }
     }
 
+    if (gtm_state->debug > LOW)
+        debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
@@ -8171,7 +8420,7 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
     Local<Value> json = json_method(json_string, "parse", gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         info.GetReturnValue().Set(try_catch.Exception());
     } else {
         info.GetReturnValue().Set(Local<Array>::Cast(json));
@@ -8228,6 +8477,9 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& info)
     stat_buf = gtm_ci(retrieve, ret_buf);
 #endif
 
+    if (gtm_state->debug > LOW)
+        debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
@@ -8264,7 +8516,7 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& info)
     Local<Value> json = json_method(json_string, "parse", gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         info.GetReturnValue().Set(try_catch.Exception());
         return;
     } else {
@@ -8324,6 +8576,9 @@ void Gtm::update(const FunctionCallbackInfo<Value>& info)
     stat_buf = gtm_ci(update, ret_buf);
 #endif
 
+    if (gtm_state->debug > LOW)
+        debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
@@ -8360,7 +8615,7 @@ void Gtm::update(const FunctionCallbackInfo<Value>& info)
     Local<Value> json = json_method(json_string, "parse", gtm_state);
 
     if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing/invalid JSON data")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         info.GetReturnValue().Set(try_catch.Exception());
         return;
     } else {
@@ -8438,36 +8693,36 @@ void Gtm::Init(Local<Object> exports)
     fn_template->SetClassName(new_string_n(isolate, "Gtm"));
     fn_template->InstanceTemplate()->SetInternalFieldCount(1);
 
-    set_prototype_method_n(isolate, fn_template, "about", version, external_data);
-    set_prototype_method_n(isolate, fn_template, "close", close, external_data);
+    set_prototype_method_n(isolate, fn_template, "open", open, external_data);
     set_prototype_method_n(isolate, fn_template, "configure", configure, external_data);
-    set_prototype_method_n(isolate, fn_template, "data", data, external_data);
-    set_prototype_method_n(isolate, fn_template, "function", function, external_data);
-    set_prototype_method_n(isolate, fn_template, "get", get, external_data);
-    set_prototype_method_n(isolate, fn_template, "globalDirectory", global_directory, external_data);
-    set_prototype_method_n(isolate, fn_template, "global_directory", global_directory, external_data);
+    set_prototype_method_n(isolate, fn_template, "close", close, external_data);
     set_prototype_method_n(isolate, fn_template, "help", help, external_data);
-    set_prototype_method_n(isolate, fn_template, "increment", increment, external_data);
+    set_prototype_method_n(isolate, fn_template, "version", version, external_data);
+    set_prototype_method_n(isolate, fn_template, "about", version, external_data);
+    set_prototype_method_n(isolate, fn_template, "data", data, external_data);
+    set_prototype_method_n(isolate, fn_template, "get", get, external_data);
+    set_prototype_method_n(isolate, fn_template, "set", set, external_data);
     set_prototype_method_n(isolate, fn_template, "kill", kill, external_data);
-    set_prototype_method_n(isolate, fn_template, "localDirectory", local_directory, external_data);
-    set_prototype_method_n(isolate, fn_template, "local_directory", local_directory, external_data);
-    set_prototype_method_n(isolate, fn_template, "lock", lock, external_data);
     set_prototype_method_n(isolate, fn_template, "merge", merge, external_data);
+    set_prototype_method_n(isolate, fn_template, "order", order, external_data);
     set_prototype_method_n(isolate, fn_template, "next", order, external_data);
+    set_prototype_method_n(isolate, fn_template, "previous", previous, external_data);
     set_prototype_method_n(isolate, fn_template, "nextNode", next_node, external_data);
     set_prototype_method_n(isolate, fn_template, "next_node", next_node, external_data);
-    set_prototype_method_n(isolate, fn_template, "open", open, external_data);
-    set_prototype_method_n(isolate, fn_template, "order", order, external_data);
-    set_prototype_method_n(isolate, fn_template, "previous", previous, external_data);
     set_prototype_method_n(isolate, fn_template, "previousNode", previous_node, external_data);
     set_prototype_method_n(isolate, fn_template, "previous_node", previous_node, external_data);
-    set_prototype_method_n(isolate, fn_template, "procedure", procedure, external_data);
-    set_prototype_method_n(isolate, fn_template, "retrieve", retrieve, external_data);
-    set_prototype_method_n(isolate, fn_template, "routine", procedure, external_data);
-    set_prototype_method_n(isolate, fn_template, "set", set, external_data);
+    set_prototype_method_n(isolate, fn_template, "increment", increment, external_data);
+    set_prototype_method_n(isolate, fn_template, "lock", lock, external_data);
     set_prototype_method_n(isolate, fn_template, "unlock", unlock, external_data);
+    set_prototype_method_n(isolate, fn_template, "function", function, external_data);
+    set_prototype_method_n(isolate, fn_template, "procedure", procedure, external_data);
+    set_prototype_method_n(isolate, fn_template, "routine", procedure, external_data);
+    set_prototype_method_n(isolate, fn_template, "globalDirectory", global_directory, external_data);
+    set_prototype_method_n(isolate, fn_template, "global_directory", global_directory, external_data);
+    set_prototype_method_n(isolate, fn_template, "localDirectory", local_directory, external_data);
+    set_prototype_method_n(isolate, fn_template, "local_directory", local_directory, external_data);
+    set_prototype_method_n(isolate, fn_template, "retrieve", retrieve, external_data);
     set_prototype_method_n(isolate, fn_template, "update", update, external_data);
-    set_prototype_method_n(isolate, fn_template, "version", version, external_data);
 
 #if NODE_MAJOR_VERSION >= 3
     MaybeLocal<Function> maybe_function = fn_template->GetFunction(isolate->GetCurrentContext());

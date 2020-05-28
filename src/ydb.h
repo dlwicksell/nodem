@@ -39,6 +39,8 @@ ydb_status_t previous(nodem::GtmBaton*);
 ydb_status_t next_node(nodem::GtmBaton*);
 ydb_status_t previous_node(nodem::GtmBaton*);
 ydb_status_t increment(nodem::GtmBaton*);
+ydb_status_t lock(nodem::GtmBaton*);
+ydb_status_t unlock(nodem::GtmBaton*);
 
 } // @end ydb namespace
 

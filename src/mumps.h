@@ -62,8 +62,8 @@ extern "C" {
 #endif
 
 #define NODEM_MAJOR_VERSION 0
-#define NODEM_MINOR_VERSION 16
-#define NODEM_PATCH_VERSION 2
+#define NODEM_MINOR_VERSION 17
+#define NODEM_PATCH_VERSION 0
 
 #define NODEM_STRING(number) NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
@@ -77,6 +77,7 @@ namespace nodem {
 
 enum mode_t {
     STRICT,
+    STRING,
     CANONICAL
 };
 
@@ -331,6 +332,7 @@ private:
  * @member {bool} routine
  * @member {int32_t} node_only
  * @member {uint32_t} relink
+ * @member {gtm_double_t} option
  * @member {gtm_status_t} status
  * @member {gtm_char_t*} error
  * @member {gtm_char_t*} result
@@ -354,7 +356,7 @@ struct GtmBaton {
     bool                         routine;
     int32_t                      node_only;
     uint32_t                     relink;
-    gtm_double_t                 incr;
+    gtm_double_t                 option;
     gtm_status_t                 status;
     gtm_char_t*                  error;
     gtm_char_t*                  result;

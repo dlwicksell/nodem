@@ -29,10 +29,11 @@
  *    cleans up after itself. Calling it this way will execute much faster than
  *    the default JavaScript implementation.
  *
- * -m [data mode] - <canonical>|strict - The operating mode, which controls the way
- *    data is formatted, and a few other aspects of the API. Strict mode follows
- *    the cache.node API as closely as possible, including treating all data as
- *    a string.
+ * -m [data mode] - <canonical>|string|strict - The operating mode, which
+ *    controls the way data is formatted, and a few other aspects of the API.
+ *    Canonical mode treats all data according to M canonical rules. String mode
+ *    treats all data as a string. Strict mode follows the cache.node API as
+ *    closely as possible, including treating all data as a string.
  *
  * -c [character set encoding] - <utf-8>|m - The character encoding of the data
  *

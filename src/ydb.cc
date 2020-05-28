@@ -46,7 +46,7 @@ static ydb_status_t extended_ref(nodem::GtmBaton* gtm_baton, string save_result,
 {
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    ydb::extended_ref enter");
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    value: ", gtm_baton->value.c_str());
         nodem::debug_log(">>>    save_result: ", save_result);
         nodem::debug_log(">>>    change_isv: ", std::boolalpha, change_isv);
@@ -91,8 +91,6 @@ static ydb_status_t extended_ref(nodem::GtmBaton* gtm_baton, string save_result,
             return set_stat;
 
         gtm_baton->name = new_var_name;
-        var_name = (char*) gtm_baton->name.c_str();
-
         gtm_baton->value = save_value_name;
 
         change_isv = true;
@@ -132,8 +130,6 @@ static ydb_status_t extended_ref(nodem::GtmBaton* gtm_baton, string save_result,
             return set_stat;
 
         gtm_baton->name = new_var_name;
-        var_name = (char*) gtm_baton->name.c_str();
-
         gtm_baton->value = save_value_name;
 
         change_isv = true;
@@ -149,7 +145,7 @@ static ydb_status_t extended_ref(nodem::GtmBaton* gtm_baton, string save_result,
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    ydb::extended_ref exit");
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    value: ", gtm_baton->value.c_str());
         nodem::debug_log(">>>    result: ", gtm_baton->result);
         nodem::debug_log(">>>    save_result: ", save_result);
@@ -177,12 +173,12 @@ ydb_status_t data(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::data enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -212,6 +208,9 @@ ydb_status_t data(nodem::GtmBaton* gtm_baton)
     uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_data_s(&glvn, subs_size, subs_array, ret_value);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
 
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
@@ -254,12 +253,12 @@ ydb_status_t get(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::get enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -293,6 +292,9 @@ ydb_status_t get(nodem::GtmBaton* gtm_baton)
     uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_get_s(&glvn, subs_size, subs_array, &value);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
 
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
@@ -330,14 +332,14 @@ ydb_status_t set(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::set enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
-        nodem::debug_log(">>>    value: ", gtm_baton->value.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
+        nodem::debug_log(">>>    value: ", gtm_baton->value);
     }
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -370,6 +372,9 @@ ydb_status_t set(nodem::GtmBaton* gtm_baton)
     uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_set_s(&glvn, subs_size, subs_array, &data_node);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
 
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
@@ -404,14 +409,14 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::kill enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    node_only: ", gtm_baton->node_only);
     }
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -429,11 +434,6 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
         uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_delete_excl_s(1, subs_array);
-
-        if (stat_buf != YDB_OK)
-            ydb_zstatus(gtm_baton->error, ERR_LEN);
-
-        uv_mutex_unlock(&nodem::mutex_g);
     } else {
         char* var_name = (char*) gtm_baton->name.c_str();
 
@@ -454,12 +454,15 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
         uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_delete_s(&glvn, subs_size, subs_array, delete_type);
-
-        if (stat_buf != YDB_OK)
-            ydb_zstatus(gtm_baton->error, ERR_LEN);
-
-        uv_mutex_unlock(&nodem::mutex_g);
     }
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
+    if (stat_buf != YDB_OK)
+        ydb_zstatus(gtm_baton->error, ERR_LEN);
+
+    uv_mutex_unlock(&nodem::mutex_g);
 
     if (change_isv) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
@@ -490,12 +493,12 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::order enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -534,6 +537,9 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
 
         ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
 
+        if (gtm_baton->gtm_state->debug > nodem::LOW)
+            nodem::debug_log(">>   stat_buf: ", stat_buf);
+
         uv_mutex_unlock(&nodem::mutex_g);
 
         if (stat_buf == YDB_OK && *ret_value == 0) {
@@ -552,6 +558,9 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
 
     stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
 
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
@@ -564,6 +573,9 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
         uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
+
+        if (gtm_baton->gtm_state->debug > nodem::LOW)
+            nodem::debug_log(">>   stat_buf: ", stat_buf);
 
         if (stat_buf != YDB_OK)
             ydb_zstatus(gtm_baton->error, ERR_LEN);
@@ -606,12 +618,12 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::previous enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -650,6 +662,9 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
 
         ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
 
+        if (gtm_baton->gtm_state->debug > nodem::LOW)
+            nodem::debug_log(">>   stat_buf: ", stat_buf);
+
         uv_mutex_unlock(&nodem::mutex_g);
 
         if (stat_buf == YDB_OK && *ret_value == 0) {
@@ -668,6 +683,9 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
 
     stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
 
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
@@ -680,6 +698,9 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
         uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
+
+        if (gtm_baton->gtm_state->debug > nodem::LOW)
+            nodem::debug_log(">>   stat_buf: ", stat_buf);
 
         if (stat_buf != YDB_OK)
             ydb_zstatus(gtm_baton->error, ERR_LEN);
@@ -722,12 +743,12 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::next_node enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -767,6 +788,9 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
 
     ydb_status_t stat_buf = ydb_node_next_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
     gtm_baton->subs_array.clear();
 
     if (stat_buf != YDB_OK) {
@@ -800,6 +824,9 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
     value.buf_addr = (char*) &ret_data;
 
     stat_buf = ydb_get_s(&glvn, *subs_used, ret_array, &value);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
 
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
@@ -838,12 +865,12 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::previous_node enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -883,6 +910,9 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
 
     ydb_status_t stat_buf = ydb_node_previous_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
     gtm_baton->subs_array.clear();
 
     if (stat_buf != YDB_OK) {
@@ -913,6 +943,9 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
     value.buf_addr = (char*) &ret_data;
 
     stat_buf = ydb_get_s(&glvn, *subs_used, ret_array, &value);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
 
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
@@ -957,14 +990,14 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   ydb::increment enter");
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name.c_str());
-        nodem::debug_log(">>>    increment: ", gtm_baton->incr);
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
+        nodem::debug_log(">>>    increment: ", gtm_baton->option);
     }
 
     string save_result;
     bool change_isv = false;
 
-    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^[") == 0) {
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK)
@@ -987,7 +1020,7 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
 
     char incr_val[YDB_MAX_STR];
 
-    if (snprintf(incr_val, YDB_MAX_STR, "%.16g", gtm_baton->incr) < 0) {
+    if (snprintf(incr_val, YDB_MAX_STR, "%.16g", gtm_baton->option) < 0) {
         char error[BUFSIZ];
         cerr << strerror_r(errno, error, BUFSIZ);
     }
@@ -1010,6 +1043,9 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
 
     ydb_status_t stat_buf = ydb_incr_s(&glvn, subs_size, subs_array, &incr, &value);
 
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
@@ -1030,6 +1066,173 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
 
     return stat_buf;
 } // @end ydb::increment function
+
+/*
+ * @function ydb::lock
+ * @summary Lock a global or local node, incrementally
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {string} name - Global or local variable name
+ * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_double_t} option - The time to wait for the lock, or -1 to wait forever
+ * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+ydb_status_t lock(nodem::GtmBaton* gtm_baton)
+{
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   ydb::lock enter");
+
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
+        nodem::debug_log(">>>    timeout: ", gtm_baton->option);
+    }
+
+    string save_result;
+    bool change_isv = false;
+
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
+        ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
+
+        if (set_stat != YDB_OK)
+            return set_stat;
+    }
+
+    char* var_name = (char*) gtm_baton->name.c_str();
+
+    ydb_buffer_t glvn;
+    glvn.len_alloc = glvn.len_used = strlen(var_name);
+    glvn.buf_addr = var_name;
+
+    ydb_buffer_t subs_array[YDB_MAX_SUBS];
+    unsigned int subs_size = gtm_baton->subs_array.size();
+
+    for (unsigned int i = 0; i < subs_size; i++) {
+        subs_array[i].len_alloc = subs_array[i].len_used = gtm_baton->subs_array[i].length();
+        subs_array[i].buf_addr = (char*) gtm_baton->subs_array[i].c_str();
+    }
+
+    unsigned long long timeout;
+
+    if (gtm_baton->option == -1) {
+        timeout = YDB_MAX_TIME_NSEC;
+    } else {
+        timeout = gtm_baton->option * 1000000000;
+    }
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   call using SimpleAPI");
+
+    uv_mutex_lock(&nodem::mutex_g);
+
+    ydb_status_t stat_buf = ydb_lock_incr_s(timeout, &glvn, subs_size, subs_array);
+
+    uv_mutex_unlock(&nodem::mutex_g);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
+    if (stat_buf == YDB_OK) {
+        strncpy(gtm_baton->result, "1\0", 2);
+    } else if (stat_buf == YDB_LOCK_TIMEOUT) {
+        strncpy(gtm_baton->result, "0\0", 2);
+
+        stat_buf = YDB_OK;
+    } else {
+        ydb_zstatus(gtm_baton->error, ERR_LEN);
+    }
+
+    if (change_isv) {
+        ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
+
+        if (set_stat != YDB_OK)
+            return set_stat;
+    }
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   ydb::lock exit");
+
+    return stat_buf;
+} // @end ydb::lock function
+
+/*
+ * @function ydb::unlock
+ * @summary Lock a global or local node, incrementally
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {string} name - Global or local variable name
+ * @member {vector<string>} subs_array - Subscripts
+ * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+ydb_status_t unlock(nodem::GtmBaton* gtm_baton)
+{
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   ydb::unlock enter");
+
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", gtm_baton->name);
+    }
+
+    string save_result;
+    bool change_isv = false;
+
+    if (gtm_baton->name.compare(0, 2, "^[") == 0 || gtm_baton->name.compare(0, 2, "^|") == 0) {
+        ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
+
+        if (set_stat != YDB_OK)
+            return set_stat;
+    }
+
+    ydb_status_t stat_buf;
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   call using SimpleAPI");
+
+    if (gtm_baton->name == "") {
+        uv_mutex_lock(&nodem::mutex_g);
+
+        stat_buf = ydb_lock_s(0, 0);
+    } else {
+        char* var_name = (char*) gtm_baton->name.c_str();
+
+        ydb_buffer_t glvn;
+        glvn.len_alloc = glvn.len_used = strlen(var_name);
+        glvn.buf_addr = var_name;
+
+        ydb_buffer_t subs_array[YDB_MAX_SUBS];
+        unsigned int subs_size = gtm_baton->subs_array.size();
+
+        for (unsigned int i = 0; i < subs_size; i++) {
+            subs_array[i].len_alloc = subs_array[i].len_used = gtm_baton->subs_array[i].length();
+            subs_array[i].buf_addr = (char*) gtm_baton->subs_array[i].c_str();
+        }
+
+        uv_mutex_lock(&nodem::mutex_g);
+
+        stat_buf = ydb_lock_decr_s(&glvn, subs_size, subs_array);
+    }
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
+    if (stat_buf != YDB_OK)
+        ydb_zstatus(gtm_baton->error, ERR_LEN);
+
+    uv_mutex_unlock(&nodem::mutex_g);
+
+    if (change_isv) {
+        ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
+
+        if (set_stat != YDB_OK)
+            return set_stat;
+    }
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   ydb::unlock exit");
+
+    return stat_buf;
+} // @end ydb::unlock function
 
 // ***End Public APIs***
 

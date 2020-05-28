@@ -1,4 +1,4 @@
-v4wNode() ; 0.16.2 ; Feb 21, 2020@14:01
+v4wNode() ; 0.17.0 ; May 07, 2020@18:35
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -21,7 +21,14 @@ v4wNode() ; 0.16.2 ; Feb 21, 2020@14:01
  ; You should have received a copy of the GNU Affero General Public License
  ; along with this program. If not, see http://www.gnu.org/licenses/.
  ;
- quit:$quit "Call an API entry point" write "Call an API entry point" quit
+ ; NOTE: Although this routine can be called directly, it is not a good idea; it
+ ; is hard to use, and very clunky. It is written with the sole purpose of
+ ; providing software integration between NodeM's C code and M code, via the
+ ; YottaDB/GT.M Call-in interface. Although each function is documented, that is
+ ; for internal maintenance and testing purposes, and there are no plans for any
+ ; API usage documentation in the future.
+ ;
+ quit:$quit "Call an API entry point" write "Call an API entry point",! quit
  ;
  ;; @function {private} isNumber
  ;; @summary Returns true if data is number, false if not
@@ -97,13 +104,13 @@ constructFunction:(func,args,tempArgs)
  ;; @function {private} inputConvert
  ;; @summary Convert input data coming from Node.js for use with M
  ;; @param {string} data - Input data to be converted; a single subscript, function or procedure argument, or data
- ;; @param {number} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @param {number} type (0|1) - Data type; 0 is subscripts or arguments, 1 is data node
  ;; @returns {string} data - Converted input; a number or string ready to access M
 inputConvert:(data,mode,type)
  if $get(v4wDebug,0)>2 do debugLog(">>>    inputConvert enter:") zwrite data,mode,type
  ;
- if mode,'$$isString(data,"input") do
+ if mode=2,'$$isString(data,"input") do
  . if $zextract(data,1,2)="0." set $zextract(data)=""
  . else  if $zextract(data,1,3)="-0." set $zextract(data,2)=""
  else  if type,$$isString(data,"input")=3 set $zextract(data)="",$zextract(data,$zlength(data))=""
@@ -138,12 +145,12 @@ inputEscape:(data,type)
  ;; @function {private} outputConvert
  ;; @summary Convert output data coming from M for use with Node.js
  ;; @param {string} data - Output data to be converted; a single subscript, function or procedure argument, or data
- ;; @param {number} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} data - Converted output; a number or string ready to return to Node.js
 outputConvert:(data,mode)
  if $get(v4wDebug,0)>2 do debugLog(">>>    outputConvert enter:") zwrite data,mode
  ;
- if mode,'$$isString(data,"output") do
+ if mode=2,'$$isString(data,"output") do
  . if $zextract(data)="." set data=0_data
  . else  if $zextract(data,1,2)="-." set $zextract(data)="",data="-0"_data
  else  set data=""""_data_""""
@@ -235,13 +242,13 @@ stringify:(inputArray,outputString)
  ;; @summary Process an encoded string of subscripts, arguments, or an unencoded data node
  ;; @param {string} inputString - Input string to be transformed
  ;; @param {string} direction (input|output) - Processing control direction
- ;; @param {number} mode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @param {number} type (0|1) - Data type; 0 is subscripts or arguments, 1 is data node
  ;; @param {number} encode (0|1) - Whether subscripts or arguments are encoded, 0 is no, 1 is yes
  ;; @param {number} last (0|1) - Whether to ignore the last subscript (for merge in strict mode), 0 is no, 1 is yes
  ;; @returns {string} outputString - Output string ready for use by the APIs
 process:(inputString,direction,mode,type,encode,last)
- set mode=$get(mode,1)
+ set mode=$get(mode,2)
  set type=$get(type,0)
  set encode=$get(encode,1)
  set last=$get(last,0)
@@ -287,7 +294,7 @@ debugLog:(msg)
  quit
  ;; @end debugLog subroutine
  ;
- ;; ***Begin Public APIs***
+ ;; ***Begin Integration APIs***
  ;;
  ;; These APIs are part of the integration code, called by the C Call-in interface (gtm_cip or gtm_ci)
  ;; They may be called from Mumps code directly, for unit testing
@@ -320,8 +327,9 @@ version(v4wVersion)
  new v4wNodeVersion
  set v4wNodeVersion=$piece($text(^v4wNode)," ; ",2)
  ;
- if $get(v4wDebug,0)>0,v4wVersion'=v4wNodeVersion do
- . do debugLog(">  NodeM version "_v4wVersion_" does not match v4wNode version "_v4wNodeVersion)
+ if $get(v4wDebug,0)>0 do
+ . if v4wVersion=v4wNodeVersion do debugLog(">  NodeM version "_v4wVersion_" matches v4wNode version "_v4wNodeVersion)
+ . else  do debugLog(">  NodeM version "_v4wVersion_" does not match v4wNode version "_v4wNodeVersion)
  ;
  new v4wGtmVersion
  set v4wGtmVersion=$zpiece($zversion," ",2),$zextract(v4wGtmVersion)=""
@@ -338,10 +346,10 @@ version(v4wVersion)
  ;; @summary Check if global or local node has data and/or children or not
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - $data value; 0 for no data nor children, 1 for data, 10 for children, 11 for data and children
 data(v4wGlvn,v4wSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   data enter:") zwrite v4wGlvn,v4wSubs,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -362,10 +370,11 @@ data(v4wGlvn,v4wSubs,v4wMode)
  ;; @summary Get data from a global or local node, or an intrinsic special variable
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - The value of the data node, and whether it was defined or not
 get(v4wGlvn,v4wSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
+ if $zextract(v4wGlvn)="$" set v4wSubs="" ; SimpleAPI ignores subscripts with ISVs, so we will too
  if $get(v4wDebug,0)>1 do debugLog(">>   get enter:") zwrite v4wGlvn,v4wSubs,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -385,6 +394,8 @@ get(v4wGlvn,v4wSubs,v4wMode)
  . set v4wDefined=$data(@v4wName)#10
  . set v4wData=$$process($get(@v4wName),"output",v4wMode,1,0)
  ;
+ if v4wMode set v4wDefined=$select(v4wDefined=1:"true",1:"false")
+ ;
  if $get(v4wDebug,0)>1 do debugLog(">>   get exit:") zwrite v4wDefined,v4wData
  quit "{""defined"":"_v4wDefined_",""data"":"_v4wData_"}"
  ;; @end get function
@@ -394,10 +405,11 @@ get(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
  ;; @param {string} v4wData - Data to store in the database node or local variable node
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {void}
 set(v4wGlvn,v4wSubs,v4wData,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
+ if $zextract(v4wGlvn)="$" set v4wSubs="" ; SimpleAPI ignores subscripts with ISVs, so we will too
  if $get(v4wDebug,0)>1 do debugLog(">>   set enter:") zwrite v4wGlvn,v4wSubs,v4wData,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -422,11 +434,11 @@ set(v4wGlvn,v4wSubs,v4wData,v4wMode)
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
  ;; @param {number} v4wType (-1|0|1) - Whether to kill only the node, or also kill child subscripts; defaults to include children
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {void}
 kill(v4wGlvn,v4wSubs,v4wType,v4wMode)
  set v4wType=$select($get(v4wType,0)'=1:0,1:1)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   kill enter:") zwrite v4wGlvn,v4wSubs,v4wType,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -450,10 +462,10 @@ kill(v4wGlvn,v4wSubs,v4wType,v4wMode)
  ;; @param {string} v4wFromSubs - From subscripts represented as a string, encoded with subscript lengths
  ;; @param {string} v4wToGlvn - Global or local variable to merge to
  ;; @param {string} v4wToSubs - To subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - The global or local variables, and subscripts from each side of the merge
 merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   merge enter:") zwrite v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode
  ;
  new v4wFromInputSubs
@@ -495,10 +507,10 @@ merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
  ;; @summary Return the next global or local node at the same level
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - The next or previous data node
 order(v4wGlvn,v4wSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   order enter:") zwrite v4wGlvn,v4wSubs,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -523,10 +535,10 @@ order(v4wGlvn,v4wSubs,v4wMode)
  ;; @summary Same as order, only in reverse
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - Returns the previous node, via calling order function and passing a -1 to the order argument
 previous(v4wGlvn,v4wSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   previous enter:") zwrite v4wGlvn,v4wSubs,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -551,10 +563,10 @@ previous(v4wGlvn,v4wSubs,v4wMode)
  ;; @summary Return the next global or local node, depth first
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - The next or previous data node
 nextNode(v4wGlvn,v4wSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   nextNode enter:") zwrite v4wGlvn,v4wSubs,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -592,7 +604,8 @@ nextNode(v4wGlvn,v4wSubs,v4wMode)
  set v4wReturn="{"
  ;
  if v4wDefined,v4wNewSubscripts'="" set v4wReturn=v4wReturn_"""subscripts"":["_v4wNewSubscripts_"],"
- set v4wReturn=v4wReturn_"""defined"":"_v4wDefined
+ if v4wMode set v4wReturn=v4wReturn_"""defined"":"_$select(v4wDefined=1:"true",1:"false")
+ else  set v4wReturn=v4wReturn_"""defined"":"_v4wDefined
  if v4wDefined set v4wReturn=v4wReturn_",""data"":"_v4wData_"}"
  else  set v4wReturn=v4wReturn_"}"
  ;
@@ -604,10 +617,10 @@ nextNode(v4wGlvn,v4wSubs,v4wMode)
  ;; @summary Return the previous global or local node, depth first
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - Returns the previous node, via calling nextNode function and passing a -1 to the order argument
 previousNode(v4wGlvn,v4wSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  ;
  new v4wStatus
  set v4wStatus="{""ok"":"_$select(v4wMode:"false",1:0)_",""status"":""previous_node not yet implemented""}"
@@ -657,7 +670,8 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  set v4wReturn="{"
  ;
  if v4wDefined,v4wNewSubscripts'="" set v4wReturn=v4wReturn_"""subscripts"":["_v4wNewSubscripts_"],"
- set v4wReturn=v4wReturn_"""defined"":"_v4wDefined
+ if v4wMode set v4wReturn=v4wReturn_"""defined"":"_$select(v4wDefined=1:"true",1:"false")
+ else  set v4wReturn=v4wReturn_"""defined"":"_v4wDefined
  if v4wDefined set v4wReturn=v4wReturn_",""data"":"_v4wData_"}"
  else  set v4wReturn=v4wReturn_"}"
  ;
@@ -670,11 +684,11 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
  ;; @param {number} v4wIncr - The number to increment/decrement, defaults to 1
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - The new value of the data node that was incremented/decremented
 increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
  set v4wIncr=$get(v4wIncr,1)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   increment enter:") zwrite v4wGlvn,v4wSubs,v4wIncr,v4wMode
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
@@ -696,11 +710,11 @@ increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
  ;; @param {number} v4wTimeout - The time to wait for the lock, or -1 to wait forever
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - Returns whether the lock was acquired or not
 lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  set v4wTimeout=$get(v4wTimeout,-1)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   lock enter:") zwrite v4wGlvn,v4wSubs,v4wTimeout,v4wMode
  ;
  new v4wInputSubs
@@ -738,10 +752,10 @@ lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  ;; @summary Unlock a global or local node, incrementally, or release all locks
  ;; @param {string} v4wGlvn - Global or local variable
  ;; @param {string} v4wSubs - Subscripts represented as a string, encoded with subscript lengths
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {void}
 unlock(v4wGlvn,v4wSubs,v4wMode)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   unlock enter:") zwrite v4wGlvn,v4wSubs,v4wMode
  ;
  if $get(v4wGlvn)="" lock  do  quit
@@ -763,11 +777,11 @@ unlock(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {string} v4wFunc - The name of the function to call
  ;; @param {string} v4wArgs - Arguments represented as a string, encoded with argument lengths
  ;; @param {number} v4wRelink (0|1) - Whether to relink the function to be called, if it has changed, defaults to off
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - The return value of the function call
 function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  set v4wRelink=$get(v4wRelink,0)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   function enter:") zwrite v4wFunc,v4wArgs,v4wRelink,v4wMode
  ;
  new v4wInputArgs
@@ -788,13 +802,14 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  . new v4wArgs,v4wDebug,v4wFunc,v4wInputArgs,v4wMode,v4wRelink
  . set @("v4wResult=$$"_v4wFunction)
  ;
+ set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
+ ;
+ if $get(v4wDebug,0)>1 do debugLog(">>   function exit:") zwrite v4wResult
+ ;
  ; Reset principal device after coming back from user code
  use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
- set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
- ;
- if $get(v4wDebug,0)>1 do debugLog(">>   function exit:") zwrite v4wResult
  quit "{""result"":"_v4wResult_"}"
  ;; @end function function
  ;
@@ -803,11 +818,11 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  ;; @param {string} v4wProc - The name of the procedure to call
  ;; @param {string} v4wArgs - Arguments represented as a string, encoded with argument lengths
  ;; @param {number} v4wRelink (0|1) - Whether to relink the procedure/subroutine to be called, if it has changed, defaults to off
- ;; @param {number} v4wMode (0|1) - Data mode; 0 is strict mode, 1 is canonical mode
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {void}
 procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  set v4wRelink=$get(v4wRelink,0)
- set v4wMode=$get(v4wMode,1)
+ set v4wMode=$get(v4wMode,2)
  if $get(v4wDebug,0)>1 do debugLog(">>   procedure enter:") zwrite v4wProc,v4wArgs,v4wRelink,v4wMode
  ;
  new v4wInputArgs
@@ -827,11 +842,12 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  . new v4wArgs,v4wDebug,v4wInputArgs,v4wMode,v4wProc,v4wRelink
  . do @v4wProcedure
  ;
+ if $get(v4wDebug,0)>1 do debugLog(">>   procedure exit")
+ ;
  ; Reset principal device after coming back from user code
  use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   procedure exit")
  quit
  ;; @end procedure subroutine
  ;
@@ -936,4 +952,4 @@ update()
  quit "{""ok"":0,""status"":""update not yet implemented""}"
  ;; @end update function
  ;
- ;; ***End Public APIs***
+ ;; ***End Integration APIs***

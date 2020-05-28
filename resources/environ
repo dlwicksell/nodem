@@ -53,26 +53,41 @@
 # $LD_LIBRARY_PATH to the distribution root, or else add that directory to the
 # ldcache, as discussed in the README.md file.
 
-DIR=$(dirname $(dirname ${BASH_SOURCE[0]}))
-[[ $DIR =~ $(pwd) ]] || DIR=$(pwd)/$DIR
-DIR=${DIR%/.}
-[[ $(basename $DIR) == "resources" ]] && DIR=${DIR%/resources}
+PKG=$(dirname $(dirname ${BASH_SOURCE[0]}))
+[[ $PKG =~ $(pwd) ]] || PKG=$(pwd)/$PKG
+PKG=${PKG%/.}
+[[ $(basename $PKG) == resources ]] && PKG=${PKG%/resources}
 
 # YottaDB/GT.M Call-in table
-export ydb_ci="$DIR/resources/nodem.ci"
-export GTMCI="${ydb_ci}"
+export ydb_ci=$PKG/resources/nodem.ci
+export GTMCI=$ydb_ci
 
 # YottaDB/GT.M routines path
-if [[ -n ${ydb_routines} ]]
+if [[ -n $ydb_routines ]]
 then
-    export ydb_routines="$DIR/src ${ydb_routines}"
-    export gtmroutines="${ydb_routines}"
-elif [[ -n ${gtmroutines} ]]
+    DIR=${ydb_routines%% *}
+
+    if [[ $DIR =~ "(" ]]
+    then
+        export ydb_routines="${DIR/(*)/}($PKG/src ${DIR/*\(/}${ydb_routines/$DIR/}"
+    else
+        export ydb_routines="$DIR($PKG/src)${ydb_routines/$DIR/}"
+    fi
+
+    export gtmroutines="$ydb_routines"
+elif [[ -n $gtmroutines ]]
 then
-    export gtmroutines="$DIR/src ${gtmroutines}"
+    DIR=${gtmroutines%% *}
+
+    if [[ $DIR =~ "(" ]]
+    then
+        export gtmroutines="${DIR/(*)/}($PKG/src ${DIR/*\(/}${gtmroutines/$DIR/}"
+    else
+        export gtmroutines="$DIR($PKG/src)${gtmroutines/$DIR/}"
+    fi
 else
-    export ydb_routines="$DIR/src"
-    export gtmroutines="${ydb_routines}"
+    export ydb_routines=$PKG/src
+    export gtmroutines=$ydb_routines
 fi
 
 # Runtime loader path for YottaDB/GT.M shared library, if necessary (see README.md)

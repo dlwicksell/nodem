@@ -1,5 +1,12 @@
 # NodeM Release Notes #
 
+## v0.17.0 - 2020 May 27 ##
+
+- Add full asynchronous support to the lock and unlock APIs
+- Add SimpleAPI support to the lock and unlock APIs
+- Add support for calling arguments by-position to the lock and unlock APIs
+- Add new 'string' mode to the open and configure APIs
+
 ## v0.16.2 - 2020 Feb 21 ##
 
 - Fix error/warning handling in postinstall.js
@@ -117,7 +124,7 @@
   - Rename the gtm_status function as error_status
   - Improve signal handling in clean_shutdown signal handler function
   - Improve efficiency of debug tracing code
-  - Add is_number function to support canonical mode for YottaDB
+  - Add is_number function to support 'canonical' mode for YottaDB
   - Change internal API interfaces to pass the Baton struct around for better maintainability
   - Replace the asynchronous conditional jump blocks with function pointers in the Baton struct
   - Fix utf-8 bug in the encode_arguments function
