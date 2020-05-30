@@ -69,9 +69,9 @@ then
 
     if [[ $DIR =~ "(" ]]
     then
-        export ydb_routines="${DIR/(*)/}($PKG/src ${DIR/*\(/}${ydb_routines/$DIR/}"
+        export ydb_routines="${DIR/(*)/}($PKG/src ${DIR/*\(/}${ydb_routines/${DIR/\*/\\*}/}"
     else
-        export ydb_routines="$DIR($PKG/src)${ydb_routines/$DIR/}"
+        export ydb_routines="$DIR($PKG/src)${ydb_routines/${DIR/\*/\\*}/}"
     fi
 
     export gtmroutines="$ydb_routines"
@@ -81,9 +81,9 @@ then
 
     if [[ $DIR =~ "(" ]]
     then
-        export gtmroutines="${DIR/(*)/}($PKG/src ${DIR/*\(/}${gtmroutines/$DIR/}"
+        export gtmroutines="${DIR/(*)/}($PKG/src ${DIR/*\(/}${gtmroutines/${DIR/\*/\\*}/}"
     else
-        export gtmroutines="$DIR($PKG/src)${gtmroutines/$DIR/}"
+        export gtmroutines="$DIR($PKG/src)${gtmroutines/${DIR/\*/\\*}/}"
     fi
 else
     export ydb_routines=$PKG/src

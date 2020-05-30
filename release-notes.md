@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.17.1 - 2020 May 29 ##
+
+- Add support for auto-relink syntax in environ
+
 ## v0.17.0 - 2020 May 27 ##
 
 - Add full asynchronous support to the lock and unlock APIs
