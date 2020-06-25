@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.17.1 - 2020 May 29
+Version 0.17.2 - 2020 Jun 24
 
 ## Copyright and License ##
 
@@ -152,7 +152,7 @@ undefined
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v14.3.0 at this time), as well as every version of
+through the current release (v14.4.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.

@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.17.2 - 2020 Jun 24 ##
+
+- Improve the performance of set.js
+
 ## v0.17.1 - 2020 May 29 ##
 
 - Add support for auto-relink syntax in environ

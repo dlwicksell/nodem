@@ -1,4 +1,4 @@
-v4wNode() ; 0.17.1 ; May 29, 2020@19:52
+v4wNode() ; 0.17.2 ; Jun 24, 2020@18:49
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m

@@ -62,6 +62,11 @@
           'ldflags': [
             '-Wl,-s'
           ]
+        },
+        'Debug': {
+          'cflags': [
+            '-fno-omit-frame-pointer'
+          ]
         }
       }
     }
