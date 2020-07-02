@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.17.3 - 2020 Jul 1 ##
+
+- Improve debug tracing serialization
+
 ## v0.17.2 - 2020 Jun 24 ##
 
 - Improve the performance of set.js

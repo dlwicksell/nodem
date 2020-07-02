@@ -1,4 +1,4 @@
-v4wNode() ; 0.17.2 ; Jun 24, 2020@18:49
+v4wNode() ; 0.17.3 ; Jul 01, 2020@21:08
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -334,7 +334,7 @@ version(v4wVersion)
  new v4wGtmVersion
  set v4wGtmVersion=$zpiece($zversion," ",2),$zextract(v4wGtmVersion)=""
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   version exit")
+ if $get(v4wDebug,0)>1 do debugLog(">>   version exit") use $principal
  ;
  new v4wYottaVersion
  set v4wYottaVersion=$zpiece($zyrelease," ",2),$zextract(v4wYottaVersion)=""
@@ -362,7 +362,7 @@ data(v4wGlvn,v4wSubs,v4wMode)
  new v4wDefined
  set v4wDefined=$data(@v4wName)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   data exit:") zwrite v4wDefined
+ if $get(v4wDebug,0)>1 do debugLog(">>   data exit:") zwrite v4wDefined use $principal
  quit "{""defined"":"_v4wDefined_"}"
  ;; @end data function
  ;
@@ -396,7 +396,7 @@ get(v4wGlvn,v4wSubs,v4wMode)
  ;
  if v4wMode set v4wDefined=$select(v4wDefined=1:"true",1:"false")
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   get exit:") zwrite v4wDefined,v4wData
+ if $get(v4wDebug,0)>1 do debugLog(">>   get exit:") zwrite v4wDefined,v4wData use $principal
  quit "{""defined"":"_v4wDefined_",""data"":"_v4wData_"}"
  ;; @end get function
  ;
@@ -425,7 +425,7 @@ set(v4wGlvn,v4wSubs,v4wData,v4wMode)
  else  do
  . set @v4wName=v4wData
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   set exit")
+ if $get(v4wDebug,0)>1 do debugLog(">>   set exit") use $principal
  quit
  ;; @end set subroutine
  ;
@@ -452,7 +452,7 @@ kill(v4wGlvn,v4wSubs,v4wType,v4wMode)
  else  if v4wType zkill @v4wName
  else  kill @v4wName
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   kill exit")
+ if $get(v4wDebug,0)>1 do debugLog(">>   kill exit") use $principal
  quit
  ;; @end kill subroutine
  ;
@@ -485,7 +485,7 @@ merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
  merge @v4wToName=@v4wFromName
  ;
  if v4wMode do  quit "{}"
- . if $get(v4wDebug,0)>1 do debugLog(">>   merge exit")
+ . if $get(v4wDebug,0)>1 do debugLog(">>   merge exit") use $principal
  ;
  new v4wReturn
  set v4wReturn="{"
@@ -499,7 +499,7 @@ merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
  . set v4wReturn=v4wReturn_"]"
  set v4wReturn=v4wReturn_"}"
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   merge exit:") zwrite v4wReturn
+ if $get(v4wDebug,0)>1 do debugLog(">>   merge exit:") zwrite v4wReturn use $principal
  quit v4wReturn
  ;; @end merge function
  ;
@@ -527,7 +527,7 @@ order(v4wGlvn,v4wSubs,v4wMode)
  ;
  set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   order exit:") zwrite v4wResult
+ if $get(v4wDebug,0)>1 do debugLog(">>   order exit:") zwrite v4wResult use $principal
  quit "{""result"":"_v4wResult_"}"
  ;; @end order function
  ;
@@ -555,7 +555,7 @@ previous(v4wGlvn,v4wSubs,v4wMode)
  ;
  set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   previous exit:") zwrite v4wResult
+ if $get(v4wDebug,0)>1 do debugLog(">>   previous exit:") zwrite v4wResult use $principal
  quit "{""result"":"_v4wResult_"}"
  ;; @end previous function
  ;
@@ -609,7 +609,7 @@ nextNode(v4wGlvn,v4wSubs,v4wMode)
  if v4wDefined set v4wReturn=v4wReturn_",""data"":"_v4wData_"}"
  else  set v4wReturn=v4wReturn_"}"
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   nextNode exit:") zwrite v4wReturn
+ if $get(v4wDebug,0)>1 do debugLog(">>   nextNode exit:") zwrite v4wReturn use $principal
  quit v4wReturn
  ;; @end nextNode function
  ;
@@ -675,7 +675,7 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  if v4wDefined set v4wReturn=v4wReturn_",""data"":"_v4wData_"}"
  else  set v4wReturn=v4wReturn_"}"
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   previousNode exit:") zwrite v4wReturn
+ if $get(v4wDebug,0)>1 do debugLog(">>   previousNode exit:") zwrite v4wReturn use $principal
  quit v4wReturn
  ;; @end previousNode function
  ;
@@ -701,7 +701,7 @@ increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
  new v4wData
  set v4wData=$$process($increment(@v4wName,v4wIncr),"output",v4wMode,1,0)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   increment exit:") zwrite v4wData
+ if $get(v4wDebug,0)>1 do debugLog(">>   increment exit:") zwrite v4wData use $principal
  quit "{""data"":"_v4wData_"}"
  ;; @end increment function
  ;
@@ -736,7 +736,7 @@ lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  . if $test set v4wResult=1
  ;
  if v4wMode do  quit "{""result"":"_v4wResult_"}"
- . if $get(v4wDebug,0)>1 do debugLog(">>   lock exit:") zwrite v4wResult
+ . if $get(v4wDebug,0)>1 do debugLog(">>   lock exit:") zwrite v4wResult use $principal
  ;
  new v4wReturn
  set v4wReturn="{"
@@ -744,7 +744,7 @@ lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  if v4wSubs'="" set v4wReturn=v4wReturn_"""subscripts"":["_$$process(v4wSubs,"pass",v4wMode)_"],"
  set v4wReturn=v4wReturn_"""result"":"_v4wResult_"}"
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   lock exit:") zwrite v4wReturn
+ if $get(v4wDebug,0)>1 do debugLog(">>   lock exit:") zwrite v4wReturn use $principal
  quit v4wReturn
  ;; @end lock function
  ;
@@ -759,7 +759,7 @@ unlock(v4wGlvn,v4wSubs,v4wMode)
  if $get(v4wDebug,0)>1 do debugLog(">>   unlock enter:") zwrite v4wGlvn,v4wSubs,v4wMode
  ;
  if $get(v4wGlvn)="" lock  do  quit
- . if $get(v4wDebug,0)>1 do debugLog(">>   unlock exit: unlock all")
+ . if $get(v4wDebug,0)>1 do debugLog(">>   unlock exit: unlock all") use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
@@ -768,7 +768,7 @@ unlock(v4wGlvn,v4wSubs,v4wMode)
  ;
  lock -@v4wName
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   unlock exit:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   unlock exit:") zwrite v4wName use $principal
  quit
  ;; @end unlock subroutine
  ;
@@ -890,7 +890,7 @@ globalDirectory(v4wMax,v4wLo,v4wHi)
  if $zlength(v4wReturn)>2 set v4wReturn=$zextract(v4wReturn,1,$zlength(v4wReturn)-1)
  set v4wReturn=v4wReturn_"]"
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   globalDirectory exit:") zwrite v4wReturn
+ if $get(v4wDebug,0)>1 do debugLog(">>   globalDirectory exit:") zwrite v4wReturn use $principal
  quit v4wReturn
  ;; @end globalDirectory function
  ;
@@ -934,7 +934,7 @@ localDirectory(v4wMax,v4wLo,v4wHi)
  if $zlength(v4wReturn)>2 set v4wReturn=$zextract(v4wReturn,1,$zlength(v4wReturn)-1)
  set v4wReturn=v4wReturn_"]"
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   localDirectory exit:") zwrite v4wReturn
+ if $get(v4wDebug,0)>1 do debugLog(">>   localDirectory exit:") zwrite v4wReturn use $principal
  quit v4wReturn
  ;; @end localDirectory function
  ;
