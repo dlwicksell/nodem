@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.18.1 - 2020 Jul 29 ##
+
+- Update version documentation
+
 ## v0.18.0 - 2020 Jul 28 ##
 
 - Add full asynchronous support to the version API

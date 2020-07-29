@@ -2442,10 +2442,10 @@ void Gtm::open(const FunctionCallbackInfo<Value>& info)
         isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection must be managed by main thread")));
         return;
     } else if (gtm_state_g == CLOSED) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection cannot be reopened")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection cannot be reopened")));
         return;
     } else if (gtm_state_g == OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection already open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection already open")));
         return;
     }
 
@@ -2937,7 +2937,7 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
     GtmState* gtm_state = reinterpret_cast<GtmState*>(info.Data().As<External>()->Value());
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -3125,7 +3125,7 @@ void Gtm::close(const FunctionCallbackInfo<Value>& info)
         isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection must be managed by main thread")));
         return;
     } else if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -3236,7 +3236,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
 
     if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "open"))) {
         cout << "open method:\n"
-            "\tOpen connection to the database - all methods, except for help and version, require an open connection\n"
+            "\tOpen connection to " NODEM_DB " - all methods, except for help and version, require an open connection\n"
             "\n\tRequired arguments: {None}\n"
             "\n\tOptional arguments:\n"
             "\t{\n"
@@ -3266,7 +3266,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "configure"))) {
         cout << "configure method:\n"
-            "\tConfigure per-thread parameters of the connection to the database\n"
+            "\tConfigure per-thread parameters of the connection to " NODEM_DB "\n"
             "\n\tRequired arguments: {None}\n"
             "\n\tOptional arguments:\n"
             "\t{\n"
@@ -3289,7 +3289,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "close"))) {
         cout << "close method:\n"
-            "\tClose connection to the database - once closed, cannot be reopened during the current process\n"
+            "\tClose connection to " NODEM_DB " - once closed, cannot be reopened during the current process\n"
             "\n\tRequired arguments: {None}\n"
             "\n\tOptional arguments:\n"
             "\t{\n"
@@ -3303,7 +3303,8 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "version"))) {
         cout << "version or about method:\n"
-            "\tDisplay version information - includes database version if connection has been established\n"
+            "\tDisplay version data - includes " NODEM_DB " version if connection has been established\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tArguments: {None}\n"
             "\n\tReturns on success: {string}\n"
             "\n\tReturns on failure: Should never fail\n"
@@ -3826,14 +3827,14 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     } else {
 #if NODEM_YDB == 1
-        cout << "NodeM: Ydb and Gtm object API help menu - methods:\n"
+        cout << "NodeM: Ydb/Gtm Object API Help Menu - Methods:\n"
 #else
-        cout << "NodeM: Gtm object API help menu - methods:\n"
+        cout << "NodeM: Gtm Object API Help Menu - Methods:\n"
 #endif
-            "\nopen\t\tOpen connection to the database - all methods, except for help and version, require an open connection\n"
-            "configure\tConfigure per-thread parameters of the connection to the database\n"
-            "close\t\tClose connection to the database - once closed, cannot be reopened during the current process\n"
-            "version\t\tDisplay version information - includes database version if connection has been established (AKA about)\n"
+            "\nopen\t\tOpen connection to " NODEM_DB " - all methods, except for help and version, require an open connection\n"
+            "configure\tConfigure per-thread parameters of the connection to " NODEM_DB "\n"
+            "close\t\tClose connection to " NODEM_DB " - once closed, cannot be reopened during the current process\n"
+            "version\t\tDisplay version data - includes " NODEM_DB " version if connection has been established (AKA about)\n"
             "data\t\tDisplay information about the existence of data and/or children in global or local variables\n"
             "get\t\tRetrieve the data stored at a global or local node, or intrinsic special variable (ISV)\n"
             "set\t\tStore data in a global or local node, or intrinsic special variable (ISV)\n"
@@ -3981,7 +3982,7 @@ void Gtm::data(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -4268,7 +4269,7 @@ void Gtm::get(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -4555,7 +4556,7 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -4886,7 +4887,7 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -5170,7 +5171,7 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::merge enter");
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -5588,7 +5589,7 @@ void Gtm::order(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -5875,7 +5876,7 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -6162,7 +6163,7 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -6449,7 +6450,7 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -6736,7 +6737,7 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -7036,7 +7037,7 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -7342,7 +7343,7 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
 #endif
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -7621,7 +7622,7 @@ void Gtm::function(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::function enter");
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -7827,7 +7828,7 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::procedure enter");
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -8042,7 +8043,7 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::global_directory enter");
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -8256,7 +8257,7 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::local_directory enter");
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -8490,7 +8491,7 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::retrieve enter");
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 
@@ -8589,7 +8590,7 @@ void Gtm::update(const FunctionCallbackInfo<Value>& info)
         debug_log(">  Gtm::update enter");
 
     if (gtm_state_g < OPEN) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " database connection is not open")));
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
         return;
     }
 

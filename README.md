@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.18.0 - 2020 Jul 28
+Version 0.18.1 - 2020 Jul 29
 
 ## Copyright and License ##
 
@@ -44,23 +44,25 @@ API-compatible (while in 'strict' mode) with the Node.js database driver for
 [Caché][].
 
 All of Nodem's APIs support synchronous operation and accept arguments passed
-via a single JavaScript object, containing specific per-API properties, usually
-'global' or 'local', and 'subscripts' or 'arguments'. The APIs that currently
-support both synchronous and asynchronous operation, as well as accepting
-arguments passed by-position, are: 'data', 'get', 'set', 'kill', 'order',
-'previous', 'nextNode', 'previousNode', 'increment', 'lock', 'unlock',
-'function', and 'procedure'. In order to use the asynchronous versions of those
-APIs, you must pass a JavaScript function, taking two arguments - conventionally
-'error' and 'result' - as the last argument to the API. When passing arguments
-to those APIs by-position, the first argument would be the global, local, or
-intrinsic special variable (only supported in the 'get' and 'set' APIs) string,
-and the next set of arguments would be each subscript (or function/procedure
-argument), separated as a different argument. In order to specify an intrinsic
-special variable (in the 'get' or 'set' API) when passing arguments inside of a
-JavaScript object, use the 'local' property, and preface the name with a '$'.
-For the 'set' API, the last non-function argument would be treated as the data
-to set into the node. Asynchronous support for the rest of the API ('version',
-'merge', 'globalDirectory', and 'localDirectory') is coming soon.
+via a single JavaScript object (except for help, which takes no arguments or an
+argument string, and version, which takes no arguments), containing specific
+per-API properties, usually 'global' or 'local', and 'subscripts' or
+'arguments'. The APIs that currently support both synchronous and asynchronous
+operation, as well as accepting arguments passed by-position, are: 'version',
+'data', 'get', 'set', 'kill', 'order', 'previous', 'nextNode', 'previousNode',
+'increment', 'lock', 'unlock', 'function', and 'procedure'. In order to use the
+asynchronous versions of those APIs, you must pass a JavaScript function, taking
+two arguments - conventionally 'error' and 'result' - as the last argument to
+the API. When passing arguments to those APIs by-position, the first argument
+would be the global, local, or intrinsic special variable (only supported in the
+'get' and 'set' APIs) string, and the next set of arguments would be each
+subscript (or function/procedure argument), separated as a different argument.
+In order to specify an intrinsic special variable (in the 'get' or 'set' API)
+when passing arguments inside of a JavaScript object, use the 'local' property,
+and preface the name with a '$'. For the 'set' API, the last non-function
+argument would be treated as the data to set into the node. Asynchronous support
+for the rest of the API ('open', 'close', 'configure', 'merge',
+'globalDirectory', and 'localDirectory') is coming soon.
 
 Nodem uses the YottaDB and GT.M C Call-in interface. YottaDB has released a
 faster, low-level database access API, with version r1.20, called the SimpleAPI.
@@ -103,7 +105,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.18.0 (ABI=83) [FWS]; YottaDB Version: 1.28'
+'Node.js Adaptor for YottaDB: Version: 0.18.1 (ABI=83) [FWS]; YottaDB Version: 1.28'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -152,7 +154,7 @@ undefined
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v14.5.0 at this time), as well as every version of
+through the current release (v14.6.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.
