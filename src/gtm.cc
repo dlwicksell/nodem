@@ -900,6 +900,79 @@ gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
 #endif // @end NODEM_SIMPLE_API
 
 /*
+ * @function gtm::version
+ * @summary Return the about/version string
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {string} name - The Nodem version string
+ * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+gtm_status_t version(nodem::GtmBaton* gtm_baton)
+{
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   gtm::version enter");
+
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
+        nodem::debug_log(">>>    version: ", gtm_baton->name);
+
+    gtm_status_t stat_buf;
+
+    uv_mutex_lock(&nodem::mutex_g);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+        if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
+            char error[BUFSIZ];
+            cerr << strerror_r(errno, error, BUFSIZ);
+        }
+
+        flockfile(stderr);
+    }
+
+    gtm_char_t gtm_version[] = "version";
+
+#if NODEM_CIP_API == 1
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   call using gtm_cip");
+
+    ci_name_descriptor version_access;
+
+    version_access.rtn_name.address = gtm_version;
+    version_access.rtn_name.length = strlen(gtm_version);
+    version_access.handle = NULL;
+
+    stat_buf = gtm_cip(&version_access, gtm_baton->result, gtm_baton->name.c_str());
+#else
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   call using gtm_ci");
+
+    stat_buf = gtm_ci(gtm_version, gtm_baton->result, gtm_baton->name.c_str());
+#endif
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
+    if (stat_buf != EXIT_SUCCESS)
+        gtm_zstatus(gtm_baton->error, ERR_LEN);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+        funlockfile(stderr);
+
+        if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
+            char error[BUFSIZ];
+            cerr << strerror_r(errno, error, BUFSIZ);
+        }
+    }
+
+    uv_mutex_unlock(&nodem::mutex_g);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   gtm::version exit");
+
+    return stat_buf;
+} // @end gtm::version function
+
+/*
  * @function gtm::function
  * @summary Call a Mumps extrinsic function
  * @param {GtmBaton*} gtm_baton - struct containing the following members

@@ -1,4 +1,4 @@
-v4wNode() ; 0.17.3 ; Jul 01, 2020@21:08
+v4wNode() ; 0.18.0 ; Jul 17, 2020@08:56
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -61,7 +61,7 @@ isString:(data,direction)
  ;
  if ($zextract(data)="""")&($zextract(data,$zlength(data))="""") do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 3") quit 3
  else  if $zlength(data)>16 do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 1") quit 1
- else  if direction="input",data["e+" do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 1") quit 1
+ else  if (direction="input")&((data["e+")!(data["e-")) do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 1") quit 1
  else  if $$isNumber(data,direction) do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 0") quit 0
  else  do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 2") quit 2
  ;; @end isString function
@@ -114,7 +114,7 @@ inputConvert:(data,mode,type)
  . if $zextract(data,1,2)="0." set $zextract(data)=""
  . else  if $zextract(data,1,3)="-0." set $zextract(data,2)=""
  else  if type,$$isString(data,"input")=3 set $zextract(data)="",$zextract(data,$zlength(data))=""
- else  if 'type,$$isString(data,"input")<2,data'="" set data=""""_data_""""
+ else  if 'type,$$isString(data,"input")<3,data'="" set data=""""_data_""""
  ;
  if $get(v4wDebug,0)>2 do debugLog(">>>    inputConvert exit:") zwrite data
  quit data
@@ -170,12 +170,11 @@ outputEscape:(data)
  . new newData
  . set newData=""
  . ;
- . new i
+ . new i,charHigh,charLow
  . for i=1:1:$zlength(data) do
  . . if ($zextract(data,i)="""")!($zextract(data,i)="\") do
  . . . set newData=newData_"\"_$zextract(data,i)
  . . else  if $zextract(data,i)?1c,$zascii($zextract(data,i))'>127 do
- . . . new charHigh,charLow
  . . . set charHigh=$zascii($zextract(data,i))\16,charHigh=$zextract("0123456789abcdef",charHigh+1)
  . . . set charLow=$zascii($zextract(data,i))#16,charLow=$zextract("0123456789abcdef",charLow+1)
  . . . set newData=newData_"\u00"_charHigh_charLow
@@ -202,9 +201,8 @@ parse:(inputString,outputArray,encode,last)
  ;
  kill outputArray
  if encode do
- . new i
+ . new i,length
  . for i=1:1 quit:inputString=""  do
- . . new length
  . . set length=+inputString
  . . set $zextract(inputString,1,$zlength(length)+1)=""
  . . set outputArray(i)=$zextract(inputString,1,length)
@@ -241,7 +239,7 @@ stringify:(inputArray,outputString)
  ;; @function {private} process
  ;; @summary Process an encoded string of subscripts, arguments, or an unencoded data node
  ;; @param {string} inputString - Input string to be transformed
- ;; @param {string} direction (input|output) - Processing control direction
+ ;; @param {string} direction (input|output|pass) - Processing control direction
  ;; @param {number} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @param {number} type (0|1) - Data type; 0 is subscripts or arguments, 1 is data node
  ;; @param {number} encode (0|1) - Whether subscripts or arguments are encoded, 0 is no, 1 is yes
@@ -593,9 +591,8 @@ nextNode(v4wGlvn,v4wSubs,v4wMode)
  . if $zextract(v4wResult)="^" set $zextract(v4wResult)=""
  . set v4wNewSubscripts=""
  . ;
- . new i
+ . new i,sub
  . for i=1:1:$qlength(v4wResult) do
- . . new sub
  . . set sub=$$process($qsubscript(v4wResult,i),"output",v4wMode,,0)
  . . set v4wNewSubscripts=v4wNewSubscripts_","_sub
  . set $zextract(v4wNewSubscripts)=""
@@ -622,18 +619,10 @@ nextNode(v4wGlvn,v4wSubs,v4wMode)
 previousNode(v4wGlvn,v4wSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
  ;
- new v4wStatus
- set v4wStatus="{""ok"":"_$select(v4wMode:"false",1:0)_",""status"":""previous_node not yet implemented""}"
- ;
- ; Handle reverse $query not existing in this M implementation version (150373074: %GTM-E-INVSVN, Invalid special variable name)
- set $ecode="",$etrap="if $ecode["",Z150373074,"" set $ecode="""",$etrap="""" quit v4wStatus"
+ ; Handle reverse $query not existing in this M implementation version (150373642: %GTM-E-RPARENMISSING, Right parenthesis expected)
+ set $ecode="",$etrap="if $ecode["",Z150373642,"" set $ecode="""",$etrap="""" quit $$reverseQuery(v4wName,v4wMode)"
  ;
  if $get(v4wDebug,0)>1 do debugLog(">>   previousNode enter:") zwrite v4wGlvn,v4wSubs,v4wMode
- ;
- new v4wYottaVersion
- set v4wYottaVersion=$zpiece($zyrelease," ",2),$zextract(v4wYottaVersion)=""
- ;
- if v4wYottaVersion<1.10 quit v4wStatus
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
@@ -659,9 +648,8 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  . if $zextract(v4wResult)="^" set $zextract(v4wResult)=""
  . set v4wNewSubscripts=""
  . ;
- . new i
+ . new i,sub
  . for i=1:1:$qlength(v4wResult) do
- . . new sub
  . . set sub=$$process($qsubscript(v4wResult,i),"output",v4wMode,,0)
  . . set v4wNewSubscripts=v4wNewSubscripts_","_sub
  . set $zextract(v4wNewSubscripts)=""
@@ -678,6 +666,64 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  if $get(v4wDebug,0)>1 do debugLog(">>   previousNode exit:") zwrite v4wReturn use $principal
  quit v4wReturn
  ;; @end previousNode function
+ ;
+ ;; @function reverseQuery
+ ;; @summary Return the previous global or local node, depth first
+ ;; @param {string} v4wName - Global or local query reference
+ ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ ;; @returns {string} {JSON} - Returns the previous node
+reverseQuery(v4wName,v4wMode)
+ if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery enter:") zwrite v4wName,v4wMode
+ ;
+ new v4wFlag,v4wResult
+ set v4wFlag=0,v4wResult=v4wName
+ set:$qlength(v4wResult)=0 v4wResult=""
+ ;
+ if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery:") zwrite v4wResult
+ ;
+ new v4wI,v4wPrevious,v4wSave
+ for v4wI=1:1:$qlength(v4wName) quit:v4wFlag  do
+ . set v4wPrevious=$order(@v4wResult,-1)
+ . set v4wResult=$name(@v4wResult,$qlength(v4wResult)-1)
+ . ;
+ . if v4wPrevious'="" do  set v4wFlag=1
+ . . set v4wResult=$name(@v4wResult@(v4wPrevious))
+ . . ;
+ . . for  set v4wSave=v4wResult,v4wResult=$query(@v4wResult) quit:($name(@v4wResult)=$name(@v4wName))!(v4wResult="")
+ . . set v4wResult=v4wSave
+ ;
+ if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery:") zwrite v4wResult
+ ;
+ new v4wDefined
+ if v4wResult="" set v4wDefined=0
+ else  set v4wDefined=1
+ ;
+ new v4wData,v4wNewSubscripts
+ ;
+ if v4wDefined do
+ . set v4wData=$$process($get(@v4wResult),"output",v4wMode,1,0)
+ . ;
+ . if $zextract(v4wResult)="^" set $zextract(v4wResult)=""
+ . set v4wNewSubscripts=""
+ . ;
+ . new i,sub
+ . for i=1:1:$qlength(v4wResult) do
+ . . set sub=$$process($qsubscript(v4wResult,i),"output",v4wMode,,0)
+ . . set v4wNewSubscripts=v4wNewSubscripts_","_sub
+ . set $zextract(v4wNewSubscripts)=""
+ ;
+ new v4wReturn
+ set v4wReturn="{"
+ ;
+ if v4wDefined,v4wNewSubscripts'="" set v4wReturn=v4wReturn_"""subscripts"":["_v4wNewSubscripts_"],"
+ if v4wMode set v4wReturn=v4wReturn_"""defined"":"_$select(v4wDefined=1:"true",1:"false")
+ else  set v4wReturn=v4wReturn_"""defined"":"_v4wDefined
+ if v4wDefined set v4wReturn=v4wReturn_",""data"":"_v4wData_"}"
+ else  set v4wReturn=v4wReturn_"}"
+ ;
+ if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery exit:") zwrite v4wReturn use $principal
+ quit v4wReturn
+ ;; @end reverseQuery function
  ;
  ;; @function increment
  ;; @summary Increment or decrement the number in a global or local node

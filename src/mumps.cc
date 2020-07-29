@@ -689,6 +689,53 @@ Local<String> GtmValue::from_byte(gtm_char_t buffer[])
 } // @end GtmValue::from_byte method
 
 /*
+ * @function {private} nodem::version
+ * @summary Return the about/version string
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_char_t*} result - Data returned from data call
+ * @member {bool} async - Whether the API was called asynchronously, or synchronously
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @returns {Local<Value>} return_object - Data returned to Node.js
+ */
+static Local<Value> version(GtmBaton* gtm_baton)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  version enter");
+
+    if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   result: ", gtm_baton->result);
+        debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
+    }
+
+    Local<String> return_string;
+
+    if (gtm_baton->gtm_state->utf8 == true) {
+        return_string = new_string_n(isolate, gtm_baton->result);
+    } else {
+        return_string = GtmValue::from_byte(gtm_baton->result);
+    }
+
+    Local<String> nodem_version = new_string_n(isolate,
+      "Node.js Adaptor for " NODEM_DB ": Version: " NODEM_VERSION " (ABI=" NODEM_STRING(NODE_MODULE_VERSION) ") [FWS]");
+
+    Local<String> ret_string = new_string_n(isolate, gtm_baton->result);
+    Local<String> version_string = concat_n(isolate, nodem_version, concat_n(isolate, new_string_n(isolate, "; "), ret_string));
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  version exit");
+
+    if (gtm_state_g < OPEN) {
+        return scope.Escape(nodem_version);
+    } else {
+        return scope.Escape(version_string);
+    }
+} // @end nodem::version function
+
+/*
  * @function {private} nodem::data
  * @summary Check if global or local node has data and/or children or not
  * @param {GtmBaton*} gtm_baton - struct containing the following members
@@ -3829,89 +3876,83 @@ void Gtm::version(const FunctionCallbackInfo<Value>& info)
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::version enter");
 
-    Local<String> nodem_version = new_string_n(isolate,
-      "Node.js Adaptor for " NODEM_DB ": Version: " NODEM_VERSION " (ABI=" NODEM_STRING(NODE_MODULE_VERSION) ") [FWS]");
+    bool async = false;
 
-    if (gtm_state_g < OPEN) {
-        info.GetReturnValue().Set(nodem_version);
-        return;
+    if (info[0]->IsFunction())
+        async = true;
+
+    GtmBaton* gtm_baton;
+    GtmBaton new_baton;
+
+    if (async) {
+        gtm_baton = new GtmBaton();
+
+        gtm_baton->callback_p.Reset(isolate, Local<Function>::Cast(info[0]));
+
+        gtm_baton->error = new gtm_char_t[ERR_LEN];
+        gtm_baton->result = new gtm_char_t[RES_LEN];
+    } else {
+        gtm_baton = &new_baton;
+
+        gtm_baton->callback_p.Reset();
+
+        gtm_baton->error = gtm_state->error;
+        gtm_baton->result = gtm_state->result;
     }
+
+    gtm_baton->request.data = gtm_baton;
+    gtm_baton->arguments_p.Reset(isolate, Undefined(isolate));
+    gtm_baton->data_p.Reset(isolate, Undefined(isolate));
+    gtm_baton->name = NODEM_VERSION;
+    gtm_baton->async = async;
+    gtm_baton->status = 0;
+    gtm_baton->gtm_function = &gtm::version;
+    gtm_baton->ret_function = &nodem::version;
+    gtm_baton->gtm_state = gtm_state;
 
     if (gtm_state->debug > OFF)
         debug_log(">  call into ", NODEM_DB);
 
-    gtm_status_t stat_buf;
-    gtm_char_t version[] = "version";
-
-    static gtm_char_t ret_buf[RES_LEN];
-
-#if NODEM_CIP_API == 1
-    ci_name_descriptor access;
-
-    access.rtn_name.address = version;
-    access.rtn_name.length = strlen(version);
-    access.handle = NULL;
-
-    uv_mutex_lock(&mutex_g);
-
-    if (gtm_state->debug > LOW) {
-        if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-            char error[BUFSIZ];
-            cerr << strerror_r(errno, error, BUFSIZ);
-        }
-
-        flockfile(stderr);
-    }
-
-    stat_buf = gtm_cip(&access, ret_buf, NODEM_VERSION);
+    if (async) {
+#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+        uv_queue_work(GetCurrentEventLoop(isolate), &gtm_baton->request, async_work, async_after);
 #else
-    uv_mutex_lock(&mutex_g);
-
-    if (gtm_state->debug > LOW) {
-        if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-            char error[BUFSIZ];
-            cerr << strerror_r(errno, error, BUFSIZ);
-        }
-
-        flockfile(stderr);
-    }
-
-    stat_buf = gtm_ci(version, ret_buf);
+        uv_queue_work(uv_default_loop(), &gtm_baton->request, async_work, async_after);
 #endif
 
-    if (gtm_state->debug > LOW) {
-        funlockfile(stderr);
+        if (gtm_state->debug > OFF)
+            debug_log(">  Gtm::version exit\n");
 
-        if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
-            char error[BUFSIZ];
-            cerr << strerror_r(errno, error, BUFSIZ);
-        }
-    }
-
-    if (gtm_state->debug > LOW)
-        debug_log(">>   stat_buf: ", stat_buf);
-
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_char_t msg_buf[ERR_LEN];
-        gtm_zstatus(msg_buf, ERR_LEN);
-
-        uv_mutex_unlock(&mutex_g);
-
-        info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
+        info.GetReturnValue().Set(Undefined(isolate));
         return;
     }
+
+    gtm_baton->status = gtm::version(gtm_baton);
 
     if (gtm_state->debug > OFF)
         debug_log(">  return from ", NODEM_DB);
 
-    Local<String> ret_string = new_string_n(isolate, ret_buf);
+    if (gtm_baton->status != EXIT_SUCCESS) {
+        isolate->ThrowException(Exception::Error(
+          to_string_n(isolate, error_status(gtm_baton->error, true, async, gtm_state))));
 
-    uv_mutex_unlock(&mutex_g);
+        info.GetReturnValue().Set(Undefined(isolate));
 
-    Local<String> version_string = concat_n(isolate, nodem_version,
-      concat_n(isolate, new_string_n(isolate, "; "), ret_string));
+        gtm_baton->arguments_p.Reset();
+        gtm_baton->data_p.Reset();
 
-    info.GetReturnValue().Set(version_string);
+        return;
+    }
+
+    if (gtm_state->debug > LOW)
+        debug_log(">>   call into version");
+
+    Local<Value> return_value = nodem::version(gtm_baton);
+
+    gtm_baton->arguments_p.Reset();
+    gtm_baton->data_p.Reset();
+
+    info.GetReturnValue().Set(return_value);
 
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::version exit\n");

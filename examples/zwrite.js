@@ -137,7 +137,7 @@ if (fast) {
     }
 
     while (true) {
-        node = gtm.next_node({global: global, subscripts: node.subscripts});
+        node = gtm.nextNode({global: global, subscripts: node.subscripts});
 
         if (!node.defined) break;
 

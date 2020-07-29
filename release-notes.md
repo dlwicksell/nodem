@@ -1,5 +1,10 @@
 # NodeM Release Notes #
 
+## v0.18.0 - 2020 Jul 28 ##
+
+- Add full asynchronous support to the version API
+- Add polyfill implementation of previousNode in v4wNode.m for GT.M and YottaDB r1.00
+
 ## v0.17.3 - 2020 Jul 1 ##
 
 - Improve debug tracing serialization

@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.17.3 - 2020 Jul 1
+Version 0.18.0 - 2020 Jul 28
 
 ## Copyright and License ##
 
@@ -103,7 +103,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.17.3 (ABI=83) [FWS]; YottaDB Version: 1.28'
+'Node.js Adaptor for YottaDB: Version: 0.18.0 (ABI=83) [FWS]; YottaDB Version: 1.28'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -666,7 +666,7 @@ API                      | Description
 *order* or *next*        | Retrieve the next global or local node, at the current subscript level
 *previous*               | Same as order, only in reverse
 *nextNode*               | Retrieve the next global or local node, regardless of subscript level
-*previousNode*           | Same as nextNode, only in reverse in YottaDB r1.10 or newer, otherwise not yet implemented
+*previousNode*           | Same as nextNode, only in reverse
 *increment*              | Atomically increment the value stored in a global or local node
 *lock*                   | Lock a global or global node, or local or local node, incrementally
 *unlock*                 | Unlock a global or global node, or local or local node, incrementally; or release all locks

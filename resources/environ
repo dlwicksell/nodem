@@ -91,4 +91,9 @@ else
 fi
 
 # Runtime loader path for YottaDB/GT.M shared library, if necessary (see README.md)
-export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}:${LD_LIBRARY_PATH}
+if [[ -n $LD_LIBRARY_PATH ]]
+then
+    export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}:${LD_LIBRARY_PATH}
+else
+    export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}
+fi
