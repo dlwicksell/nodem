@@ -35,11 +35,13 @@ namespace gtm {
  * @function gtm::data
  * @summary Check if global or local node has data and/or children or not
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t data(nodem::GtmBaton* gtm_baton)
@@ -113,11 +115,13 @@ gtm_status_t data(nodem::GtmBaton* gtm_baton)
  * @function gtm::get
  * @summary Get data from a global or local node, or an intrinsic special variable
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global, local, or intrinsic special variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t get(nodem::GtmBaton* gtm_baton)
@@ -195,6 +199,9 @@ gtm_status_t get(nodem::GtmBaton* gtm_baton)
  * @member {string} args - Subscripts
  * @member {string} value - Value to set
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t set(nodem::GtmBaton* gtm_baton)
@@ -273,6 +280,9 @@ gtm_status_t set(nodem::GtmBaton* gtm_baton)
  * @member {string} args - Subscripts
  * @member {int32_t} node_only (-1|<0>|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t kill(nodem::GtmBaton* gtm_baton)
@@ -347,11 +357,13 @@ gtm_status_t kill(nodem::GtmBaton* gtm_baton)
  * @function gtm::order
  * @summary Return the next global or local node at the same level
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t order(nodem::GtmBaton* gtm_baton)
@@ -425,11 +437,13 @@ gtm_status_t order(nodem::GtmBaton* gtm_baton)
  * @function gtm::previous
  * @summary Return the previous global or local node at the same level
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t previous(nodem::GtmBaton* gtm_baton)
@@ -503,11 +517,13 @@ gtm_status_t previous(nodem::GtmBaton* gtm_baton)
  * @function gtm::next_node
  * @summary Return the next global or local node, depth first
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t next_node(nodem::GtmBaton* gtm_baton)
@@ -581,11 +597,13 @@ gtm_status_t next_node(nodem::GtmBaton* gtm_baton)
  * @function gtm::previous_node
  * @summary Return the previous global or local node, depth first
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t previous_node(nodem::GtmBaton* gtm_baton)
@@ -659,12 +677,14 @@ gtm_status_t previous_node(nodem::GtmBaton* gtm_baton)
  * @function gtm::increment
  * @summary Increment or decrement the number in a global or local node
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {gtm_double_t} option - Number to increment or decrement by
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t increment(nodem::GtmBaton* gtm_baton)
@@ -741,12 +761,14 @@ gtm_status_t increment(nodem::GtmBaton* gtm_baton)
  * @function gtm::lock
  * @summary Lock a global or local node, incrementally
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {gtm_double_t} option - The time to wait for the lock, or -1 to wait forever
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t lock(nodem::GtmBaton* gtm_baton)
@@ -823,11 +845,13 @@ gtm_status_t lock(nodem::GtmBaton* gtm_baton)
  * @function gtm::unlock
  * @summary Unlock a global or local node, incrementally, or release all locks
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
@@ -903,9 +927,11 @@ gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
  * @function gtm::version
  * @summary Return the about/version string
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - The Nodem version string
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t version(nodem::GtmBaton* gtm_baton)
@@ -973,15 +999,103 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
 } // @end gtm::version function
 
 /*
+ * @function gtm::merge
+ * @summary Merge a global or local array tree to another global or local array tree
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {string} name - Global or local variable name to merge from
+ * @member {string} args - Subscripts to merge from
+ * @member {string} to_name - Global or local variable name to merge to
+ * @member {string} to_args - Subscripts to merge to
+ * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ */
+gtm_status_t merge(nodem::GtmBaton* gtm_baton)
+{
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   gtm::merge enter");
+
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    from_name: ", gtm_baton->name);
+        nodem::debug_log(">>>    from_subscripts: ", gtm_baton->args);
+        nodem::debug_log(">>>    to_name: ", gtm_baton->to_name);
+        nodem::debug_log(">>>    to_subscripts: ", gtm_baton->to_args);
+        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    }
+
+    gtm_status_t stat_buf;
+
+    uv_mutex_lock(&nodem::mutex_g);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+        if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
+            char error[BUFSIZ];
+            cerr << strerror_r(errno, error, BUFSIZ);
+        }
+
+        flockfile(stderr);
+    }
+
+    gtm_char_t gtm_merge[] = "merge";
+
+#if NODEM_CIP_API == 1
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   call using gtm_cip");
+
+    ci_name_descriptor merge_access;
+
+    merge_access.rtn_name.address = gtm_merge;
+    merge_access.rtn_name.length = strlen(gtm_merge);
+    merge_access.handle = NULL;
+
+    stat_buf = gtm_cip(&merge_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(),
+      gtm_baton->to_name.c_str(), gtm_baton->to_args.c_str(), gtm_baton->mode);
+#else
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   call using gtm_ci");
+
+    stat_buf = gtm_ci(gtm_merge, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(),
+      gtm_baton->to_name.c_str(), gtm_baton->to_args.c_str(), gtm_baton->mode);
+#endif
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   stat_buf: ", stat_buf);
+
+    if (stat_buf != EXIT_SUCCESS)
+        gtm_zstatus(gtm_baton->error, ERR_LEN);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+        funlockfile(stderr);
+
+        if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
+            char error[BUFSIZ];
+            cerr << strerror_r(errno, error, BUFSIZ);
+        }
+    }
+
+    uv_mutex_unlock(&nodem::mutex_g);
+
+    if (gtm_baton->gtm_state->debug > nodem::LOW)
+        nodem::debug_log(">>   gtm::merge exit");
+
+    return stat_buf;
+} // @end gtm::merge function
+
+/*
  * @function gtm::function
  * @summary Call a Mumps extrinsic function
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {string} name - Function name, with line label
  * @member {string} args - Arguments
  * @member {uint32_t} relink (<0>|1) - Whether to relink the function before calling it
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t function(nodem::GtmBaton* gtm_baton)
@@ -1062,6 +1176,9 @@ gtm_status_t function(nodem::GtmBaton* gtm_baton)
  * @member {string} args - Arguments
  * @member {uint32_t} relink (<0>|1) - Whether to relink the procedure before calling it
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
+ * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 gtm_status_t procedure(nodem::GtmBaton* gtm_baton)

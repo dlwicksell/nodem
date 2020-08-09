@@ -43,6 +43,7 @@ gtm_status_t unlock(nodem::GtmBaton*);
 #endif // @end NODEM_SIMPLE_API
 
 gtm_status_t version(nodem::GtmBaton*);
+gtm_status_t merge(nodem::GtmBaton*);
 gtm_status_t function(nodem::GtmBaton*);
 gtm_status_t procedure(nodem::GtmBaton*);
 

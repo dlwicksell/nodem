@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.19.0 - 2020 Aug 8 ##
+
+- Add full asynchronous support to the merge API
+
 ## v0.18.1 - 2020 Jul 29 ##
 
 - Update version documentation
@@ -26,7 +30,7 @@
 - Add full asynchronous support to the lock and unlock APIs
 - Add SimpleAPI support to the lock and unlock APIs
 - Add support for calling arguments by-position to the lock and unlock APIs
-- Add new 'string' mode to the open and configure APIs
+- Add new `string` mode to the open and configure APIs
 
 ## v0.16.2 - 2020 Feb 21 ##
 
@@ -131,10 +135,10 @@
   - Improve efficiency of debug tracing code
 - Update ydb.hh and ydb.cc
   - Add support for data, previous, nextNode, and previousNode to enable asynchronous versions
-  - Ignore local variables that begin with the 'v4w' namespace in order and previous
+  - Ignore local variables that begin with the `v4w` namespace in order and previous
   - Improve efficiency of debug tracing code
 - Update v4wNode.m
-  - Ignore local variables that begin with the 'v4w' namespace in order and previous
+  - Ignore local variables that begin with the `v4w` namespace in order and previous
   - Improve previousNode handling for versions of YottaDB and GT.M that do not implement it
   - Add ok property to the JSON returned by previousNode, retrieve, and update
   - Simplify version API when connected to YottaDB
@@ -145,7 +149,7 @@
   - Rename the gtm_status function as error_status
   - Improve signal handling in clean_shutdown signal handler function
   - Improve efficiency of debug tracing code
-  - Add is_number function to support 'canonical' mode for YottaDB
+  - Add is_number function to support `canonical` mode for YottaDB
   - Change internal API interfaces to pass the Baton struct around for better maintainability
   - Replace the asynchronous conditional jump blocks with function pointers in the Baton struct
   - Fix utf-8 bug in the encode_arguments function
@@ -199,17 +203,17 @@
 ## v0.10.0 - 2018 Apr 5 ##
 
 - Refactor Nodem for future maintainability
-- Add support to APIs for local variables with the new 'local' property and the new localDirectory method
+- Add support to APIs for local variables with the new `local` property and the new localDirectory method
 - Change character set encoding to default to UTF-8 and decouple it from the encoding set for the underlying YottaDB/GT.M database
 - Add support for the previousNode API in YottaDB versions r1.10 and newer
 - Remove support for Node.js versions earlier than 0.12.0
 - Add new help method, with a list of APIs, and more detailed call information for each API
 - Add support to the open API for new configuration settings
-  - Add 'routinePath' configuration to change the routine look-up path when using the function and procedure methods
-  - Add 'callinPath' configuration to make it easier to support environments running more than just Nodem with the Call-in interface
-  - Add 'debug' configuration to turn on debug tracing
-  - Add 'charset' configuration to enable changing the character set encoding directly in the API
-  - Remove 'path' configuration, as it was unhelpful, and misleading
+  - Add `routinePath` configuration to change the routine look-up path when using the function and procedure methods
+  - Add `callinPath` configuration to make it easier to support environments running more than just Nodem with the Call-in interface
+  - Add `debug` configuration to turn on debug tracing
+  - Add `charset` configuration to enable changing the character set encoding directly in the API
+  - Remove `path` configuration, as it was unhelpful, and misleading
 - Refactor mumps.hh for maintainability
   - Remove C Macro support, no longer necessary after removing support for Node.js versions prior to 0.12.0
   - Add support for distinguishing between YottaDB and GT.M distributions
@@ -224,7 +228,7 @@
   - Add debug tracing support for four levels of debugging verbosity
   - Add exception handling around parsing of return JSON from v4wNode.m
   - Improve signal handling
-  - Improve cache.node compatibility in 'strict' mode
+  - Improve cache.node compatibility in `strict` mode
   - Add alias camel-case versions of methods that use underscores
     - Add globalDirectory for global_directory
     - Add nextNode for next_node
@@ -235,7 +239,7 @@
   - Add timeout property to lock API as an alias for the second argument for passing timeouts in seconds
   - Improve error messages in thrown exceptions
   - Add support for calling the kill method without arguments, clearing the local symbol table
-  - Improve return object format in merge API while in 'canonical' mode
+  - Improve return object format in merge API while in `canonical` mode
   - Add name space Nodem
 - Refactor v4wNode.m for maintainability
   - Add various improvements for stability
@@ -243,8 +247,8 @@
   - Add function and subroutine documentation, similar to JSDoc
   - Add debug tracing support for four levels of debugging verbosity
   - Update parsing functionality for better maintainability
-  - Improve cache.node compatibility in 'strict' mode
-  - Improve handling of data edge cases in 'canonical' mode
+  - Improve cache.node compatibility in `strict` mode
+  - Improve handling of data edge cases in `canonical` mode
   - Name space local variables to enable local symbol table management support
   - Improve handling of signals, even with use of environment variables that can change YottaDB and GT.M's behavior around them
   - Improve scoping of local symbol table when calling the function and procedure APIs
@@ -253,7 +257,7 @@
 - Strip out superfluous RUNPATH linker flags in binding.gyp
 - Improve the quality of the set.js performance testing example script
 - Add new command line option to test the set method on a local or global array
-  - By passing the keyword 'local' or 'global' as either the first or second argument
+  - By passing the keyword `local` or `global` as either the first or second argument
 - Add new command line option to test the set method on any size array
   - By passing the number of nodes as either the first or second argument
 - Improve the quality of the zwrite.js testing example script

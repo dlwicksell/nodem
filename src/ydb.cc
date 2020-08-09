@@ -38,6 +38,8 @@ namespace ydb {
  * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - ISV name ($zbgldir)
  * @member {string} value - Value to set
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @param {string} save_result - The buffer containing the original value of the ISV ($zgbldir)
  * @param {bool} change_isv - Whether to change the ISV ($zgbldir) back after API call
  * @returns {ydb_status_t} - Return code; 0 is success, any other number is an error code
@@ -48,8 +50,6 @@ static ydb_status_t extended_ref(nodem::GtmBaton* gtm_baton, string save_result,
         nodem::debug_log(">>>    ydb::extended_ref enter");
         nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    value: ", gtm_baton->value.c_str());
-        nodem::debug_log(">>>    save_result: ", save_result);
-        nodem::debug_log(">>>    change_isv: ", std::boolalpha, change_isv);
     }
 
     char* var_name = (char*) gtm_baton->name.c_str();
@@ -145,9 +145,6 @@ static ydb_status_t extended_ref(nodem::GtmBaton* gtm_baton, string save_result,
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    ydb::extended_ref exit");
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    value: ", gtm_baton->value.c_str());
-        nodem::debug_log(">>>    result: ", gtm_baton->result);
         nodem::debug_log(">>>    save_result: ", save_result);
         nodem::debug_log(">>>    change_isv: ", std::boolalpha, change_isv);
     }
@@ -161,10 +158,12 @@ static ydb_status_t extended_ref(nodem::GtmBaton* gtm_baton, string save_result,
  * @function ydb::data
  * @summary Check if global or local node has data and/or children or not
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t data(nodem::GtmBaton* gtm_baton)
@@ -172,8 +171,15 @@ ydb_status_t data(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   ydb::data enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
+    }
 
     string save_result;
     bool change_isv = false;
@@ -241,10 +247,12 @@ ydb_status_t data(nodem::GtmBaton* gtm_baton)
  * @function ydb::get
  * @summary Get data from a global or local node, or an intrinsic special variable
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global, local, or intrinsic special variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t get(nodem::GtmBaton* gtm_baton)
@@ -252,8 +260,15 @@ ydb_status_t get(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   ydb::get enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
+    }
 
     string save_result;
     bool change_isv = false;
@@ -324,6 +339,9 @@ ydb_status_t get(nodem::GtmBaton* gtm_baton)
  * @member {string} name - Global, local, or intrinsic special variable name
  * @member {vector<string>} subs_array - Subscripts
  * @member {string} value - Value to set
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t set(nodem::GtmBaton* gtm_baton)
@@ -334,6 +352,12 @@ ydb_status_t set(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    value: ", gtm_baton->value);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
     }
 
     string save_result;
@@ -401,6 +425,9 @@ ydb_status_t set(nodem::GtmBaton* gtm_baton)
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
  * @member {int32_t} node_only (-1|<0>|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t kill(nodem::GtmBaton* gtm_baton)
@@ -411,6 +438,12 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    node_only: ", gtm_baton->node_only);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
     }
 
     string save_result;
@@ -481,10 +514,12 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
  * @function ydb::order
  * @summary Return the next global or local node at the same level
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t order(nodem::GtmBaton* gtm_baton)
@@ -492,8 +527,15 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   ydb::order enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
+    }
 
     string save_result;
     bool change_isv = false;
@@ -606,10 +648,12 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
  * @function ydb::previous
  * @summary Return the previous global or local node at the same level
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t previous(nodem::GtmBaton* gtm_baton)
@@ -617,8 +661,15 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   ydb::previous enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
+    }
 
     string save_result;
     bool change_isv = false;
@@ -731,10 +782,12 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
  * @function ydb::next_node
  * @summary Return the next global or local node, depth first
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
@@ -742,8 +795,15 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   ydb::next_node enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
+    }
 
     string save_result;
     bool change_isv = false;
@@ -853,10 +913,12 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
  * @function ydb::previous_node
  * @summary Return the previous global or local node, depth first
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
@@ -864,8 +926,15 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   ydb::previous_node enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
+    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
+    }
 
     string save_result;
     bool change_isv = false;
@@ -977,11 +1046,13 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
  * @function ydb::increment
  * @summary Increment or decrement the number in a global or local node
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
- * @member {ydb_double_t} increment - Number to increment or decrement by
+ * @member {ydb_double_t} option - Number to increment or decrement by
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t increment(nodem::GtmBaton* gtm_baton)
@@ -992,6 +1063,12 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    increment: ", gtm_baton->option);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
     }
 
     string save_result;
@@ -1071,11 +1148,13 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
  * @function ydb::lock
  * @summary Lock a global or local node, incrementally
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
  * @member {ydb_double_t} option - The time to wait for the lock, or -1 to wait forever
+ * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t lock(nodem::GtmBaton* gtm_baton)
@@ -1086,6 +1165,12 @@ ydb_status_t lock(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
         nodem::debug_log(">>>    timeout: ", gtm_baton->option);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
     }
 
     string save_result;
@@ -1159,10 +1244,11 @@ ydb_status_t lock(nodem::GtmBaton* gtm_baton)
  * @function ydb::unlock
  * @summary Lock a global or local node, incrementally
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
- * @member {ydb_char_t*} result - Data returned from YottaDB, via the SimpleAPI interface
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
+ * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t unlock(nodem::GtmBaton* gtm_baton)
@@ -1172,6 +1258,12 @@ ydb_status_t unlock(nodem::GtmBaton* gtm_baton)
 
     if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", gtm_baton->name);
+
+        if (gtm_baton->subs_array.size()) {
+            for (unsigned int i = 0; i < gtm_baton->subs_array.size(); i++) {
+                nodem::debug_log(">>   subscripts[", i, "]: ", gtm_baton->subs_array[i]);
+            }
+        }
     }
 
     string save_result;

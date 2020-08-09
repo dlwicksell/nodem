@@ -62,8 +62,8 @@ extern "C" {
 #endif
 
 #define NODEM_MAJOR_VERSION 0
-#define NODEM_MINOR_VERSION 18
-#define NODEM_PATCH_VERSION 1
+#define NODEM_MINOR_VERSION 19
+#define NODEM_PATCH_VERSION 0
 
 #define NODEM_STRING(number) NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
@@ -319,10 +319,13 @@ private:
  * @summary Common structure to transfer data between main thread and worker threads when Nodem APIs are called asynchronously
  * @member {uv_work_t} request
  * @member {Persistent<Function>} callback_p
+ * @member {Persistent<Function>} object_p
  * @member {Persistent<Function>} arguments_p
  * @member {Persistent<Function>} data_p
  * @member {string} name
+ * @member {string} to_name
  * @member {string} args
+ * @member {string} to_args
  * @member {string} value
  * @member {vector<string>} subs_array
  * @member {mode_t} mode
@@ -343,10 +346,13 @@ private:
 struct GtmBaton {
     uv_work_t                    request;
     v8::Persistent<v8::Function> callback_p;
+    v8::Persistent<v8::Object>   object_p;
     v8::Persistent<v8::Value>    arguments_p;
     v8::Persistent<v8::Value>    data_p;
     std::string                  name;
+    std::string                  to_name;
     std::string                  args;
+    std::string                  to_args;
     std::string                  value;
     std::vector<std::string>     subs_array;
     mode_t                       mode;

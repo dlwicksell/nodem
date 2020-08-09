@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.18.1 - 2020 Jul 29
+Version 0.19.0 - 2020 Aug 8
 
 ## Copyright and License ##
 
@@ -39,57 +39,59 @@ to their database systems and some language features, as well as networked
 access to their core database functionality. Nodem provides access to the basic
 global database handling operations, as well as providing the ability to invoke
 M language functions and procedures. It also supports full local symbol table
-management. Although designed for use with YottaDB and GT.M, Nodem aims to be
-API-compatible (while in 'strict' mode) with the Node.js database driver for
-[Caché][].
+management and manipulation. Although designed for use with YottaDB and GT.M,
+Nodem aims to be API-compatible (while in `strict` mode) with the Node.js
+database driver for [Caché][].
 
 All of Nodem's APIs support synchronous operation and accept arguments passed
 via a single JavaScript object (except for help, which takes no arguments or an
 argument string, and version, which takes no arguments), containing specific
-per-API properties, usually 'global' or 'local', and 'subscripts' or
-'arguments'. The APIs that currently support both synchronous and asynchronous
-operation, as well as accepting arguments passed by-position, are: 'version',
-'data', 'get', 'set', 'kill', 'order', 'previous', 'nextNode', 'previousNode',
-'increment', 'lock', 'unlock', 'function', and 'procedure'. In order to use the
-asynchronous versions of those APIs, you must pass a JavaScript function, taking
-two arguments - conventionally 'error' and 'result' - as the last argument to
-the API. When passing arguments to those APIs by-position, the first argument
-would be the global, local, or intrinsic special variable (only supported in the
-'get' and 'set' APIs) string, and the next set of arguments would be each
-subscript (or function/procedure argument), separated as a different argument.
-In order to specify an intrinsic special variable (in the 'get' or 'set' API)
-when passing arguments inside of a JavaScript object, use the 'local' property,
-and preface the name with a '$'. For the 'set' API, the last non-function
-argument would be treated as the data to set into the node. Asynchronous support
-for the rest of the API ('open', 'close', 'configure', 'merge',
-'globalDirectory', and 'localDirectory') is coming soon.
+per-API properties, usually `global` or `local`, and `subscripts` or
+`arguments`. The APIs that currently support both synchronous and asynchronous
+operation, as well as accepting arguments passed by-position (except version,
+which takes no arguments, and merge, which requires passing arguments via a
+JavaScript object), are: `version`, `data`, `get`, `set`, `kill`, `merge`,
+`order`, `previous`, `nextNode`, `previousNode`, `increment`, `lock`, `unlock`,
+`function`, and `procedure`. In order to use the asynchronous versions of those
+APIs, you must pass a JavaScript function, taking two arguments - conventionally
+`error` and `result` - as the last argument to the API. When passing arguments
+to those APIs by-position, the first argument would be the global (prefaced by
+`^`), local, or intrinsic special variable string (prefaced by `$` and only
+supported in the `get` and `set` APIs), and the next set of arguments would be
+each subscript (or function/procedure argument), separated as a different
+argument. In order to specify an intrinsic special variable (in the `get` or
+`set` API) when passing arguments inside of a JavaScript object, use the `local`
+property, and preface the name with a `$`. For the `set` API, the last
+non-function argument would be treated as the data to set into the node.
+Asynchronous support for the rest of the API (`open`, `close`, `configure`,
+`globalDirectory`, and `localDirectory`) is coming soon.
 
 Nodem uses the YottaDB and GT.M C Call-in interface. YottaDB has released a
 faster, low-level database access API, with version r1.20, called the SimpleAPI.
-Nodem uses YottaDB's SimpleAPI for the 'data', 'get', 'set', 'kill', 'order',
-'previous', 'nextNode', 'previousNode', 'increment', 'lock', and 'unlock' APIs,
+Nodem uses YottaDB's SimpleAPI for the `data`, `get`, `set`, `kill`, `order`,
+`previous`, `nextNode`, `previousNode`, `increment`, `lock`, and `unlock` APIs,
 when it is available, and falls back to the Call-in interface when it is not.
 
 Nodem now supports the Worker Threads [API][worker-threads], for both
 synchronous and asynchronous calls. Since YottaDB and GT.M are single-threaded,
 opening and closing a connection to their database and runtime, should only be
-done once per process lifetime. Nodem's 'open' and 'close' APIs will only work
+done once per process lifetime. Nodem's `open` and `close` APIs will only work
 when called from the main thread of the process. In order to work with the
-worker threads API, you should call the Nodem 'open' API in the main thread
-before creating any worker threads, and you should call the Nodem 'close' API
+worker threads API, you should call the Nodem `open` API in the main thread
+before creating any worker threads, and you should call the Nodem `close` API
 in the main thread, after all the worker threads have exited. You will still
 need to make sure that you require Nodem in each worker thread, as well as the
 main thread, in order to have access to the Nodem API in each thread.
 
-Nodem has a 'configure' API, which will allow worker threads to change some
+Nodem has a `configure` API, which will allow worker threads to change some
 per-thread database configuration options. It can be called from the worker
 threads, or the main thread, and will allow you to change per-thread
 configuration options as often as you like. There are four configuration
-options that are now set per-thread. They can be set in the 'open' API, by the
+options that are now set per-thread. They can be set in the `open` API, by the
 main thread, before any other Nodem calls are made, or they can be set in the
-'configure' API, anytime you like, in the main thread, or in the worker
-threads. Those configuration options are: 'charset', 'mode', 'autoRelink', and
-'debug'.
+`configure` API, anytime you like, in the main thread, or in the worker
+threads. Those configuration options are: `charset`, `mode`, `autoRelink`, and
+`debug`.
 
 **NOTE:** The Nodem Developer API and User Guide [Wiki][] is in development. In
 the meantime, please refer to the Caché Node.js [API][BXJS] documentation for
@@ -105,7 +107,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.18.1 (ABI=83) [FWS]; YottaDB Version: 1.28'
+'Node.js Adaptor for YottaDB: Version: 0.19.0 (ABI=83) [FWS]; YottaDB Version: 1.28'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -154,7 +156,7 @@ undefined
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v14.6.0 at this time), as well as every version of
+through the current release (v14.7.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.
@@ -162,7 +164,7 @@ break Nodem for that version.
 In order to use the Nodem addon, you will need to have YottaDB or GT.M
 installed and configured correctly, including setting up your environment with
 the required YottaDB/GT.M environment variables, or setting the appropriate
-options in the 'open' API. Make sure you have either $ydb_dist (only applicable
+options in the `open` API. Make sure you have either $ydb_dist (only applicable
 for YottaDB) or $gtm_dist set to the root of the YottaDB/GT.M instance before
 you compile Nodem, whether manually, or via npm. You will also need to have
 Node.js installed and working.
@@ -180,7 +182,7 @@ won't affect the building of mumps.node itself. If you downloaded Nodem any
 other way, including cloning it from its github repository, then you'll have to
 build it from source. Remember to make sure that either $ydb_dist or $gtm_dist
 is set to the root of the YottaDB/GT.M instance before building Nodem. In order
-to build it, while in the root of the Nodem repository, run the 'npm install'
+to build it, while in the root of the Nodem repository, run the `npm install`
 command, e.g.
 
 ```bash
@@ -193,7 +195,7 @@ $ node-gyp rebuild 2> builderror.log
 ```
 
 In addition you will need to set a few environment variables, or set the
-appropriate configuration options in the call to the 'open' API, in order for
+appropriate configuration options in the call to the `open` API, in order for
 YottaDB/GT.M to find the Call-in table and the v4wNode.m M routine that it maps
 to. The Nodem package supplies a sample environment file, called environ. It
 has a commented out command to set $LD_LIBRARY_PATH to $gtm_dist, which you
@@ -212,12 +214,12 @@ $ echo "source ~/nodem/resources/environ" >> ~/.profile
 
 If you don't source the environ file, then you will need to put a copy of
 v4wNode.m into a directory that is specified in your $ydb_routines (only
-applicable for YottaDB) or $gtmroutines routines path, or in the 'routinesPath'
-property in your call to the 'open' API, so that YottaDB/GT.M can find it. It
+applicable for YottaDB) or $gtmroutines routines path, or in the `routinesPath`
+property in your call to the `open` API, so that YottaDB/GT.M can find it. It
 is located in the ~/nodem/src directory. Again, if you don't source the environ
 file, then you will also need to define the $ydb_ci (only applicable for
-YottaDB) or $GTMCI environment variable, or set the 'callinTable' property in
-your call to the 'open' API, and point it at the file nodem.ci, located in the
+YottaDB) or $GTMCI environment variable, or set the `callinTable` property in
+your call to the `open` API, and point it at the file nodem.ci, located in the
 ~/nodem/resources directory, e.g.
 
 ```bash
@@ -251,12 +253,12 @@ $ npm update nodem
 
 ## Important Notes ##
 
-The 'open' call works a bit differently than the Caché version; it does not
+The `open` call works a bit differently than the Caché version; it does not
 require any arguments, and will connect with the database specified in the
 environment variable $ydb_gbldir (only applicable for YottaDB) or $gtmgbldir.
 If you have more than one database and would like to connect to a different one
 than what is defined in your environment, you can pass an object, with a
-property called either 'globalDirectory' or 'namespace', defined as the path to
+property called either `globalDirectory` or `namespace`, defined as the path to
 your global directory file for that database, e.g.
 
 ```javascript
@@ -264,8 +266,8 @@ your global directory file for that database, e.g.
 ```
 
 Nodem supports setting up a custom routines path, for resolving calls to other
-M functions and procedures, via the 'routinesPath' property. Make sure that one
-of the directories in the 'routinesPath' contains the v4wNode.m routine,
+M functions and procedures, via the `routinesPath` property. Make sure that one
+of the directories in the `routinesPath` contains the v4wNode.m routine,
 located in the Nodem src directory, or its compiled object, v4wNode.o,
 otherwise Nodem will not be fully functional. This could be used to provide
 some security, by giving access only to certain routines, within a Nodem
@@ -277,8 +279,8 @@ the system in its default environment configuration, e.g.
 > ydb.open({routinesPath: `${HOME}/p/r128(${HOME}/p)`});
 ```
 
-Nodem supports setting the Call-in path directly in the 'open' call, via the
-'callinTable' property. This can be handy if you are running Nodem in an
+Nodem supports setting the Call-in path directly in the `open` call, via the
+`callinTable` property. This can be handy if you are running Nodem in an
 environment that has other software that uses the YottaDB/GT.M Call-in
 interface, and you don't want to worry about namespace issues. Nor would you
 need to set the $ydb_ci/$GTMCI environment variable, in order for NodeM to be
@@ -289,15 +291,15 @@ fully functional, e.g.
 ```
 
 You can configure Nodem to function as a [GT.CM][] client, allowing Nodem to
-connect with a remote database. In the 'open' method, you can set an
-'ipAddress', and/or a 'tcpPort' property, and Nodem will set up the environment
+connect with a remote database. In the `open` method, you can set an
+`ipAddress`, and/or a `tcpPort` property, and Nodem will set up the environment
 to connect with a YottaDB/GT.M database on a remote server that already has a
-GT.CM server running on that address and port. If only 'ipAddress' or 'tcpPort'
+GT.CM server running on that address and port. If only `ipAddress` or `tcpPort`
 is defined, the other one will be set with a default value; 127.0.0.1 for
-'ipAddress', or 6789 for 'tcpPort'. Nodem will then set the $ydb_cm_NODEM (if
+`ipAddress`, or 6789 for `tcpPort`. Nodem will then set the $ydb_cm_NODEM (if
 you are using YottaDB) or $GTCM_NODEM (if you are using GT.M) environment
 variable, for that Nodem process only, with the address and port you set in the
-'open' call, e.g.
+`open` call, e.g.
 
 ```javascript
 > ydb.open({ipAddress: '127.0.0.1', tcpPort: 6789});
@@ -312,7 +314,7 @@ brackets, e.g.
 
 You will also need to create, or modify, a global directory file that maps one
 or more database segments to a data file on the remote server you want to
-connect with, noting that the prefix to the '-file=' argument in the example
+connect with, noting that the prefix to the `-file=` argument in the example
 below must be NODEM, in order to match the $ydb_cm_NODEM/$GTCM_NODEM
 environment variable name that Nodem sets up for you, e.g.
 
@@ -322,17 +324,17 @@ GDE> change -segment DEFAULT -file=NODEM:/home/dlw/g/gtcm-server.dat
 ```
 
 Then on the server you are connecting to, make sure you have the data file set
-up at the same path that you set the '-file=' option to in the global directory
+up at the same path that you set the `-file=` option to in the global directory
 of your GT.CM client configuration, and have started the GT.CM server on the
-same IP address and port that you configured in the 'open' call in Nodem, e.g.
+same IP address and port that you configured in the `open` call in Nodem, e.g.
 
 ```bash
 $ $ydb_dist/gtcm_gnp_server -log=gtcm.log -service=6789
 ```
 
 **NOTE:** GT.CM only allows remote connections for the database access APIs,
-not the 'function' nor 'procedure' APIs. So while using Nodem in a remote GT.CM
-configuration, any calls to the 'function' or 'procedure' APIs will result in
+not the `function` nor `procedure` APIs. So while using Nodem in a remote GT.CM
+configuration, any calls to the `function` or `procedure` APIs will result in
 local calls, not remote [RPC] calls.
 
 Nodem supports two different character encodings, UTF-8 and M. It defaults to
@@ -343,14 +345,14 @@ character encoding you set in Nodem is decoupled from the underlying character
 encoding you have set up for the YottaDB/GT.M environment it is running in. So
 it is possible to work with UTF-8 encoded data in the database, while in Nodem,
 even if you haven't set up YottaDB/GT.M to work with UTF-8 directly. You can
-set it to UTF-8 mode directly by passing 'utf-8' or 'utf8', case insensitively,
-to the 'charset' property. If you'd rather work with an older byte-encoding
+set it to UTF-8 mode directly by passing `utf-8` or `utf8`, case insensitively,
+to the `charset` property. If you'd rather work with an older byte-encoding
 scheme, that stores all characters in a single byte, you can set charset to
-either 'm', 'ascii', or 'binary', case insensitively. One thing to keep in mind
+either `m`, `ascii`, or `binary`, case insensitively. One thing to keep in mind
 when you do so, is that Node.js internally stores data in UTF-16, but
 interprets data in UTF-8 in most cases. You can control this through the
 process stream encoding methods inside of your Node.js code. Call those methods
-to change the encoding to 'binary' or 'ascii', and it will interpret your data
+to change the encoding to `binary` or `ascii`, and it will interpret your data
 as a byte encoding, using the character glyphs in your current locale, e.g.
 
 ```javascript
@@ -366,11 +368,11 @@ or
 ```
 
 There are currently three different data modes that Nodem supports. The mode can
-be set to 'canonical', 'string', or 'strict'. The default is 'canonical', and
+be set to `canonical`, `string`, or `strict`. The default is `canonical`, and
 interprets data using the M canonical representation. I.e. Numbers will be
 represented numerically, rather than as strings, and numbers collate before
-strings. The other two modes, 'string' and 'strict' interpret all data as
-strings, with 'strict' mode also strictly following the API conventions set with
+strings. The other two modes, `string` and `strict` interpret all data as
+strings, with `strict` mode also strictly following the API conventions set with
 the Caché Node.js driver, e.g.
 
 ```javascript
@@ -383,8 +385,8 @@ or
 
 Nodem also has a debug tracing mode, in case something doesn't seem to be
 working right, or you want to see what happens to data as it moves through the
-Nodem APIs. It has four levels of debugging, defaulting to 'off'. The other
-debug levels are 'low', 'medium', and 'high'. You can also use the numbers 0-3.
+Nodem APIs. It has four levels of debugging, defaulting to `off`. The other
+debug levels are `low`, `medium`, and `high`. You can also use the numbers 0-3.
 The higher the debug level, the more verbose the debug output will be, e.g.
 
 ```javascript
@@ -402,10 +404,10 @@ or
 Nodem handles several common signals that are typically used to stop processes,
 by closing the database connection, resetting the controlling terminal
 configuration, and stopping the Node.js process. These signals include
-'SIGINT', 'SIGTERM', and 'SIGQUIT'. The handling of the 'SIGQUIT' signal will
+`SIGINT`, `SIGTERM`, and `SIGQUIT`. The handling of the `SIGQUIT` signal will
 also generate a core dump of the process. All three signal handlers are on by
 default. However, you can turn the signal handling on or off directly, via
-passing true or false to a 'signalHandler' object (with properties for each of
+passing true or false to a `signalHandler` object (with properties for each of
 the signals) for each individual signal, or all of them at once, e.g.
 
 ```javascript
@@ -417,12 +419,12 @@ or
 ```
 
 Nodem supports a feature called auto-relink, which will automatically relink a
-routine object containing any function or procedure called by the 'function' or
-'procedure' API. By default auto-relink is off. You can enable it in one of four
+routine object containing any function or procedure called by the `function` or
+`procedure` API. By default auto-relink is off. You can enable it in one of four
 ways. First, you can pass it as a property of the JavaScript object argument
-which is passed to the 'function' or 'procedure' API directly, with a value of
+which is passed to the `function` or `procedure` API directly, with a value of
 true, or any non-zero number. This will turn on auto-relink just for that call.
-You can also disable it, by setting 'autoRelink' to false, or 0, if it was
+You can also disable it, by setting `autoRelink` to false, or 0, if it was
 already enabled by one of the global settings, e.g.
 
 ```javascript
@@ -430,16 +432,16 @@ already enabled by one of the global settings, e.g.
 ```
 
 Second, you can enable it globally, for every thread, and for every call to the
-'function' (or 'procedure') API, by setting the same property in a JavaScript
-object passed to the 'open' API, e.g.
+`function` (or `procedure`) API, by setting the same property in a JavaScript
+object passed to the `open` API, e.g.
 
 ```javascript
 > ydb.open({autoRelink: true});
 ```
 
-Third, you can enable it globally, per-thread, for every call to the 'function'
-(or 'procedure') API, by setting the same property in a JavaScript object
-passed to the 'configure' API, e.g.
+Third, you can enable it globally, per-thread, for every call to the `function`
+(or `procedure`) API, by setting the same property in a JavaScript object
+passed to the `configure` API, e.g.
 
 ```javascript
 > ydb.configure({autoRelink: true});
@@ -461,7 +463,7 @@ Nodem's asynchronous APIs, do their work in a separate thread pool,
 pre-allocated by Node.js via libuv. By default, four threads are created, and
 will take turns executing each asynchronous call, including asynchronous calls
 from other APIs. Nodem supports setting a different value for the pre-allocated
-thread pool for asynchronous calls, in its 'open' API, up to a max of 1024, in
+thread pool for asynchronous calls, in its `open` API, up to a max of 1024, in
 the latest versions of Node.js, e.g.
 
 ```javascript
@@ -477,28 +479,28 @@ pre-allocated thread pool is.
 **NOTE:** The Node.js core worker_thread API, which also allocates threads from
 the same worker thread pool in libuv, allows complete control of creating and
 destroying threads, and does not utilize the threadpoolSize (which just sets the
-libuv environment variable 'UV_THREADPOOL_SIZE') set in the Nodem 'open' API.
+libuv environment variable `UV_THREADPOOL_SIZE`) set in the Nodem `open` API.
 
 YottaDB/GT.M changes some settings of its controlling terminal device, and
 Nodem resets them when it closes the database connection. By default, Nodem
-will restore the terminal device to the state it was in when the 'open' call
+will restore the terminal device to the state it was in when the `open` call
 was invoked. Normally this is the desired option, however, if you wish to reset
-the terminal to typically sane settings, the 'close' call allows this by
-setting the 'resetTerminal' property to true, or any non-zero number, e.g.
+the terminal to typically sane settings, the `close` call allows this by
+setting the `resetTerminal` property to true, or any non-zero number, e.g.
 
 ```javascript
 > ydb.close({resetTerminal: true});
 ```
 
-Nodem has a 'procedure' or 'routine' API, which is similar to the 'function'
+Nodem has a `procedure` or `routine` API, which is similar to the `function`
 API, except that it is used to call M procedures or subroutines, which do not
-return any values. If the 'procedure' API is called via a JavaScript object,
-then the object must contain the required 'procedure'/'routine' property, set
+return any values. If the `procedure` API is called via a JavaScript object,
+then the object must contain the required `procedure`/`routine` property, set
 to the name of the procedure/routine. It may also contain an optional property,
-called 'arguments', which is an array of arguments to pass to the
-procedure/routine. It can also be called by-position, just like the 'function'
-API. It also supports the 'autoRelink' option, just as described in the
-'function' API, e.g.
+called `arguments`, which is an array of arguments to pass to the
+procedure/routine. It can also be called by-position, just like the `function`
+API. It also supports the `autoRelink` option, just as described in the
+`function` API, e.g.
 
 ```javascript
 > ydb.procedure({procedure: 'set^v4wTest', arguments: ['dlw', 5]});
@@ -508,7 +510,7 @@ or
 > ydb.procedure('set^v4wTest', 'dlw', 5);
 ```
 
-The 'lock' API takes an optional 'timeout' argument. If you do not set a
+The `lock` API takes an optional `timeout` argument. If you do not set a
 timeout, it will wait to acquire the lock indefinitely. If you wish to come
 back from the call right away, if the lock is not available, simply pass a
 timeout argument of 0, e.g.
@@ -521,7 +523,7 @@ or
 > ydb.lock({global: 'v4wTest', timeout: 0});
 ```
 
-The 'kill' API takes an optional 'nodeOnly' argument. It can be set to true or
+The `kill` API takes an optional `nodeOnly` argument. It can be set to true or
 false, defaulting to false. If set to true, then it will only remove the node
 that is passed to it; if set to false, then it will remove the node passed to
 it, and all of its children, or the full sub-tree, e.g.
@@ -534,30 +536,30 @@ or
 > ydb.kill({local: 'v4wTest', nodeOnly: true});
 ```
 
-The 'nodeOnly' option is available when calling the 'kill' API by passing
+The `nodeOnly` option is available when calling the `kill` API by passing
 arguments in a single JavaScript object, like above, but not when passing
 arguments by-position.
 
 ## Additional Features ##
 
-Nodem provides a built-in API usage help menu. By calling the 'help' method
+Nodem provides a built-in API usage help menu. By calling the `help` method
 without an argument, Nodem will display a list of APIs and a short description
 of what they do. Calling the help method with an argument string of one of
 those APIs will display more in-depth usage information for that method.
 
 Nodem supports full M local symbol table manipulation with the current APIs. In
-order to use it, instead of defining a 'global' property in your argument
-object, you define a 'local' property. For APIs that support passing arguments
-by-position, you signify that you want them to work on a global, by using a '^'
+order to use it, instead of defining a `global` property in your argument
+object, you define a `local` property. For APIs that support passing arguments
+by-position, you signify that you want them to work on a global, by using a `^`
 as the first character of the first argument, otherwise they are working on a
 local variable. For the get and set APIs, if the first character of the first
-argument is a '$', then you are working with an intrinsic special variable
-(ISV). There is also a 'localDirectory' API, that works the same way as the
-'globalDirectory' API, except that it lists the local symbols in the symbol
+argument is a `$`, then you are working with an intrinsic special variable
+(ISV). There is also a `localDirectory` API, that works the same way as the
+`globalDirectory` API, except that it lists the local symbols in the symbol
 table, rather than the globals in the database. One caveat is that you cannot
-manipulate any local variable that begins with 'v4w', as Nodem internally uses
+manipulate any local variable that begins with `v4w`, as Nodem internally uses
 that namespace to implement the v4wNode.m integration routine. You can also
-call the 'kill' API with no arguments, and it will clear the local symbol
+call the `kill` API with no arguments, and it will clear the local symbol
 table. This functionality will allow you to call legacy M functions and
 procedures, without having to write M routine wrappers. Here is an example of
 using the local symbol table functionality to call a legacy API directly from
@@ -598,11 +600,11 @@ wish to pass arguments differently than normal. This is necessary because if
 you tried to pass an argument by-reference or by-variable directly, Node.js
 will try to dereference it as a local JavaScript variable, and you would never
 be able to refer to the right symbol in the back-end M environment. The
-structure of the specially formatted object is simple. It contains a 'type'
-property, which can be one of three values: 'reference', 'variable', or
-'value'; and it also contains a 'value' property which contains the name you
-want to use when the type is 'reference' or 'variable', and the actual data you
-want to pass if type is 'value'. The 'value' type is there for consistency, but
+structure of the specially formatted object is simple. It contains a `type`
+property, which can be one of three values: `reference`, `variable`, or
+`value`; and it also contains a `value` property which contains the name you
+want to use when the type is `reference` or `variable`, and the actual data you
+want to pass if type is `value`. The `value` type is there for consistency, but
 you would normally just pass arguments by value directly, without resorting to
 this specially formatted argument object. Here is an example of how you could
 use this functionality, while calling a legacy M API, many of which require

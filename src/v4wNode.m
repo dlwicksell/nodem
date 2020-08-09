@@ -1,4 +1,4 @@
-v4wNode() ; 0.18.1 ; Jul 29, 2020@10:30
+v4wNode() ; 0.19.0 ; Aug 08, 2020@20:21
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -455,7 +455,7 @@ kill(v4wGlvn,v4wSubs,v4wType,v4wMode)
  ;; @end kill subroutine
  ;
  ;; @function merge
- ;; @summary Merge a global or local array node to another global or local array node
+ ;; @summary Merge a global or local array tree to another global or local array tree
  ;; @param {string} v4wFromGlvn - Global or local variable to merge from
  ;; @param {string} v4wFromSubs - From subscripts represented as a string, encoded with subscript lengths
  ;; @param {string} v4wToGlvn - Global or local variable to merge to

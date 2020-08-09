@@ -51,7 +51,7 @@ using v8::Local;
 #if NODE_MAJOR_VERSION >= 3
 using v8::MaybeLocal;
 #endif
-#if NODE_MAJOR_VERSION >= 7 || NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8
+#if NODE_MAJOR_VERSION >= 6
 using v8::NewStringType;
 #endif
 using v8::Number;
@@ -674,7 +674,7 @@ Local<String> GtmValue::from_byte(gtm_char_t buffer[])
 {
     Isolate* isolate = Isolate::GetCurrent();
 
-#if NODE_MAJOR_VERSION >= 7 || NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8
+#if NODE_MAJOR_VERSION >= 6
     MaybeLocal<String> string = String::NewFromOneByte(isolate, reinterpret_cast<const uint8_t*>(buffer), NewStringType::kNormal);
 
     if (string.IsEmpty()) {
@@ -1161,6 +1161,100 @@ static Local<Value> kill(GtmBaton* gtm_baton)
 
     return scope.Escape(return_object);
 } // @end nodem::kill function
+
+/*
+ * @function {private} nodem::merge
+ * @summary Return data from a merge of a global or local array tree to another global or local array tree
+ * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {Persistent<Value>} object_p - V8 object containing the input object
+ * @member {gtm_char_t*} result - Data returned from merge call
+ * @member {bool} local - Whether the API was called on a from local variable, or a from global variable
+ * @member {bool} async - Whether the API was called asynchronously, or synchronously
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
+ * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @returns {Local<Value>} return_object - Data returned to Node.js
+ */
+static Local<Value> merge(GtmBaton* gtm_baton)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  merge enter");
+
+    Local<Object> return_object = Local<Object>::New(isolate, gtm_baton->object_p);
+
+    if (gtm_baton->gtm_state->debug > LOW) {
+        Local<Value> object_string = json_method(return_object, "stringify", gtm_baton->gtm_state);
+        debug_log(">>   object_p: ", *(UTF8_VALUE_TEMP_N(isolate, object_string)));
+
+        debug_log(">>   result: ", gtm_baton->result);
+        debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
+        debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
+    }
+
+    Local<String> json_string;
+
+    if (gtm_baton->gtm_state->utf8 == true) {
+        json_string = new_string_n(isolate, gtm_baton->result);
+    } else {
+        json_string = GtmValue::from_byte(gtm_baton->result);
+    }
+
+    uv_mutex_unlock(&mutex_g);
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  merge JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
+
+#if NODE_MAJOR_VERSION >= 1
+    TryCatch try_catch(isolate);
+#else
+    TryCatch try_catch;
+#endif
+
+    Local<Object> temp_object;
+    Local<Value> json = json_method(json_string, "parse", gtm_baton->gtm_state);
+
+    if (try_catch.HasCaught()) {
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
+        return scope.Escape(try_catch.Exception());
+    } else {
+        temp_object = to_object_n(isolate, json);
+    }
+
+    if (gtm_baton->gtm_state->mode == STRICT) {
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
+
+        if (gtm_baton->local) {
+            Local<Value> local = get_n(isolate, to_object_n(isolate,
+              get_n(isolate, return_object, new_string_n(isolate, "from"))), new_string_n(isolate, "local"));
+
+            set_n(isolate, return_object, new_string_n(isolate, "local"), local);
+        } else {
+            Local<Value> global = get_n(isolate, to_object_n(isolate,
+              get_n(isolate, return_object, new_string_n(isolate, "from"))), new_string_n(isolate, "global"));
+
+            set_n(isolate, return_object, new_string_n(isolate, "global"), global);
+        }
+
+        set_n(isolate, return_object, new_string_n(isolate, "subscripts"),
+          get_n(isolate, temp_object, new_string_n(isolate, "subscripts")));
+
+        set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "1"));
+
+        delete_n(isolate, return_object, new_string_n(isolate, "from"));
+        delete_n(isolate, return_object, new_string_n(isolate, "to"));
+    } else {
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+    }
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  merge exit");
+
+    return scope.Escape(return_object);
+} // @end nodem::merge function
 
 /*
  * @function {private} nodem::order
@@ -2358,6 +2452,7 @@ void async_after(uv_work_t* request, int status)
 #if NODEM_SIMPLE_API == 1
     if (gtm_baton->status == -1) {
         gtm_baton->callback_p.Reset();
+        gtm_baton->object_p.Reset();
         gtm_baton->arguments_p.Reset();
         gtm_baton->data_p.Reset();
 
@@ -3443,6 +3538,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "merge"))) {
         cout << "merge method:\n"
             "\tCopy an entire data tree, or sub-tree, from a global or local array, to another global or local array\n"
+            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
             "\n\tRequired arguments:\n"
             "\t{\n"
             "\t\tfrom: {\n"
@@ -5156,7 +5252,7 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& info)
 
 /*
  * @method nodem::Gtm::merge
- * @summary Merge an global or local array node to another global or local array node
+ * @summary Merge a global or local array tree to another global or local array tree
  * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
  * @returns {void}
  */
@@ -5175,7 +5271,15 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    if (info.Length() == 0) {
+    bool async = false;
+    unsigned int args_cnt = info.Length();
+
+    if (info[args_cnt - 1]->IsFunction()) {
+        --args_cnt;
+        async = true;
+    }
+
+    if (args_cnt == 0) {
         isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply an argument")));
         return;
     } else if (!info[0]->IsObject()) {
@@ -5341,224 +5445,117 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
         to_name = globalize_name(to_glvn, gtm_state);
     }
 
+    string from_gvn, from_sub, to_gvn, to_sub;
+
+    if (gtm_state->utf8 == true) {
+        from_gvn = *(UTF8_VALUE_TEMP_N(isolate, from_name));
+        from_sub = *(UTF8_VALUE_TEMP_N(isolate, from_subs));
+        to_gvn = *(UTF8_VALUE_TEMP_N(isolate, to_name));
+        to_sub = *(UTF8_VALUE_TEMP_N(isolate, to_subs));
+
+        if (gtm_state->debug > LOW) {
+            debug_log(from_name_msg, from_gvn);
+            debug_log(">> from_subscripts: ", from_sub);
+            debug_log(to_name_msg, to_gvn);
+            debug_log(">> to_subscripts: ", to_sub);
+        }
+    } else {
+        GtmValue gtm_from_name {from_name};
+        GtmValue gtm_from_subs {from_subs};
+        GtmValue gtm_to_name {to_name};
+        GtmValue gtm_to_subs {to_subs};
+
+        from_gvn = gtm_from_name.to_byte();
+        from_sub = gtm_from_subs.to_byte();
+        to_gvn = gtm_to_name.to_byte();
+        to_sub = gtm_to_subs.to_byte();
+
+        if (gtm_state->debug > LOW) {
+            debug_log(from_name_msg, from_gvn);
+            debug_log(">> from_subscripts: ", from_sub);
+            debug_log(to_name_msg, to_gvn);
+            debug_log(">> to_subscripts: ", to_sub);
+        }
+    }
+
+    GtmBaton* gtm_baton;
+    GtmBaton new_baton;
+
+    if (async) {
+        gtm_baton = new GtmBaton();
+
+        gtm_baton->callback_p.Reset(isolate, Local<Function>::Cast(info[args_cnt]));
+
+        gtm_baton->error = new gtm_char_t[ERR_LEN];
+        gtm_baton->result = new gtm_char_t[RES_LEN];
+    } else {
+        gtm_baton = &new_baton;
+
+        gtm_baton->callback_p.Reset();
+
+        gtm_baton->error = gtm_state->error;
+        gtm_baton->result = gtm_state->result;
+    }
+
+    gtm_baton->request.data = gtm_baton;
+    gtm_baton->object_p.Reset(isolate, arg_object);
+    gtm_baton->arguments_p.Reset(isolate, Undefined(isolate));
+    gtm_baton->data_p.Reset(isolate, Undefined(isolate));
+    gtm_baton->name = from_gvn;
+    gtm_baton->args = from_sub;
+    gtm_baton->to_name = to_gvn;
+    gtm_baton->to_args = to_sub;
+    gtm_baton->mode = gtm_state->mode;
+    gtm_baton->async = async;
+    gtm_baton->local = from_local;
+    gtm_baton->status = 0;
+    gtm_baton->gtm_function = &gtm::merge;
+    gtm_baton->ret_function = &nodem::merge;
+    gtm_baton->gtm_state = gtm_state;
+
     if (gtm_state->debug > OFF)
         debug_log(">  call into " NODEM_DB);
 
     if (gtm_state->debug > LOW)
         debug_log(">>   mode: ", gtm_state->mode);
 
-    gtm_status_t stat_buf;
-    gtm_char_t merge[] = "merge";
-
-    static gtm_char_t ret_buf[RES_LEN];
-
-#if NODEM_CIP_API == 1
-    ci_name_descriptor access;
-
-    access.rtn_name.address = merge;
-    access.rtn_name.length = strlen(merge);
-    access.handle = NULL;
-
-    if (gtm_state->utf8 == true) {
-        if (gtm_state->debug > LOW) {
-            debug_log(from_name_msg, *(UTF8_VALUE_TEMP_N(isolate, from_name)));
-            debug_log(">> from_subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, from_subs)));
-            debug_log(to_name_msg, *(UTF8_VALUE_TEMP_N(isolate, to_name)));
-            debug_log(">> to_subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, to_subs)));
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_cip(&access, ret_buf, *(UTF8_VALUE_TEMP_N(isolate, from_name)), *(UTF8_VALUE_TEMP_N(isolate, from_subs)),
-          *(UTF8_VALUE_TEMP_N(isolate, to_name)), *(UTF8_VALUE_TEMP_N(isolate, to_subs)), gtm_state->mode);
-    } else {
-        GtmValue gtm_from_name {from_name};
-        GtmValue gtm_from_subs {from_subs};
-        GtmValue gtm_to_name {to_name};
-        GtmValue gtm_to_subs {to_subs};
-
-        if (gtm_state->debug > LOW) {
-            debug_log(from_name_msg, gtm_from_name.to_byte());
-            debug_log(">> from_subscripts: ", gtm_from_subs.to_byte());
-            debug_log(to_name_msg, gtm_to_name.to_byte());
-            debug_log(">> to_subscripts: ", gtm_to_subs.to_byte());
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_cip(&access, ret_buf, gtm_from_name.to_byte(), gtm_from_subs.to_byte(),
-          gtm_to_name.to_byte(), gtm_to_subs.to_byte(), gtm_state->mode);
-    }
+    if (async) {
+#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+        uv_queue_work(GetCurrentEventLoop(isolate), &gtm_baton->request, async_work, async_after);
 #else
-    if (gtm_state->utf8 == true) {
-        if (gtm_state->debug > LOW) {
-            debug_log(from_name_msg, *(UTF8_VALUE_TEMP_N(isolate, from_name)));
-            debug_log(">> from_subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, from_subs)));
-            debug_log(to_name_msg, *(UTF8_VALUE_TEMP_N(isolate, to_name)));
-            debug_log(">> to_subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, to_subs)));
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_ci(merge, ret_buf, *(UTF8_VALUE_TEMP_N(isolate, from_name)), *(UTF8_VALUE_TEMP_N(isolate, from_subs)),
-          *(UTF8_VALUE_TEMP_N(isolate, to_name)), *(UTF8_VALUE_TEMP_N(isolate, to_subs)), gtm_state->mode);
-    } else {
-        GtmValue gtm_from_name {from_name};
-        GtmValue gtm_from_subs {from_subs};
-        GtmValue gtm_to_name {to_name};
-        GtmValue gtm_to_subs {to_subs};
-
-        if (gtm_state->debug > LOW) {
-            debug_log(from_name_msg, gtm_from_name.to_byte());
-            debug_log(">> from_subscripts: ", gtm_from_subs.to_byte());
-            debug_log(to_name_msg, gtm_to_name.to_byte());
-            debug_log(">> to_subscripts: ", gtm_to_subs.to_byte());
-        }
-
-        uv_mutex_lock(&mutex_g);
-
-        if (gtm_state->debug > LOW) {
-            if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
-                char error[BUFSIZ];
-                cerr << strerror_r(errno, error, BUFSIZ);
-            }
-
-            flockfile(stderr);
-        }
-
-        stat_buf = gtm_ci(merge, ret_buf, gtm_from_name.to_byte(), gtm_from_subs.to_byte(),
-          gtm_to_name.to_byte(), gtm_to_subs.to_byte(), gtm_state->mode);
-    }
+        uv_queue_work(uv_default_loop(), &gtm_baton->request, async_work, async_after);
 #endif
 
-    if (gtm_state->debug > LOW) {
-        funlockfile(stderr);
+        if (gtm_state->debug > OFF)
+            debug_log(">  Gtm::merge exit\n");
 
-        if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
-            char error[BUFSIZ];
-            cerr << strerror_r(errno, error, BUFSIZ);
-        }
-    }
-
-    if (gtm_state->debug > LOW)
-        debug_log(">>   stat_buf: ", stat_buf);
-
-    if (stat_buf != EXIT_SUCCESS) {
-        gtm_char_t msg_buf[ERR_LEN];
-        gtm_zstatus(msg_buf, ERR_LEN);
-
-        uv_mutex_unlock(&mutex_g);
-
-        info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
+        info.GetReturnValue().Set(Undefined(isolate));
         return;
     }
+
+    gtm_baton->status = gtm::merge(gtm_baton);
 
     if (gtm_state->debug > OFF)
         debug_log(">  return from " NODEM_DB);
 
-    Local<String> json_string;
+    if (gtm_baton->status != EXIT_SUCCESS) {
+        info.GetReturnValue().Set(error_status(gtm_baton->error, false, async, gtm_state));
 
-    if (gtm_state->utf8 == true) {
-        json_string = new_string_n(isolate, ret_buf);
-    } else {
-        json_string = GtmValue::from_byte(ret_buf);
-    }
+        gtm_baton->object_p.Reset();
+        gtm_baton->arguments_p.Reset();
+        gtm_baton->data_p.Reset();
 
-    uv_mutex_unlock(&mutex_g);
-
-    if (gtm_state->debug > OFF)
-        debug_log(">  Gtm::merge JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
-
-#if NODE_MAJOR_VERSION >= 1
-    TryCatch try_catch(isolate);
-#else
-    TryCatch try_catch;
-#endif
-
-    Local<Object> temp_object;
-    Local<Value> json = json_method(json_string, "parse", gtm_state);
-
-    if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
-        info.GetReturnValue().Set(try_catch.Exception());
         return;
-    } else {
-        temp_object = to_object_n(isolate, json);
     }
 
-    Local<Object> return_object = Object::New(isolate);
+    if (gtm_state->debug > LOW)
+        debug_log(">>   call into merge");
 
-    if (gtm_state->mode == STRICT) {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
+    Local<Value> return_object = nodem::merge(gtm_baton);
 
-        if (from_local) {
-            set_n(isolate, return_object, new_string_n(isolate, "local"), from_name);
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "global"), localize_name(from_glvn, gtm_state));
-        }
-
-        if (!from_subscripts->IsUndefined() || !to_subscripts->IsUndefined()) {
-            Local<Value> temp_subscripts = get_n(isolate, temp_object, new_string_n(isolate, "subscripts"));
-
-            if (!temp_subscripts->IsUndefined()) {
-                set_n(isolate, return_object, new_string_n(isolate, "subscripts"), temp_subscripts);
-            } else {
-                if (!from_subscripts->IsUndefined()) {
-                    set_n(isolate, return_object, new_string_n(isolate, "subscripts"), from_subscripts);
-                } else {
-                    set_n(isolate, return_object, new_string_n(isolate, "subscripts"), to_subscripts);
-                }
-            }
-        }
-
-        set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "1"));
-    } else {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-
-        if (from_local) {
-            set_n(isolate, from, new_string_n(isolate, "local"), from_name);
-        } else {
-            set_n(isolate, from, new_string_n(isolate, "global"), localize_name(from_glvn, gtm_state));
-        }
-
-        set_n(isolate, return_object, new_string_n(isolate, "from"), from);
-
-        if (to_local) {
-            set_n(isolate, to, new_string_n(isolate, "local"), to_name);
-        } else {
-            set_n(isolate, to, new_string_n(isolate, "global"), localize_name(to_glvn, gtm_state));
-        }
-
-        set_n(isolate, return_object, new_string_n(isolate, "to"), to);
-        set_n(isolate, return_object, new_string_n(isolate, "result"), Number::New(isolate, 1));
-    }
+    gtm_baton->object_p.Reset();
+    gtm_baton->arguments_p.Reset();
+    gtm_baton->data_p.Reset();
 
     info.GetReturnValue().Set(return_object);
 
@@ -8697,7 +8694,7 @@ void Gtm::New(const FunctionCallbackInfo<Value>& info)
         GtmState* gtm_state = reinterpret_cast<GtmState*>(info.Data().As<External>()->Value());
         Local<Function> constructor = Local<Function>::New(isolate, gtm_state->constructor_p);
 
-#if NODE_MAJOR_VERSION >=7 || NODE_MAJOR_VERSION == 6 && NODE_MINOR_VERSION >= 8
+#if NODE_MAJOR_VERSION >= 6
         MaybeLocal<Object> instance = constructor->NewInstance(isolate->GetCurrentContext());
 
         if (instance.IsEmpty()) {
@@ -8783,8 +8780,9 @@ void Gtm::Init(Local<Object> exports)
     Local<Function> constructor = Local<Function>::New(isolate, gtm_state->constructor_p);
 
     set_n(isolate, exports, new_string_n(isolate, "Gtm"), constructor);
-    if (strncmp(NODEM_DB, "YottaDB", 7) == 0)
-        set_n(isolate, exports, new_string_n(isolate, "Ydb"), constructor);
+#if NODEM_YDB == 1
+    set_n(isolate, exports, new_string_n(isolate, "Ydb"), constructor);
+#endif
 
     return;
 } // @end nodem::Gtm::Init method
