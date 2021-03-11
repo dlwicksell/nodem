@@ -1,5 +1,11 @@
 # NodeM Release Notes #
 
+## v0.20.0 - 2021 Mar 10 ##
+
+- Add transaction processing API
+- Add transaction.js example program
+- Make various improvements
+
 ## v0.19.0 - 2020 Aug 8 ##
 
 - Add full asynchronous support to the merge API

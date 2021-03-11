@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2020 Fourth Watch Software LC
+ * Copyright © 2018-2021 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -944,7 +944,8 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
 
     gtm_status_t stat_buf;
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -990,7 +991,8 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   gtm::version exit");
@@ -1028,7 +1030,8 @@ gtm_status_t merge(nodem::GtmBaton* gtm_baton)
 
     gtm_status_t stat_buf;
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -1076,7 +1079,8 @@ gtm_status_t merge(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   gtm::merge exit");
@@ -1112,7 +1116,8 @@ gtm_status_t function(nodem::GtmBaton* gtm_baton)
 
     gtm_status_t stat_buf;
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -1160,7 +1165,8 @@ gtm_status_t function(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   gtm::function exit");
@@ -1195,7 +1201,8 @@ gtm_status_t procedure(nodem::GtmBaton* gtm_baton)
 
     gtm_status_t stat_buf;
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -1241,7 +1248,8 @@ gtm_status_t procedure(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   gtm::procedure exit");

@@ -2,7 +2,7 @@
  * zwrite.js - A zwrite clone
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2016,2018,2020 Fourth Watch Software LC
+ * Copyright © 2012-2016,2018,2020-2021 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -41,12 +41,12 @@
  */
 
 process.on('uncaughtException', function(err) {
-    gtm.close();
     console.trace('Uncaught Exception:\n', err);
+    nodem.close();
     process.exit(1);
 });
 
-var gtm = require('../lib/nodem').Gtm();
+var nodem = require('../lib/nodem.js').Gtm();
 
 var charset = 'utf-8',
     command,
@@ -90,7 +90,7 @@ process.argv.forEach(function(argument) {
     }
 });
 
-gtm.open({mode: mode, charset: charset, debug: debug});
+nodem.open({mode: mode, charset: charset, debug: debug});
 
 if (process.env.ydb_routines !== undefined) {
     process.env.ydb_routines = '. ' + process.env.ydb_routines;
@@ -104,10 +104,10 @@ if (process.env.gtmroutines !== undefined) {
     process.env.gtmroutines = '.';
 }
 
-var version = gtm.version();
+var version = nodem.version();
 
 if (typeof version === 'object') {
-    gtm.close();
+    nodem.close();
     console.log(version.ErrorMessage || version.errorMessage);
     process.exit(1);
 }
@@ -118,7 +118,7 @@ if (fast) {
     var fd = fs.openSync('v4wTest.m', 'w');
 
     fs.writeSync(fd, code);
-    var result = gtm.function({function: 'zwrite^v4wTest', arguments: [global]});
+    var result = nodem.function({function: 'zwrite^v4wTest', arguments: [global]});
 
     fs.closeSync(fd);
     fs.unlinkSync('v4wTest.m');
@@ -131,13 +131,13 @@ if (fast) {
     var pre = '';
     if (global[0] != '^') pre = '^';
 
-    if (gtm.data({global: global}).defined % 2) {
-        node = gtm.get({global: global});
+    if (nodem.data({global: global}).defined % 2) {
+        node = nodem.get({global: global});
         console.log(pre + global + '=' + JSON.stringify(node.data));
     }
 
     while (true) {
-        node = gtm.nextNode({global: global, subscripts: node.subscripts});
+        node = nodem.nextNode({global: global, subscripts: node.subscripts});
 
         if (!node.defined) break;
 
@@ -145,5 +145,5 @@ if (fast) {
     }
 }
 
-gtm.close();
+nodem.close();
 process.exit(0);

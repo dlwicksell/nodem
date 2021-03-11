@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2020 Fourth Watch Software LC
+ * Copyright © 2018-2021 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -211,7 +211,8 @@ ydb_status_t data(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   call using SimpleAPI");
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_data_s(&glvn, subs_size, subs_array, ret_value);
 
@@ -221,7 +222,8 @@ ydb_status_t data(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (int len = snprintf(gtm_baton->result, sizeof(int), "%u", *ret_value) < 0) {
         char error[BUFSIZ];
@@ -304,7 +306,8 @@ ydb_status_t get(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   call using SimpleAPI");
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_get_s(&glvn, subs_size, subs_array, &value);
 
@@ -314,7 +317,8 @@ ydb_status_t get(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(gtm_baton->result, value.buf_addr, value.len_used);
     gtm_baton->result[value.len_used] = '\0';
@@ -393,7 +397,8 @@ ydb_status_t set(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   call using SimpleAPI");
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_set_s(&glvn, subs_size, subs_array, &data_node);
 
@@ -403,7 +408,8 @@ ydb_status_t set(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (change_isv) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
@@ -464,7 +470,8 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->name == "") {
         ydb_buffer_t subs_array[1] = {8, 8, (char*) "v4wDebug"};
 
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_delete_excl_s(1, subs_array);
     } else {
@@ -484,7 +491,8 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
 
         int delete_type = gtm_baton->node_only == 1 ? YDB_DEL_NODE : YDB_DEL_TREE;
 
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_delete_s(&glvn, subs_size, subs_array, delete_type);
     }
@@ -495,7 +503,8 @@ ydb_status_t kill(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (change_isv) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);
@@ -575,14 +584,16 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
         unsigned int  temp_value = 0;
         unsigned int* ret_value = &temp_value;
 
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
 
         if (gtm_baton->gtm_state->debug > nodem::LOW)
             nodem::debug_log(">>   stat_buf: ", stat_buf);
 
-        uv_mutex_unlock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_unlock(&nodem::mutex_g);
 
         if (stat_buf == YDB_OK && *ret_value == 0) {
             gtm_baton->result[0] = '\0';
@@ -596,7 +607,8 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
 
     ydb_status_t stat_buf;
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
 
@@ -606,13 +618,15 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
         glvn.len_alloc = glvn.len_used = strlen(value.buf_addr);
         glvn.buf_addr = value.buf_addr;
 
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
 
@@ -622,7 +636,8 @@ ydb_status_t order(nodem::GtmBaton* gtm_baton)
         if (stat_buf != YDB_OK)
             ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-        uv_mutex_unlock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_unlock(&nodem::mutex_g);
 
         if (value.len_used == 0)
             break;
@@ -709,14 +724,16 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
         unsigned int  temp_value = 0;
         unsigned int* ret_value = &temp_value;
 
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
 
         if (gtm_baton->gtm_state->debug > nodem::LOW)
             nodem::debug_log(">>   stat_buf: ", stat_buf);
 
-        uv_mutex_unlock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_unlock(&nodem::mutex_g);
 
         if (stat_buf == YDB_OK && *ret_value == 0) {
             gtm_baton->result[0] = '\0';
@@ -730,7 +747,8 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
 
     ydb_status_t stat_buf;
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
 
@@ -740,13 +758,15 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
         glvn.len_alloc = glvn.len_used = strlen(value.buf_addr);
         glvn.buf_addr = value.buf_addr;
 
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
 
@@ -756,7 +776,8 @@ ydb_status_t previous(nodem::GtmBaton* gtm_baton)
         if (stat_buf != YDB_OK)
             ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-        uv_mutex_unlock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_unlock(&nodem::mutex_g);
 
         if (value.len_used == 0)
             break;
@@ -838,7 +859,8 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   call using SimpleAPI");
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     for (int i = 0; i < YDB_MAX_SUBS; i++) {
         ret_array[i].len_alloc = YDB_MAX_STR;
@@ -856,7 +878,8 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK) {
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-        uv_mutex_unlock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_unlock(&nodem::mutex_g);
 
         if (gtm_baton->gtm_state->debug > nodem::LOW)
             nodem::debug_log(">>   ydb::next_node exit");
@@ -870,7 +893,8 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
             gtm_baton->subs_array.push_back(ret_array[i].buf_addr);
         }
     } else {
-        uv_mutex_unlock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_unlock(&nodem::mutex_g);
 
         gtm_baton->result[0] = '\0';
         return YDB_NODE_END;
@@ -891,7 +915,8 @@ ydb_status_t next_node(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(gtm_baton->result, value.buf_addr, value.len_used);
     gtm_baton->result[value.len_used] = '\0';
@@ -969,7 +994,8 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   call using SimpleAPI");
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     for (int i = 0; i < YDB_MAX_SUBS; i++) {
         ret_array[i].len_alloc = YDB_MAX_STR;
@@ -987,7 +1013,8 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK) {
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-        uv_mutex_unlock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_unlock(&nodem::mutex_g);
 
         if (gtm_baton->gtm_state->debug > nodem::LOW)
             nodem::debug_log(">>   ydb::previous_node exit");
@@ -1019,7 +1046,8 @@ ydb_status_t previous_node(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (subs_size == 0 || stat_buf == YDB_ERR_GVUNDEF || stat_buf == YDB_ERR_LVUNDEF) {
         gtm_baton->result[0] = '\0';
@@ -1116,7 +1144,8 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   call using SimpleAPI");
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_incr_s(&glvn, subs_size, subs_array, &incr, &value);
 
@@ -1126,7 +1155,8 @@ ydb_status_t increment(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(gtm_baton->result, value.buf_addr, value.len_used);
     gtm_baton->result[value.len_used] = '\0';
@@ -1208,11 +1238,13 @@ ydb_status_t lock(nodem::GtmBaton* gtm_baton)
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   call using SimpleAPI");
 
-    uv_mutex_lock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_lock(&nodem::mutex_g);
 
     ydb_status_t stat_buf = ydb_lock_incr_s(timeout, &glvn, subs_size, subs_array);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (gtm_baton->gtm_state->debug > nodem::LOW)
         nodem::debug_log(">>   stat_buf: ", stat_buf);
@@ -1282,7 +1314,8 @@ ydb_status_t unlock(nodem::GtmBaton* gtm_baton)
         nodem::debug_log(">>   call using SimpleAPI");
 
     if (gtm_baton->name == "") {
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_lock_s(0, 0);
     } else {
@@ -1300,7 +1333,8 @@ ydb_status_t unlock(nodem::GtmBaton* gtm_baton)
             subs_array[i].buf_addr = (char*) gtm_baton->subs_array[i].c_str();
         }
 
-        uv_mutex_lock(&nodem::mutex_g);
+        if (gtm_baton->gtm_state->tp_level == 0)
+            uv_mutex_lock(&nodem::mutex_g);
 
         stat_buf = ydb_lock_decr_s(&glvn, subs_size, subs_array);
     }
@@ -1311,7 +1345,8 @@ ydb_status_t unlock(nodem::GtmBaton* gtm_baton)
     if (stat_buf != YDB_OK)
         ydb_zstatus(gtm_baton->error, ERR_LEN);
 
-    uv_mutex_unlock(&nodem::mutex_g);
+    if (gtm_baton->gtm_state->tp_level == 0)
+        uv_mutex_unlock(&nodem::mutex_g);
 
     if (change_isv) {
         ydb_status_t set_stat = extended_ref(gtm_baton, save_result, change_isv);

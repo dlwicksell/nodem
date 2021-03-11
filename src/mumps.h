@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2015-2020 Fourth Watch Software LC
+ * Copyright © 2015-2021 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -62,7 +62,7 @@ extern "C" {
 #endif
 
 #define NODEM_MAJOR_VERSION 0
-#define NODEM_MINOR_VERSION 19
+#define NODEM_MINOR_VERSION 20
 #define NODEM_PATCH_VERSION 0
 
 #define NODEM_STRING(number) NODEM_STRINGIFY(number)
@@ -118,6 +118,7 @@ extern enum debug_t debug_g;
  * @method {class} {private} increment
  * @method {class} {private} lock
  * @method {class} {private} unlock
+ * @method {class} {private} transaction
  * @method {class} {private} function
  * @method {class} {private} procedure
  * @method {class} {private} global_directory
@@ -125,6 +126,10 @@ extern enum debug_t debug_g;
  * @method {class} {private} retrieve
  * @method {class} {private} update
  * @method {class} {private} New
+ * @method {class} {private} restart
+ * @method {class} {private} rollback
+ * @member {int} {private} tp_restart
+ * @member {int} {private} tp_rollback
  */
 class Gtm : public node::ObjectWrap {
 public:
@@ -164,6 +169,9 @@ private:
     static void increment(const v8::FunctionCallbackInfo<v8::Value>&);
     static void lock(const v8::FunctionCallbackInfo<v8::Value>&);
     static void unlock(const v8::FunctionCallbackInfo<v8::Value>&);
+#if NODEM_SIMPLE_API == 1
+    static void transaction(const v8::FunctionCallbackInfo<v8::Value>&);
+#endif
     static void function(const v8::FunctionCallbackInfo<v8::Value>&);
     static void procedure(const v8::FunctionCallbackInfo<v8::Value>&);
     static void global_directory(const v8::FunctionCallbackInfo<v8::Value>&);
@@ -172,6 +180,14 @@ private:
     static void update(const v8::FunctionCallbackInfo<v8::Value>&);
 
     static void New(const v8::FunctionCallbackInfo<v8::Value>&);
+
+#if NODEM_SIMPLE_API == 1
+    static void restart(v8::Local<v8::String>, const v8::PropertyCallbackInfo<v8::Value>&);
+    static void rollback(v8::Local<v8::String>, const v8::PropertyCallbackInfo<v8::Value>&);
+
+    int tp_restart = YDB_TP_RESTART;
+    int tp_rollback = YDB_TP_ROLLBACK;
+#endif
 }; // @end nodem::Gtm class
 
 /*
@@ -181,9 +197,9 @@ private:
  * @destructor ~GtmValue
  * @method {instance} to_byte
  * @method {class} from_byte
- * @method {Local<String>} value
- * @method {int} size
- * @method {uint8_t*} buffer
+ * @member {Local<String>} value
+ * @member {int} size
+ * @member {uint8_t*} buffer
  */
 class GtmValue {
 public:
@@ -259,6 +275,8 @@ public:
 #endif
         utf8 {utf8_g},
         auto_relink {auto_relink_g},
+        tp_level {0},
+        tp_restart {0},
         mode {mode_g},
         debug {debug_g}
     {
@@ -291,6 +309,8 @@ public:
     bool                         auto_relink;
     pid_t                        pid;
     pid_t                        tid;
+    short                        tp_level;
+    short                        tp_restart;
     gtm_char_t                   error[ERR_LEN];
     gtm_char_t                   result[RES_LEN];
     enum mode_t                  mode;

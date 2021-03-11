@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2020 Fourth Watch Software LC
+ * Copyright © 2012-2021 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -32,6 +32,7 @@
 
 #include <algorithm>
 
+using node::ObjectWrap;
 #if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
 using node::AddEnvironmentCleanupHook;
 using node::GetCurrentEventLoop;
@@ -39,6 +40,9 @@ using node::GetCurrentEventLoop;
 
 using v8::Array;
 using v8::Boolean;
+using v8::Context;
+using v8::DEFAULT;
+using v8::DontDelete;
 using v8::EscapableHandleScope;
 using v8::Exception;
 using v8::External;
@@ -56,16 +60,15 @@ using v8::NewStringType;
 #endif
 using v8::Number;
 using v8::Object;
+using v8::PropertyCallbackInfo;
 using v8::String;
 using v8::TryCatch;
 using v8::Value;
 
 using std::cerr;
 using std::cout;
-using std::clog;
 using std::endl;
 using std::string;
-using std::stringstream;
 using std::vector;
 
 /*
@@ -607,9 +610,10 @@ static vector<string> build_subscripts(const Local<Value> subscripts, bool& erro
 
     string subs_data;
     vector<string> subs_array;
+    Local<Value> data;
 
     for (unsigned int i = 0; i < length; i++) {
-        Local<Value> data = get_n(isolate, subscripts_array, i);
+        data = get_n(isolate, subscripts_array, i);
 
         if (data->IsSymbol() || data->IsSymbolObject() || data->IsObject() || data->IsArray()) {
             error = true;
@@ -739,6 +743,7 @@ static Local<Value> version(GtmBaton* gtm_baton)
  * @function {private} nodem::data
  * @summary Check if global or local node has data and/or children or not
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from data call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -762,6 +767,7 @@ static Local<Value> data(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   result: ", gtm_baton->result);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
@@ -852,7 +858,7 @@ static Local<Value> data(GtmBaton* gtm_baton)
  * @function {private} nodem::get
  * @summary Return data from a global or local node, or an intrinsic special variable
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_status_t} status - Return code; 0 is success, 1 is undefined node
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from get call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -992,6 +998,7 @@ static Local<Value> get(GtmBaton* gtm_baton)
  * @function {private} nodem::set
  * @summary Return data about the store of a global or local node, or an intrinsic special variable
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
@@ -1015,6 +1022,7 @@ static Local<Value> set(GtmBaton* gtm_baton)
     Local<Value> data_value = Local<Value>::New(isolate, gtm_baton->data_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
         debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
@@ -1080,6 +1088,7 @@ static Local<Value> set(GtmBaton* gtm_baton)
  * @function {private} nodem::kill
  * @summary Return data about removing a global or global node, or a local or local node, or the entire local symbol table
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
@@ -1102,6 +1111,7 @@ static Local<Value> kill(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
         debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
@@ -1260,6 +1270,7 @@ static Local<Value> merge(GtmBaton* gtm_baton)
  * @function {private} nodem::order
  * @summary Return data about the next global or local node at the same level
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from order call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -1283,6 +1294,7 @@ static Local<Value> order(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   result: ", gtm_baton->result);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
@@ -1387,6 +1399,7 @@ static Local<Value> order(GtmBaton* gtm_baton)
  * @function {private} nodem::previous
  * @summary Return data about the previous global or local node at the same level
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from previous call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -1410,6 +1423,7 @@ static Local<Value> previous(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   result: ", gtm_baton->result);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
@@ -1514,7 +1528,7 @@ static Local<Value> previous(GtmBaton* gtm_baton)
  * @function {private} nodem::next_node
  * @summary Return the next global or local node, depth first
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_status_t} status - Return code; 0 is success, 1 is undefined node
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from next_node call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -1683,7 +1697,7 @@ static Local<Value> next_node(GtmBaton* gtm_baton)
  * @function {private} nodem::previous_node
  * @summary Return the previous global or local node, depth first
  * @param {GtmBaton*} gtm_baton - struct containing the following members
- * @member {gtm_status_t} status - Return code; 0 is success, 1 is undefined node
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from previous_node call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -1855,6 +1869,7 @@ static Local<Value> previous_node(GtmBaton* gtm_baton)
  * @function {private} nodem::increment
  * @summary Return the value of an incremented or decremented number in a global or local node
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from increment call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -1878,6 +1893,7 @@ static Local<Value> increment(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   result: ", gtm_baton->result);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
@@ -1976,6 +1992,7 @@ static Local<Value> increment(GtmBaton* gtm_baton)
  * @function {private} nodem::lock
  * @summary Return data about an incremental lock of a global or local node
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {gtm_char_t*} result - Data returned from lock call
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -1999,6 +2016,7 @@ static Local<Value> lock(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   result: ", gtm_baton->result);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
@@ -2114,6 +2132,7 @@ static Local<Value> lock(GtmBaton* gtm_baton)
  * @function {private} nodem::unlock
  * @summary Return data about unlocking a global or local node, or releasing all locks
  * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @member {gtm_status_t} status - Return code; 0 is success, anything else is an error or message
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
@@ -2135,6 +2154,7 @@ static Local<Value> unlock(GtmBaton* gtm_baton)
     Local<Value> subscripts = Local<Value>::New(isolate, gtm_baton->arguments_p);
 
     if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   status: ", gtm_baton->status);
         debug_log(">>   position: ", std::boolalpha, gtm_baton->position);
         debug_log(">>   local: ", std::boolalpha, gtm_baton->local);
         debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
@@ -2376,19 +2396,88 @@ static Local<Value> procedure(GtmBaton* gtm_baton)
     return scope.Escape(return_object);
 } // @end nodem::procedure function
 
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODEM_SIMPLE_API == 1
 /*
- * @function {private} nodem::cleanup_gtm
- * @summary Delete heap resources after worker threads exit
- * @param {void*} class_name - The class instance to delete
- * @returns {void}
+ * @function {private} nodem::transaction
+ * @summary Call a JavaScript function within a YottaDB transaction
+ * @param {void*} data - Cast in to a GtmBaton struct containing the following members
+ * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @returns {Local<Value>} return_object - Data returned to Node.js
  */
-inline static void cleanup_gtm(void* class_name)
+static int transaction(void *data)
 {
-  delete static_cast<Gtm*>(class_name);
-  return;
-} // @end nodem::cleanup_gtm
+    Isolate* isolate = Isolate::GetCurrent();
+    Local<Context> context = isolate->GetCurrentContext();
 
+    GtmBaton* gtm_baton = (GtmBaton*) data;
+
+    if (gtm_baton->gtm_state->debug > OFF)
+        debug_log(">  transaction enter");
+
+    if (gtm_baton->gtm_state->debug > LOW) {
+        debug_log(">>   tp_level: ", gtm_baton->gtm_state->tp_level);
+        debug_log(">>   tp_restart: ", gtm_baton->gtm_state->tp_restart);
+    }
+
+    if (gtm_baton->gtm_state->tp_restart == 3) {
+        gtm_baton->gtm_state->tp_restart = 0;
+
+        if (gtm_baton->gtm_state->debug > OFF)
+            debug_log(">  transaction exit: max restart");
+
+        return YDB_TP_ROLLBACK;
+    }
+
+    TryCatch try_catch(isolate);
+
+    MaybeLocal<Value> maybe_value = Local<Function>::New(isolate, gtm_baton->callback_p)->Call(context, Null(isolate), 0, NULL);
+
+    if (maybe_value.IsEmpty() || try_catch.HasCaught()) {
+        cerr << *(UTF8_VALUE_TEMP_N(isolate, to_string_n(isolate, try_catch.Exception()))) << endl;
+
+        try_catch.Reset();
+
+        if (gtm_baton->gtm_state->tp_level == 1)
+            gtm_baton->gtm_state->tp_restart = 0;
+
+        if (gtm_baton->gtm_state->debug > OFF)
+            debug_log(">  transaction exit: error thrown");
+
+        return YDB_TP_ROLLBACK;
+    } else {
+        if (maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "Rollback")) ||
+          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "rollback")) ||
+          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "ROLLBACK"))) {
+            gtm_baton->gtm_state->tp_restart = 0;
+
+            if (gtm_baton->gtm_state->debug > OFF)
+                debug_log(">  transaction exit: rollback");
+
+            return YDB_TP_ROLLBACK;
+        } else if (maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "Restart")) ||
+          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "restart")) ||
+          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "RESTART"))) {
+            if (gtm_baton->gtm_state->tp_level == 1)
+                gtm_baton->gtm_state->tp_restart++;
+
+            if (gtm_baton->gtm_state->debug > OFF)
+                debug_log(">  transaction exit: restart");
+
+            return YDB_TP_RESTART;
+        }
+
+        gtm_baton->gtm_state->tp_restart = 0;
+
+        if (gtm_baton->gtm_state->debug > OFF)
+            debug_log(">  transaction exit: commit");
+
+        return YDB_OK;
+    }
+} // @end nodem::transaction function
+#endif
+
+#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
 /*
  * @function {private} nodem::cleanup_gtm_state
  * @summary Delete heap resources after worker threads exit
@@ -3147,7 +3236,8 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
     if (has_n(isolate, arg_object, new_string_n(isolate, "debug"))) {
         gtm_status_t stat_buf;
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         gtm_char_t debug[] = "debug";
 
@@ -3170,13 +3260,15 @@ void Gtm::configure(const FunctionCallbackInfo<Value>& info)
             gtm_char_t msg_buf[ERR_LEN];
             gtm_zstatus(msg_buf, ERR_LEN);
 
-            uv_mutex_unlock(&mutex_g);
+            if (gtm_state->tp_level == 0)
+                uv_mutex_unlock(&mutex_g);
 
             info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
             return;
         }
 
-        uv_mutex_unlock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_unlock(&mutex_g);
     }
 
     Local<Object> result = Object::New(isolate);
@@ -3356,7 +3448,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t}\n"
             "\n\tReturns on failure:\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\t- Failures from bad environment set-ups result in internal errors from " NODEM_DB "\n"
+            "\t- Failures from bad environment configurations result in internal errors from " NODEM_DB "\n"
             "\n\tFor more information about the open method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "configure"))) {
@@ -3379,7 +3471,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t}\n"
             "\n\tReturns on failure:\n"
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\t- Failures from bad environment set-ups result in internal errors from " NODEM_DB "\n"
+            "\t- Failures from bad environment configurations result in internal errors from " NODEM_DB "\n"
             "\n\tFor more information about the configure method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "close"))) {
@@ -3803,6 +3895,32 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
             "\n\tFor more information about the unlock method, please refer to the README.md file\n"
             << endl;
+#if NODEM_SIMPLE_API == 1
+    } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "transaction"))) {
+        cout << "transaction method:\n"
+            "\tRun a JavaScript function containing Nodem API calls as an ACID transaction in YottaDB - synchronous only\n"
+            "\n\tRequired arguments: {function} - A JavaScript function which will be run in a YottaDB transaction\n"
+            "\n\tOptional arguments - via object:\n"
+            "\t{\n"
+            "\t\tvariables:\t{optional} {array {string}},\n"
+            "\t\ttype:\t\t{optional} {string} [Batch|batch|BATCH]\n"
+            "\t}\n"
+            "\n\tReturns on success:\n"
+            "\t{\n"
+            "\t\tok:\t\t{boolean} true,\n"
+            "\t\tstatusCode:\t{number},\n"
+            "\t\tstatusMessage:\t{string}\n"
+            "\t}\n"
+            "\n\tReturns on failure:\n"
+            "\t{\n"
+            "\t\tok:\t\t{boolean} false,\n"
+            "\t\terrorCode:\t{number},\n"
+            "\t\terrorMessage:\t{string}\n"
+            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
+            "\n\tFor more information about the transaction method, please refer to the README.md file\n"
+            "\t}\n"
+            << endl;
+#endif
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "function"))) {
         cout << "function method:\n"
             "\tCall an extrinsic function in " NODEM_DB " code\n"
@@ -3943,6 +4061,9 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             "increment\tAtomically increment a global or local data node\n"
             "lock\t\tLock a global or local tree, or individual node, incrementally - locks are advisory, not mandatory\n"
             "unlock\t\tUnlock a global or local tree, or individual node, incrementally; or release all locks held by process\n"
+#if NODEM_SIMPLE_API == 1
+            "transaction\tRun a function containing Nodem API calls as an ACID transaction - synchronous only\n"
+#endif
             "function\tCall an extrinsic function in " NODEM_DB " code\n"
             "procedure\tCall a procedure/routine/subroutine label in " NODEM_DB " code (AKA routine)\n"
             "globalDirectory\tList globals stored in the database\n"
@@ -3953,7 +4074,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     }
 
-    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2020 Fourth Watch Software LC"));
+    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2021 Fourth Watch Software LC"));
     return;
 } // @end nodem::Gtm::help method
 
@@ -3975,8 +4096,14 @@ void Gtm::version(const FunctionCallbackInfo<Value>& info)
 
     bool async = false;
 
-    if (info[0]->IsFunction())
+    if (info[0]->IsFunction()) {
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
+    }
 
     GtmBaton* gtm_baton;
     GtmBaton new_baton;
@@ -4088,6 +4215,11 @@ void Gtm::data(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -4375,6 +4507,11 @@ void Gtm::get(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -4662,6 +4799,11 @@ void Gtm::set(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -4993,6 +5135,11 @@ void Gtm::kill(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     Local<Value> glvn = Undefined(isolate);
@@ -5277,6 +5424,11 @@ void Gtm::merge(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -5596,6 +5748,11 @@ void Gtm::order(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -5883,6 +6040,11 @@ void Gtm::previous(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -6170,6 +6332,11 @@ void Gtm::next_node(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -6457,6 +6624,11 @@ void Gtm::previous_node(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -6744,6 +6916,11 @@ void Gtm::increment(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -7044,6 +7221,11 @@ void Gtm::lock(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -7350,6 +7532,11 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     Local<Value> glvn = Undefined(isolate);
@@ -7602,6 +7789,169 @@ void Gtm::unlock(const FunctionCallbackInfo<Value>& info)
     return;
 } // @end nodem::Gtm::unlock method
 
+#if NODEM_SIMPLE_API == 1
+/*
+ * @method nodem::Gtm::transaction
+ * @summary Call a JavaScript function within a YottaDB transaction
+ * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
+ * @returns {void}
+ */
+void Gtm::transaction(const FunctionCallbackInfo<Value>& info)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    HandleScope scope(isolate);
+
+    GtmState* gtm_state = reinterpret_cast<GtmState*>(info.Data().As<External>()->Value());
+
+    if (gtm_state->debug > OFF)
+        debug_log(">  Gtm::transaction enter");
+
+#if YDB_RELEASE >= 126
+    reset_handler(gtm_state);
+#endif
+
+    if (gtm_state_g < OPEN) {
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
+        return;
+    }
+
+    unsigned int args_cnt = info.Length();
+    Local<Value> variables = Undefined(isolate);
+
+    ydb_buffer_t vars_array[YDB_MAX_SUBS];
+    unsigned int vars_size;
+    string mode;
+
+    if (args_cnt > 2) {
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Only two arguments are allowed")));
+        return;
+#if NODE_MAJOR_VERSION >= 8 || NODE_MAJOR_VERSION == 7 && NODE_MINOR_VERSION >= 6
+    } else if (info[0]->IsAsyncFunction()) {
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Async function is not allowed")));
+        return;
+#endif
+    } else if (!info[0]->IsFunction()) {
+        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function is required for first argument")));
+        return;
+    } else {
+        mode = "NODEM";
+        vars_size = 0;
+
+        if (args_cnt == 2) {
+            if (!info[1]->IsObject()) {
+                isolate->ThrowException(Exception::Error(new_string_n(isolate, "Argument must be an object")));
+                return;
+            } else {
+                Local<Object> arg_object = to_object_n(isolate, info[1]);
+                Local<Value> type = get_n(isolate, arg_object, new_string_n(isolate, "type"));
+
+                if (type->StrictEquals(new_string_n(isolate, "Batch")) || type->StrictEquals(new_string_n(isolate, "batch")) ||
+                  type->StrictEquals(new_string_n(isolate, "BATCH")))
+                    mode = "BATCH";
+
+                variables = get_n(isolate, arg_object, new_string_n(isolate, "variables"));
+
+                if (!variables->IsArray()) {
+                    isolate->ThrowException(Exception::Error(new_string_n(isolate, "Variables must be in an array")));
+                    return;
+                }
+
+                Local<Array> variables_array = Local<Array>::Cast(variables);
+                vars_size = variables_array->Length();
+                string vars_name;
+
+                if (vars_size > YDB_MAX_SUBS) {
+                    isolate->ThrowException(Exception::Error(new_string_n(isolate, "Max of 31 variables may be passed")));
+                    return;
+                }
+
+                if (gtm_state->debug > LOW)
+                    debug_log(">>   vars_size: ", vars_size);
+
+                for (unsigned int i = 0; i < vars_size; i++) {
+                    vars_name = *(UTF8_VALUE_TEMP_N(isolate, get_n(isolate, variables_array, i)));
+
+                    if (vars_name[0] == '^' || vars_name[0] == '$') {
+                        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Variables must be local")));
+                        return;
+                    }
+
+                    if (gtm_state->debug > LOW)
+                        debug_log(">>   vars_name[", i, "]: ", vars_name[i]);
+
+                    vars_array[i].len_alloc = vars_array[i].len_used = vars_name.length();
+                    vars_array[i].buf_addr = (char*) vars_name.c_str();
+                }
+            }
+        }
+    }
+
+    if (gtm_state->debug > LOW)
+        debug_log(">>   mode: ", mode);
+
+    GtmBaton* gtm_baton;
+    GtmBaton new_baton;
+
+    gtm_baton = &new_baton;
+    gtm_baton->request.data = gtm_baton;
+    gtm_baton->callback_p.Reset(isolate, Local<Function>::Cast(info[0]));
+    gtm_baton->gtm_state = gtm_state;
+
+    if (gtm_state->tp_level == 0)
+        uv_mutex_lock(&mutex_g);
+
+    if (gtm_state->debug > LOW)
+        debug_log(">>   tp_level: ", gtm_state->tp_level);
+
+    if (gtm_state->debug > OFF)
+        debug_log(">  call into " NODEM_DB);
+
+    gtm_state->tp_level++;
+
+    ydb_status_t status = ydb_tp_s(nodem::transaction, gtm_baton, mode.c_str(), vars_size, vars_array);
+
+    gtm_state->tp_level--;
+
+    if (gtm_state->debug > OFF)
+        debug_log(">  return from " NODEM_DB);
+
+    if (gtm_state->debug > LOW)
+        debug_log(">>   tp_level: ", gtm_state->tp_level);
+
+    if (gtm_state->tp_level == 0)
+        uv_mutex_unlock(&mutex_g);
+
+    gtm_baton->callback_p.Reset();
+
+    Local<Object> return_object = Object::New(isolate);
+
+    set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, false));
+
+    if (status == YDB_OK) {
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+
+        set_n(isolate, return_object, new_string_n(isolate, "statusCode"), Number::New(isolate, status));
+        set_n(isolate, return_object, new_string_n(isolate, "statusMessage"), new_string_n(isolate, "Commit"));
+    } else if (status == YDB_TP_ROLLBACK) {
+        set_n(isolate, return_object, new_string_n(isolate, "errorCode"), Number::New(isolate, status));
+        set_n(isolate, return_object, new_string_n(isolate, "errorMessage"), new_string_n(isolate, "Rollback"));
+    } else if (status == YDB_TP_RESTART) {
+        set_n(isolate, return_object, new_string_n(isolate, "errorCode"), Number::New(isolate, status));
+        set_n(isolate, return_object, new_string_n(isolate, "errorMessage"), new_string_n(isolate, "Restart"));
+    } else {
+        set_n(isolate, return_object, new_string_n(isolate, "errorCode"), Number::New(isolate, status));
+        set_n(isolate, return_object, new_string_n(isolate, "errorMessage"), new_string_n(isolate, "Unknown"));
+    }
+
+    info.GetReturnValue().Set(return_object);
+
+    if (gtm_state->debug > OFF)
+        debug_log(">  Gtm::transaction exit\n");
+
+    return;
+} // @end nodem::Gtm::transaction method
+#endif
+
 /*
  * @method nodem::Gtm::function
  * @summary Call an arbitrary extrinsic function
@@ -7629,6 +7979,11 @@ void Gtm::function(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -7835,6 +8190,11 @@ void Gtm::procedure(const FunctionCallbackInfo<Value>& info)
     if (info[args_cnt - 1]->IsFunction()) {
         --args_cnt;
         async = true;
+
+        if (gtm_state->tp_level > 0) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Asynchronous call not allowed within a transaction")));
+            return;
+        }
     }
 
     if (args_cnt == 0) {
@@ -8098,7 +8458,8 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", *(UTF8_VALUE_TEMP_N(isolate, hi)));
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8120,7 +8481,8 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", gtm_hi.to_byte());
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8140,7 +8502,8 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", *(UTF8_VALUE_TEMP_N(isolate, hi)));
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8162,7 +8525,8 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", gtm_hi.to_byte());
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8194,7 +8558,8 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
-        uv_mutex_unlock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_unlock(&mutex_g);
 
         info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
         return;
@@ -8211,7 +8576,8 @@ void Gtm::global_directory(const FunctionCallbackInfo<Value>& info)
         json_string = GtmValue::from_byte(ret_buf);
     }
 
-    uv_mutex_unlock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_unlock(&mutex_g);
 
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::global_directory JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
@@ -8332,7 +8698,8 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", *(UTF8_VALUE_TEMP_N(isolate, hi)));
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8354,7 +8721,8 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", gtm_hi.to_byte());
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8374,7 +8742,8 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", *(UTF8_VALUE_TEMP_N(isolate, hi)));
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8396,7 +8765,8 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
             debug_log(">>   hi: ", gtm_hi.to_byte());
         }
 
-        uv_mutex_lock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_lock(&mutex_g);
 
         if (gtm_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
@@ -8428,7 +8798,8 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
-        uv_mutex_unlock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_unlock(&mutex_g);
 
         info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
         return;
@@ -8445,7 +8816,8 @@ void Gtm::local_directory(const FunctionCallbackInfo<Value>& info)
         json_string = GtmValue::from_byte(ret_buf);
     }
 
-    uv_mutex_unlock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_unlock(&mutex_g);
 
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::local_directory JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
@@ -8507,11 +8879,13 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& info)
     access.rtn_name.length = strlen(retrieve);
     access.handle = NULL;
 
-    uv_mutex_lock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_lock(&mutex_g);
 
     stat_buf = gtm_cip(&access, ret_buf);
 #else
-    uv_mutex_lock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_lock(&mutex_g);
 
     stat_buf = gtm_ci(retrieve, ret_buf);
 #endif
@@ -8523,7 +8897,8 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& info)
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
-        uv_mutex_unlock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_unlock(&mutex_g);
 
         info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
         return;
@@ -8540,7 +8915,8 @@ void Gtm::retrieve(const FunctionCallbackInfo<Value>& info)
         json_string = GtmValue::from_byte(ret_buf);
     }
 
-    uv_mutex_unlock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_unlock(&mutex_g);
 
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::retrieve JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
@@ -8606,11 +8982,13 @@ void Gtm::update(const FunctionCallbackInfo<Value>& info)
     access.rtn_name.length = strlen(update);
     access.handle = NULL;
 
-    uv_mutex_lock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_lock(&mutex_g);
 
     stat_buf = gtm_cip(&access, ret_buf);
 #else
-    uv_mutex_lock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_lock(&mutex_g);
 
     stat_buf = gtm_ci(update, ret_buf);
 #endif
@@ -8622,7 +9000,8 @@ void Gtm::update(const FunctionCallbackInfo<Value>& info)
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
-        uv_mutex_unlock(&mutex_g);
+        if (gtm_state->tp_level == 0)
+            uv_mutex_unlock(&mutex_g);
 
         info.GetReturnValue().Set(error_status(msg_buf, false, false, gtm_state));
         return;
@@ -8639,7 +9018,8 @@ void Gtm::update(const FunctionCallbackInfo<Value>& info)
         json_string = GtmValue::from_byte(ret_buf);
     }
 
-    uv_mutex_unlock(&mutex_g);
+    if (gtm_state->tp_level == 0)
+        uv_mutex_unlock(&mutex_g);
 
     if (gtm_state->debug > OFF)
         debug_log(">  Gtm::update JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
@@ -8671,6 +9051,40 @@ void Gtm::update(const FunctionCallbackInfo<Value>& info)
 
 // ***End Public APIs***
 
+#if NODEM_SIMPLE_API == 1
+/*
+ * @method nodem::Gtm::restart
+ * @summary The Gtm class getter for tpRestart
+ * @param {Local<String>} property - The class property to access with the getter
+ * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
+ * @returns {void}
+ */
+void Gtm::restart(Local<String> property, const PropertyCallbackInfo<Value>& info)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+
+    Gtm* gtm = ObjectWrap::Unwrap<Gtm>(info.Holder());
+
+    info.GetReturnValue().Set(Number::New(isolate, gtm->tp_restart));
+}
+
+/*
+ * @method nodem::Gtm::rollback
+ * @summary The Gtm class getter for tpRollback
+ * @param {Local<String>} property - The class property to access with the getter
+ * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
+ * @returns {void}
+ */
+void Gtm::rollback(Local<String> property, const PropertyCallbackInfo<Value>& info)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+
+    Gtm* gtm = ObjectWrap::Unwrap<Gtm>(info.Holder());
+
+    info.GetReturnValue().Set(Number::New(isolate, gtm->tp_rollback));
+}
+#endif
+
 /*
  * @method nodem::Gtm::New
  * @summary The Gtm class constructor
@@ -8684,10 +9098,6 @@ void Gtm::New(const FunctionCallbackInfo<Value>& info)
     if (info.IsConstructCall()) {
         Gtm* gtm = new Gtm();
         gtm->Wrap(info.This());
-
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
-        AddEnvironmentCleanupHook(isolate, cleanup_gtm, static_cast<void*>(gtm));
-#endif
 
         info.GetReturnValue().Set(info.This());
     } else {
@@ -8730,6 +9140,13 @@ void Gtm::Init(Local<Object> exports)
     Local<FunctionTemplate> fn_template = FunctionTemplate::New(isolate, New, external_data);
 
     fn_template->SetClassName(new_string_n(isolate, "Gtm"));
+#if NODEM_SIMPLE_API == 1
+    fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRestart"),
+      restart, nullptr, Local<Value>(), DEFAULT, DontDelete);
+
+    fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRollback"),
+      rollback, nullptr, Local<Value>(), DEFAULT, DontDelete);
+#endif
     fn_template->InstanceTemplate()->SetInternalFieldCount(1);
 
     set_prototype_method_n(isolate, fn_template, "open", open, external_data);
@@ -8753,6 +9170,9 @@ void Gtm::Init(Local<Object> exports)
     set_prototype_method_n(isolate, fn_template, "increment", increment, external_data);
     set_prototype_method_n(isolate, fn_template, "lock", lock, external_data);
     set_prototype_method_n(isolate, fn_template, "unlock", unlock, external_data);
+#if NODEM_SIMPLE_API == 1
+    set_prototype_method_n(isolate, fn_template, "transaction", transaction, external_data);
+#endif
     set_prototype_method_n(isolate, fn_template, "function", function, external_data);
     set_prototype_method_n(isolate, fn_template, "procedure", procedure, external_data);
     set_prototype_method_n(isolate, fn_template, "routine", procedure, external_data);

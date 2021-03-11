@@ -2,7 +2,7 @@
  * set.js - Test the set API
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2015,2018,2020 Fourth Watch Software LC
+ * Copyright © 2012-2015,2018,2020-2021 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -27,8 +27,8 @@
  */
 
 process.on('uncaughtException', function(error) {
-    gtm.close();
     console.trace('Uncaught Exception:\n', error);
+    nodem.close();
     process.exit(1);
 });
 
@@ -51,21 +51,21 @@ if (!isNaN(parseInt(process.argv[2]))) {
     nodes = process.argv[3];
 }
 
-var gtm = require('../lib/nodem').Gtm();
-gtm.open();
+var nodem = require('../lib/nodem.js').Gtm();
+nodem.open();
 
 if (type === 'global') {
     if (name.slice(0, 1) !== '^') name = '^' + name;
 
     try {
-        if (gtm.data(name, 'testing') !== 0) {
+        if (nodem.data(name, 'testing') !== 0) {
             console.error(name + '("testing") already contains data, aborting...');
-            gtm.close();
+            nodem.close();
             process.exit(1);
         }
     } catch (error) {
         console.log(error);
-        gtm.close();
+        nodem.close();
         process.exit(1);
     }
 }
@@ -75,10 +75,10 @@ var start = process.hrtime(), i;
 
 for (i = 0; i < nodes; i++) {
     try {
-        gtm.set(name, 'testing', i, 'record ' + i);
+        nodem.set(name, 'testing', i, 'record ' + i);
     } catch (error) {
         console.log(error);
-        gtm.close();
+        nodem.close();
         process.exit(1);
     }
 }
@@ -90,7 +90,8 @@ console.log('You set approximately', Math.round(nodes / (end[0] + end[1] / 1e+9)
 
 if (type === 'global') {
     console.log('Killing ' + name + '("testing") now...');
-    gtm.kill(name, 'testing');
+    nodem.kill(name, 'testing');
 }
 
-gtm.close();
+nodem.close();
+process.exit(0);

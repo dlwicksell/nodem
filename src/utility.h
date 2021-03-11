@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2019-2020 Fourth Watch Software LC
+ * Copyright © 2019-2021 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -76,7 +76,7 @@ template<class... A>
 static void debug_log(A... args)
 {
     std::ostringstream stream;
-    stream << "[" << gettid() << "] DEBUG";
+    stream << "[C " << gettid() << "] DEBUG";
 
     logger(stream, args...);
 

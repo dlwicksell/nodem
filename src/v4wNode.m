@@ -1,4 +1,4 @@
-v4wNode() ; 0.19.0 ; Aug 08, 2020@20:21
+v4wNode() ; 0.20.0 ; Feb 17, 2021@15:50
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -6,7 +6,7 @@ v4wNode() ; 0.19.0 ; Aug 08, 2020@20:21
  ; Maintainer: David Wicksell <dlw@linux.com>
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2020 Fourth Watch Software LC
+ ; Copyright © 2012-2021 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
@@ -43,7 +43,7 @@ isNumber:(data,direction)
  ;   - 309 digits before overflow (represented as the Infinity primitive)
  ;   - 21 digits before conversion to exponent notation
  ;   - 16 digits of precision
- if $get(v4wDebug,0)>2 do debugLog(">>>    isNumber enter:") zwrite data,direction
+ if $get(v4wDebug,0)>2 do debugLog(">>>    isNumber enter:") zwrite data,direction use $principal
  ;
  if data'["E",data=+data do:$get(v4wDebug,0)>2 debugLog(">>>    isNumber: 1") quit 1
  else  if direction="input",data?.1"-"1"0"1"."1.N  do:$get(v4wDebug,0)>2 debugLog(">>>    isNumber: 1") quit 1
@@ -57,7 +57,7 @@ isNumber:(data,direction)
  ;; @returns {number} (0|1|2) - Return code representing data type
 isString:(data,direction)
  ; The note under isNumber is why anything over 16 characters needs to be treated as a string
- if $get(v4wDebug,0)>2 do debugLog(">>>    isString enter:") zwrite data,direction
+ if $get(v4wDebug,0)>2 do debugLog(">>>    isString enter:") zwrite data,direction use $principal
  ;
  if ($zextract(data)="""")&($zextract(data,$zlength(data))="""") do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 3") quit 3
  else  if $zlength(data)>16 do:$get(v4wDebug,0)>2 debugLog(">>>    isString: 1") quit 1
@@ -72,7 +72,7 @@ isString:(data,direction)
  ;; @param {string} args - Subscripts or arguments as a comma-separated list, empty string if none
  ;; @returns {string} - Global or local reference ready to be used by indirection
 construct:(name,args)
- if $get(v4wDebug,0)>2 do debugLog(">>>    construct:") zwrite name,args
+ if $get(v4wDebug,0)>2 do debugLog(">>>    construct:") zwrite name,args use $principal
  quit name_$select(args'="":"("_args_")",1:"")
  ;; @end construct function
  ;
@@ -84,7 +84,7 @@ construct:(name,args)
  ;; @returns {string} function - Function or procedure reference ready to be used by indirection
 constructFunction:(func,args,tempArgs)
  if args="" quit func
- if $get(v4wDebug,0)>2 do debugLog(">>>    constructFunction enter:") zwrite func,args,tempArgs
+ if $get(v4wDebug,0)>2 do debugLog(">>>    constructFunction enter:") zwrite func,args,tempArgs use $principal
  ;
  new global,function
  set global="^global("_args_")",function=""
@@ -97,7 +97,7 @@ constructFunction:(func,args,tempArgs)
  set $zextract(function)=""
  set function=func_"("_function_")"
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    constructFunction exit:") zwrite data
+ if $get(v4wDebug,0)>2 do debugLog(">>>    constructFunction exit:") zwrite data use $principal
  quit function
  ;; @end constructFunction function
  ;
@@ -108,7 +108,7 @@ constructFunction:(func,args,tempArgs)
  ;; @param {number} type (0|1) - Data type; 0 is subscripts or arguments, 1 is data node
  ;; @returns {string} data - Converted input; a number or string ready to access M
 inputConvert:(data,mode,type)
- if $get(v4wDebug,0)>2 do debugLog(">>>    inputConvert enter:") zwrite data,mode,type
+ if $get(v4wDebug,0)>2 do debugLog(">>>    inputConvert enter:") zwrite data,mode,type use $principal
  ;
  if mode=2,'$$isString(data,"input") do
  . if $zextract(data,1,2)="0." set $zextract(data)=""
@@ -116,7 +116,7 @@ inputConvert:(data,mode,type)
  else  if type,$$isString(data,"input")=3 set $zextract(data)="",$zextract(data,$zlength(data))=""
  else  if 'type,$$isString(data,"input")<3,data'="" set data=""""_data_""""
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    inputConvert exit:") zwrite data
+ if $get(v4wDebug,0)>2 do debugLog(">>>    inputConvert exit:") zwrite data use $principal
  quit data
  ;; @end inputConvert function
  ;
@@ -126,7 +126,7 @@ inputConvert:(data,mode,type)
  ;; @param {number} type (0|1) - Data type; 0 is subscripts or arguments, 1 is data node
  ;; @returns {string} data - Escaped input; a string with quotes ready to access M
 inputEscape:(data,type)
- if $get(v4wDebug,0)>2 do debugLog(">>>    inputEscape enter:") zwrite data,type
+ if $get(v4wDebug,0)>2 do debugLog(">>>    inputEscape enter:") zwrite data,type use $principal
  ;
  if 'type,data["""" do
  . new newData
@@ -138,7 +138,7 @@ inputEscape:(data,type)
  . . else  set newData=newData_$zextract(data,i)
  . set data=$zextract(data)_newData_$zextract(data,$zlength(data))
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    inputEscape exit:") zwrite data
+ if $get(v4wDebug,0)>2 do debugLog(">>>    inputEscape exit:") zwrite data use $principal
  quit data
  ;; @end inputEscape function
  ;
@@ -148,14 +148,14 @@ inputEscape:(data,type)
  ;; @param {number} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} data - Converted output; a number or string ready to return to Node.js
 outputConvert:(data,mode)
- if $get(v4wDebug,0)>2 do debugLog(">>>    outputConvert enter:") zwrite data,mode
+ if $get(v4wDebug,0)>2 do debugLog(">>>    outputConvert enter:") zwrite data,mode use $principal
  ;
  if mode=2,'$$isString(data,"output") do
  . if $zextract(data)="." set data=0_data
  . else  if $zextract(data,1,2)="-." set $zextract(data)="",data="-0"_data
  else  set data=""""_data_""""
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    outputConvert exit:") zwrite data
+ if $get(v4wDebug,0)>2 do debugLog(">>>    outputConvert exit:") zwrite data use $principal
  quit data
  ;; @end outputConvert function
  ;
@@ -164,7 +164,7 @@ outputConvert:(data,mode)
  ;; @param {string} data - Output data to be escaped; a single subscript, function or procedure argument, or data
  ;; @returns {string} data - Escaped output; a string with quotes ready to return to Node.js
 outputEscape:(data)
- if $get(v4wDebug,0)>2 do debugLog(">>>    outputEscape enter:") zwrite data
+ if $get(v4wDebug,0)>2 do debugLog(">>>    outputEscape enter:") zwrite data use $principal
  ;
  if (data["""")!(data["\")!(data?.e1c.e) do
  . new newData
@@ -182,7 +182,7 @@ outputEscape:(data)
  . ;
  . set data=newData
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    outputEscape exit:") zwrite data
+ if $get(v4wDebug,0)>2 do debugLog(">>>    outputEscape exit:") zwrite data use $principal
  quit data
  ;; @end outputEscape function
  ;
@@ -194,10 +194,10 @@ outputEscape:(data)
  ;; @param {number} last (0|1) - Whether to ignore the last subscript (for merge in strict mode), 0 is no, 1 is yes
  ;; @returns {void}
 parse:(inputString,outputArray,encode,last)
- if $get(v4wDebug,0)>2 do debugLog(">>>    parse enter:") zwrite inputString,encode,last
+ if $get(v4wDebug,0)>2 do debugLog(">>>    parse enter:") zwrite inputString,encode,last use $principal
  ;
  if inputString="" set outputArray(1)="" do  quit
- . if $get(v4wDebug,0)>2 do debugLog(">>>    parse exit:") zwrite outputArray
+ . if $get(v4wDebug,0)>2 do debugLog(">>>    parse exit:") zwrite outputArray use $principal
  ;
  kill outputArray
  if encode do
@@ -212,7 +212,7 @@ parse:(inputString,outputArray,encode,last)
  . set outputArray(1)=inputString
  . set inputString=""
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    parse exit:") zwrite:$data(outputArray) outputArray
+ if $get(v4wDebug,0)>2 do debugLog(">>>    parse exit:") zwrite:$data(outputArray) outputArray use $principal
  quit
  ;; @end parse subroutine
  ;
@@ -222,17 +222,17 @@ parse:(inputString,outputArray,encode,last)
  ;; @param {reference} {string} outputString - Output string to be returned
  ;; @returns {void}
 stringify:(inputArray,outputString)
- if $get(v4wDebug,0)>2 do debugLog(">>>    stringify enter:") zwrite inputArray
+ if $get(v4wDebug,0)>2 do debugLog(">>>    stringify enter:") zwrite inputArray use $principal
  ;
  if $data(inputArray)<10 set outputString="" do  quit
- . if $get(v4wDebug,0)>2 do debugLog(">>>    stringify exit:") zwrite outputString
+ . if $get(v4wDebug,0)>2 do debugLog(">>>    stringify exit:") zwrite outputString use $principal
  ;
  new num
  set num=0,outputString=""
  for  set num=$order(inputArray(num)) quit:num=""  set outputString=outputString_","_inputArray(num)
  set $zextract(outputString)=""
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    stringify exit:") zwrite outputString
+ if $get(v4wDebug,0)>2 do debugLog(">>>    stringify exit:") zwrite outputString use $principal
  quit
  ;; @end stringify subroutine
  ;
@@ -250,13 +250,13 @@ process:(inputString,direction,mode,type,encode,last)
  set type=$get(type,0)
  set encode=$get(encode,1)
  set last=$get(last,0)
- if $get(v4wDebug,0)>2 do debugLog(">>>    process enter:") zwrite inputString,direction,mode,type,encode,last
+ if $get(v4wDebug,0)>2 do debugLog(">>>    process enter:") zwrite inputString,direction,mode,type,encode,last use $principal
  ;
  new outputString
  set outputString=""
  if inputString="" do  quit outputString
  . if type set outputString=""""""
- . if $get(v4wDebug,0)>2 do debugLog(">>>    process exit:") zwrite outputString
+ . if $get(v4wDebug,0)>2 do debugLog(">>>    process exit:") zwrite outputString use $principal
  ;
  new array
  do parse(inputString,.array,encode,last)
@@ -278,7 +278,7 @@ process:(inputString,direction,mode,type,encode,last)
  ;
  do stringify(.array,.outputString)
  ;
- if $get(v4wDebug,0)>2 do debugLog(">>>    process exit:") zwrite outputString
+ if $get(v4wDebug,0)>2 do debugLog(">>>    process exit:") zwrite outputString use $principal
  quit outputString
  ;; @end process function
  ;
@@ -287,7 +287,7 @@ process:(inputString,direction,mode,type,encode,last)
  ;; @param {string} msg - Message to log
  ;; @returns {void}
 debugLog:(msg)
- write "[MUMPS] DEBUG"_$get(msg),!
+ write "[M "_$job_"] DEBUG"_$get(msg),! use $principal
  ;
  quit
  ;; @end debugLog subroutine
@@ -320,7 +320,7 @@ version(v4wVersion)
  set $etrap="if $ecode["",Z150373074,"" set $ecode="""",$etrap="""" quit ""GT.M Version: ""_v4wGtmVersion"
  ;
  set v4wVersion=$get(v4wVersion,"UNKNOWN")
- if $get(v4wDebug,0)>1 do debugLog(">>   version enter") zwrite v4wVersion
+ if $get(v4wDebug,0)>1 do debugLog(">>   version enter") zwrite v4wVersion use $principal
  ;
  new v4wNodeVersion
  set v4wNodeVersion=$piece($text(^v4wNode)," ; ",2)
@@ -332,7 +332,7 @@ version(v4wVersion)
  new v4wGtmVersion
  set v4wGtmVersion=$zpiece($zversion," ",2),$zextract(v4wGtmVersion)=""
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   version exit") use $principal
+ if $get(v4wDebug,0)>1 do debugLog(">>   version exit")
  ;
  new v4wYottaVersion
  set v4wYottaVersion=$zpiece($zyrelease," ",2),$zextract(v4wYottaVersion)=""
@@ -348,14 +348,14 @@ version(v4wVersion)
  ;; @returns {string} {JSON} - $data value; 0 for no data nor children, 1 for data, 10 for children, 11 for data and children
 data(v4wGlvn,v4wSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   data enter:") zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   data enter:") zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   data:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   data:") zwrite v4wName use $principal
  ;
  new v4wDefined
  set v4wDefined=$data(@v4wName)
@@ -373,14 +373,14 @@ data(v4wGlvn,v4wSubs,v4wMode)
 get(v4wGlvn,v4wSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
  if $zextract(v4wGlvn)="$" set v4wSubs="" ; SimpleAPI ignores subscripts with ISVs, so we will too
- if $get(v4wDebug,0)>1 do debugLog(">>   get enter:") zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   get enter:") zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   get:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   get:") zwrite v4wName use $principal
  ;
  new v4wData,v4wDefined
  ;
@@ -408,7 +408,7 @@ get(v4wGlvn,v4wSubs,v4wMode)
 set(v4wGlvn,v4wSubs,v4wData,v4wMode)
  set v4wMode=$get(v4wMode,2)
  if $zextract(v4wGlvn)="$" set v4wSubs="" ; SimpleAPI ignores subscripts with ISVs, so we will too
- if $get(v4wDebug,0)>1 do debugLog(">>   set enter:") zwrite v4wGlvn,v4wSubs,v4wData,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   set enter:") zwrite v4wGlvn,v4wSubs,v4wData,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
@@ -416,14 +416,14 @@ set(v4wGlvn,v4wSubs,v4wData,v4wMode)
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  set v4wData=$$process(v4wData,"input",v4wMode,1)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   set:") zwrite v4wName,v4wData
+ if $get(v4wDebug,0)>1 do debugLog(">>   set:") zwrite v4wName,v4wData use $principal
  ;
  if $zextract(v4wName)="$" do
  . xecute "set $"_$zextract(v4wName,2,$zlength(v4wName))_"="_$$process(v4wData,"output",v4wMode,1,0)
  else  do
  . set @v4wName=v4wData
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   set exit") use $principal
+ if $get(v4wDebug,0)>1 do debugLog(">>   set exit")
  quit
  ;; @end set subroutine
  ;
@@ -437,20 +437,20 @@ set(v4wGlvn,v4wSubs,v4wData,v4wMode)
 kill(v4wGlvn,v4wSubs,v4wType,v4wMode)
  set v4wType=$select($get(v4wType,0)'=1:0,1:1)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   kill enter:") zwrite v4wGlvn,v4wSubs,v4wType,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   kill enter:") zwrite v4wGlvn,v4wSubs,v4wType,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   kill:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   kill:") zwrite v4wName use $principal
  ;
  if v4wGlvn="" kill (v4wDebug)
  else  if v4wType zkill @v4wName
  else  kill @v4wName
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   kill exit") use $principal
+ if $get(v4wDebug,0)>1 do debugLog(">>   kill exit")
  quit
  ;; @end kill subroutine
  ;
@@ -464,7 +464,7 @@ kill(v4wGlvn,v4wSubs,v4wType,v4wMode)
  ;; @returns {string} {JSON} - The global or local variables, and subscripts from each side of the merge
 merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   merge enter:") zwrite v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   merge enter:") zwrite v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode use $principal
  ;
  new v4wFromInputSubs
  set v4wFromInputSubs=$$process(v4wFromSubs,"input",v4wMode)
@@ -478,12 +478,12 @@ merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
  new v4wToName
  set v4wToName=$$construct(v4wToGlvn,v4wToInputSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   merge:") zwrite v4wFromName,v4wToName
+ if $get(v4wDebug,0)>1 do debugLog(">>   merge:") zwrite v4wFromName,v4wToName use $principal
  ;
  merge @v4wToName=@v4wFromName
  ;
  if v4wMode do  quit "{}"
- . if $get(v4wDebug,0)>1 do debugLog(">>   merge exit") use $principal
+ . if $get(v4wDebug,0)>1 do debugLog(">>   merge exit")
  ;
  new v4wReturn
  set v4wReturn="{"
@@ -509,14 +509,14 @@ merge(v4wFromGlvn,v4wFromSubs,v4wToGlvn,v4wToSubs,v4wMode)
  ;; @returns {string} {JSON} - The next or previous data node
 order(v4wGlvn,v4wSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   order enter:") zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   order enter:") zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   order:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   order:") zwrite v4wName use $principal
  ;
  new v4wResult
  set v4wResult=$order(@v4wName)
@@ -537,14 +537,14 @@ order(v4wGlvn,v4wSubs,v4wMode)
  ;; @returns {string} {JSON} - Returns the previous node, via calling order function and passing a -1 to the order argument
 previous(v4wGlvn,v4wSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   previous enter:") zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   previous enter:") zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   previous:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   previous:") zwrite v4wName use $principal
  ;
  new v4wResult
  set v4wResult=$order(@v4wName,-1)
@@ -565,19 +565,19 @@ previous(v4wGlvn,v4wSubs,v4wMode)
  ;; @returns {string} {JSON} - The next or previous data node
 nextNode(v4wGlvn,v4wSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   nextNode enter:") zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   nextNode enter:") zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   nextNode:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   nextNode:") zwrite v4wName use $principal
  ;
  new v4wResult
  set v4wResult=$query(@v4wName)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   nextNode:") zwrite v4wResult
+ if $get(v4wDebug,0)>1 do debugLog(">>   nextNode:") zwrite v4wResult use $principal
  ;
  new v4wDefined
  if v4wResult="" set v4wDefined=0
@@ -622,19 +622,19 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  ; Handle reverse $query not existing in this M implementation version (150373642: %GTM-E-RPARENMISSING, Right parenthesis expected)
  set $ecode="",$etrap="if $ecode["",Z150373642,"" set $ecode="""",$etrap="""" quit $$reverseQuery(v4wName,v4wMode)"
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   previousNode enter:") zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   previousNode enter:") zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   previousNode:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   previousNode:") zwrite v4wName use $principal
  ;
  new v4wResult
  set v4wResult=$query(@v4wName,-1)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   previousNode:") zwrite v4wResult
+ if $get(v4wDebug,0)>1 do debugLog(">>   previousNode:") zwrite v4wResult use $principal
  ;
  new v4wDefined
  if v4wResult="" set v4wDefined=0
@@ -673,13 +673,13 @@ previousNode(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {number} v4wMode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  ;; @returns {string} {JSON} - Returns the previous node
 reverseQuery(v4wName,v4wMode)
- if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery enter:") zwrite v4wName,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery enter:") zwrite v4wName,v4wMode use $principal
  ;
  new v4wFlag,v4wResult
  set v4wFlag=0,v4wResult=v4wName
  set:$qlength(v4wResult)=0 v4wResult=""
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery:") zwrite v4wResult
+ if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery:") zwrite v4wResult use $principal
  ;
  new v4wI,v4wPrevious,v4wSave
  for v4wI=1:1:$qlength(v4wName) quit:v4wFlag  do
@@ -692,7 +692,7 @@ reverseQuery(v4wName,v4wMode)
  . . for  set v4wSave=v4wResult,v4wResult=$query(@v4wResult) quit:($name(@v4wResult)=$name(@v4wName))!(v4wResult="")
  . . set v4wResult=v4wSave
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery:") zwrite v4wResult
+ if $get(v4wDebug,0)>1 do debugLog(">>   reverseQuery:") zwrite v4wResult use $principal
  ;
  new v4wDefined
  if v4wResult="" set v4wDefined=0
@@ -735,14 +735,14 @@ reverseQuery(v4wName,v4wMode)
 increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
  set v4wIncr=$get(v4wIncr,1)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   increment enter:") zwrite v4wGlvn,v4wSubs,v4wIncr,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   increment enter:") zwrite v4wGlvn,v4wSubs,v4wIncr,v4wMode use $principal
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   increment:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   increment:") zwrite v4wName use $principal
  ;
  new v4wData
  set v4wData=$$process($increment(@v4wName,v4wIncr),"output",v4wMode,1,0)
@@ -761,7 +761,7 @@ increment(v4wGlvn,v4wSubs,v4wIncr,v4wMode)
 lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  set v4wTimeout=$get(v4wTimeout,-1)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   lock enter:") zwrite v4wGlvn,v4wSubs,v4wTimeout,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   lock enter:") zwrite v4wGlvn,v4wSubs,v4wTimeout,v4wMode use $principal
  ;
  new v4wInputSubs
  set v4wInputSubs=$$process(v4wSubs,"input",v4wMode)
@@ -769,7 +769,7 @@ lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  new v4wName
  set v4wName=$$construct(v4wGlvn,v4wInputSubs)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   lock:") zwrite v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   lock:") zwrite v4wName use $principal
  ;
  new v4wResult
  set v4wResult=0
@@ -802,10 +802,10 @@ lock(v4wGlvn,v4wSubs,v4wTimeout,v4wMode)
  ;; @returns {void}
 unlock(v4wGlvn,v4wSubs,v4wMode)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   unlock enter:") zwrite v4wGlvn,v4wSubs,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   unlock enter:") zwrite v4wGlvn,v4wSubs,v4wMode use $principal
  ;
  if $get(v4wGlvn)="" lock  do  quit
- . if $get(v4wDebug,0)>1 do debugLog(">>   unlock exit: unlock all") use $principal
+ . if $get(v4wDebug,0)>1 do debugLog(">>   unlock exit: unlock all")
  ;
  set v4wSubs=$$process(v4wSubs,"input",v4wMode)
  ;
@@ -828,7 +828,7 @@ unlock(v4wGlvn,v4wSubs,v4wMode)
 function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  set v4wRelink=$get(v4wRelink,0)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   function enter:") zwrite v4wFunc,v4wArgs,v4wRelink,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   function enter:") zwrite v4wFunc,v4wArgs,v4wRelink,v4wMode use $principal
  ;
  new v4wInputArgs
  set v4wInputArgs=$$process(v4wArgs,"input",v4wMode)
@@ -840,7 +840,7 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  ;
  ; Construct a full function reference to get around the 8192 indirection limit
  if $zlength(v4wFunction)>8180 new v4wTempArgs set v4wFunction=$$constructFunction(v4wFunc,v4wInputArgs,.v4wTempArgs)
- if $get(v4wDebug,0)>1 do debugLog(">>   function:") zwrite v4wFunction
+ if $get(v4wDebug,0)>1 do debugLog(">>   function:") zwrite v4wFunction use $principal
  ;
  new v4wResult
  ;
@@ -850,7 +850,7 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  ;
  set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   function exit:") zwrite v4wResult
+ if $get(v4wDebug,0)>1 do debugLog(">>   function exit:") zwrite v4wResult use $principal
  ;
  ; Reset principal device after coming back from user code
  use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
@@ -869,7 +869,7 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
 procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  set v4wRelink=$get(v4wRelink,0)
  set v4wMode=$get(v4wMode,2)
- if $get(v4wDebug,0)>1 do debugLog(">>   procedure enter:") zwrite v4wProc,v4wArgs,v4wRelink,v4wMode
+ if $get(v4wDebug,0)>1 do debugLog(">>   procedure enter:") zwrite v4wProc,v4wArgs,v4wRelink,v4wMode use $principal
  ;
  new v4wInputArgs
  set v4wInputArgs=$$process(v4wArgs,"input",v4wMode)
@@ -882,7 +882,7 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  ;
  ; Construct a full procedure reference to get around the 8192 indirection limit
  if $zlength(v4wProcedure)>8192 new v4wTempArgs set v4wProcedure=$$constructFunction(v4wProc,v4wInputArgs,.v4wTempArgs)
- if $get(v4wDebug,0)>1 do debugLog(">>   procedure:") zwrite v4wProcedure
+ if $get(v4wDebug,0)>1 do debugLog(">>   procedure:") zwrite v4wProcedure use $principal
  ;
  do
  . new v4wArgs,v4wDebug,v4wInputArgs,v4wMode,v4wProc,v4wRelink
@@ -907,7 +907,7 @@ globalDirectory(v4wMax,v4wLo,v4wHi)
  set v4wMax=$get(v4wMax,0)
  set v4wLo=$get(v4wLo)
  set v4wHi=$get(v4wHi)
- if $get(v4wDebug,0)>1 do debugLog(">>   globalDirectory enter:") zwrite v4wMax,v4wLo,v4wHi
+ if $get(v4wDebug,0)>1 do debugLog(">>   globalDirectory enter:") zwrite v4wMax,v4wLo,v4wHi use $principal
  ;
  new v4wCnt,v4wFlag
  set v4wCnt=1,v4wFlag=0
@@ -919,7 +919,7 @@ globalDirectory(v4wMax,v4wLo,v4wHi)
  if ($get(v4wHi)="")!($$isNumber(v4wHi,"input")) set v4wHi=""
  else  set v4wHi=$select($zextract(v4wHi)="^":"",1:"^")_v4wHi
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   globalDirectory:") zwrite v4wLo,v4wHi,v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   globalDirectory:") zwrite v4wLo,v4wHi,v4wName use $principal
  ;
  new v4wReturn
  set v4wReturn="["
@@ -950,7 +950,7 @@ localDirectory(v4wMax,v4wLo,v4wHi)
  set v4wMax=$get(v4wMax,0)
  set v4wLo=$get(v4wLo)
  set v4wHi=$get(v4wHi)
- if $get(v4wDebug,0)>1 do debugLog(">>   localDirectory enter:") zwrite v4wMax,v4wLo,v4wHi
+ if $get(v4wDebug,0)>1 do debugLog(">>   localDirectory enter:") zwrite v4wMax,v4wLo,v4wHi use $principal
  ;
  new v4wCnt,v4wFlag
  set v4wCnt=1,v4wFlag=0
@@ -962,7 +962,7 @@ localDirectory(v4wMax,v4wLo,v4wHi)
  if ($get(v4wHi)="")!($$isNumber(v4wHi,"input")) set v4wHi=""
  else  if $zextract(v4wHi)="^" set $zextract(v4wHi)=""
  ;
- if $get(v4wDebug,0)>1 do debugLog(">>   localDirectory:") zwrite v4wLo,v4wHi,v4wName
+ if $get(v4wDebug,0)>1 do debugLog(">>   localDirectory:") zwrite v4wLo,v4wHi,v4wName use $principal
  ;
  new v4wReturn
  set v4wReturn="["
