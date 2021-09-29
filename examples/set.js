@@ -70,6 +70,7 @@ if (type === 'global') {
     }
 }
 
+console.log(nodem.version() + '\n');
 console.log('Testing the set command, starting at: ' + Date());
 var start = process.hrtime(), i;
 

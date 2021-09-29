@@ -90,18 +90,13 @@ bool utf8_g = true;
 bool auto_relink_g = false;
 enum mode_t mode_g = CANONICAL;
 enum debug_t debug_g = OFF;
+enum gtm_state_t gtm_state_g = NOT_OPEN;
 
 static bool reset_term_g = false;
 static bool signal_sigint_g = true;
 static bool signal_sigquit_g = true;
 static bool signal_sigterm_g = true;
 static struct termios term_attr_g;
-
-static enum {
-    CLOSED,
-    NOT_OPEN,
-    OPEN
-} gtm_state_g = NOT_OPEN;
 
 /*
  * @function nodem::clean_shutdown
@@ -233,7 +228,7 @@ inline static bool is_number(const string data, GtmState* gtm_state)
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {Local<Value>} - An object containing the output data
  */
-static Local<Value> json_method(Local<Value> data, const string type, GtmState* gtm_state)
+static Local<Value> json_method(Local<Value> data, const string &type, GtmState* gtm_state)
 {
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
@@ -715,6 +710,9 @@ static Local<Value> version(GtmBaton* gtm_baton)
         debug_log(">>   async: ", std::boolalpha, gtm_baton->async);
     }
 
+    Local<String> nodem_version = new_string_n(isolate,
+      "Node.js Adaptor for " NODEM_DB ": Version: " NODEM_VERSION " (ABI=" NODEM_STRING(NODE_MODULE_VERSION) ") [FWS]");
+
     Local<String> return_string;
 
     if (gtm_baton->gtm_state->utf8 == true) {
@@ -723,11 +721,7 @@ static Local<Value> version(GtmBaton* gtm_baton)
         return_string = GtmValue::from_byte(gtm_baton->result);
     }
 
-    Local<String> nodem_version = new_string_n(isolate,
-      "Node.js Adaptor for " NODEM_DB ": Version: " NODEM_VERSION " (ABI=" NODEM_STRING(NODE_MODULE_VERSION) ") [FWS]");
-
-    Local<String> ret_string = new_string_n(isolate, gtm_baton->result);
-    Local<String> version_string = concat_n(isolate, nodem_version, concat_n(isolate, new_string_n(isolate, "; "), ret_string));
+    Local<String> version_string = concat_n(isolate, nodem_version, concat_n(isolate, new_string_n(isolate, "; "), return_string));
 
     if (gtm_baton->gtm_state->debug > OFF)
         debug_log(">  version exit");

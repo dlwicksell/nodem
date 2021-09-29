@@ -944,6 +944,9 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
 
     gtm_status_t stat_buf;
 
+    if (nodem::gtm_state_g < nodem::OPEN)
+        return 0;
+
     if (gtm_baton->gtm_state->tp_level == 0)
         uv_mutex_lock(&nodem::mutex_g);
 

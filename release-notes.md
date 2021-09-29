@@ -1,5 +1,9 @@
 # NodeM Release Notes #
 
+## v0.20.1 - 2021 Sep 28 ##
+
+- Fix potential segfault in version API
+
 ## v0.20.0 - 2021 Mar 10 ##
 
 - Add transaction processing API

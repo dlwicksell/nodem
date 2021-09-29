@@ -8,7 +8,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.0 - 2021 Mar 10
+Version 0.20.1 - 2021 Sep 28
 
 ## Copyright and License ##
 
@@ -109,7 +109,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.0 (ABI=88) [FWS]; YottaDB Version: 1.30'
+'Node.js Adaptor for YottaDB: Version: 0.20.1 (ABI=93) [FWS]; YottaDB Version: 1.32'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -189,7 +189,7 @@ install` command, e.g.
 
 ```bash
 $ cd ~/nodem
-$ npm install
+$ npm run install
 ```
 or
 ```bash

@@ -63,7 +63,7 @@ extern "C" {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 20
-#define NODEM_PATCH_VERSION 0
+#define NODEM_PATCH_VERSION 1
 
 #define NODEM_STRING(number) NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
@@ -88,12 +88,19 @@ enum debug_t {
     HIGH
 };
 
+enum gtm_state_t {
+    CLOSED,
+    NOT_OPEN,
+    OPEN
+};
+
 extern uv_mutex_t mutex_g;
 extern int save_stdout_g;
 extern bool utf8_g;
 extern bool auto_relink_g;
 extern enum mode_t mode_g;
 extern enum debug_t debug_g;
+extern enum gtm_state_t gtm_state_g;
 
 /*
  * @class nodem::Gtm

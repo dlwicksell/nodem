@@ -30,7 +30,7 @@ process.on('uncaughtException', (error) => {
 });
 
 try {
-    var { Worker, isMainThread, parentPort, threadId } = require('worker_threads');
+    var { Worker, isMainThread, parentPort } = require('worker_threads');
 } catch (error) {
     if (error) console.error(__filename + ' must be run on Node.js version 11.7.0 or newer');
     process.exit(1);
@@ -48,10 +48,12 @@ let line = 0;
 if (isMainThread) {
     console.log('Nodem main thread begin');
 
+    var value;
+
     if (process.argv[2] === '-c') {
-        var value = 0;
+        value = 0;
     } else if (process.argv[2] === '-r') {
-        var value = 1;
+        value = 1;
     } else {
         console.error('Usage:\ttransaction.js\t-c  # Test transaction commits\n\t\t\t-r  # Test transaction restarts/rollbacks');
         process.exit(1);
