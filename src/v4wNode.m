@@ -1,4 +1,4 @@
-v4wNode() ; 0.20.1 ; Sep 28, 2021@15:08
+v4wNode() ; 0.20.1 ; Mar 03, 2022@17:23
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -6,7 +6,7 @@ v4wNode() ; 0.20.1 ; Sep 28, 2021@15:08
  ; Maintainer: David Wicksell <dlw@linux.com>
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2021 Fourth Watch Software LC
+ ; Copyright © 2012-2022 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify
  ; it under the terms of the GNU Affero General Public License (AGPL)
@@ -303,7 +303,7 @@ debugLog:(msg)
  ;; @returns {void}
 debug(level)
  ; Set principal device during Gtm::open call, for proper signal handling
- use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  set v4wDebug=$get(level,0)
@@ -312,7 +312,7 @@ debug(level)
  ;
  ;; @function version
  ;; @summary Return the about/version string
- ;; @param {string} v4wVersion - Nodem version string from mumps.h/mumps.cc used to confirm correct integration
+ ;; @param {string} v4wVersion - Nodem version string from mumps.h/nodem.cc used to confirm correct integration
  ;; @returns {string} - The YottaDB or GT.M version
 version(v4wVersion)
  ; Handle $zyrelease not existing in this M implementation version (150373074: %GTM-E-INVSVN, Invalid special variable name)
@@ -853,7 +853,7 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  if $get(v4wDebug,0)>1 do debugLog(">>   function exit:") zwrite v4wResult use $principal
  ;
  ; Reset principal device after coming back from user code
- use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  quit "{""result"":"_v4wResult_"}"
@@ -891,7 +891,7 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  if $get(v4wDebug,0)>1 do debugLog(">>   procedure exit")
  ;
  ; Reset principal device after coming back from user code
- use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to mumps.cc for handling
+ use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
  quit

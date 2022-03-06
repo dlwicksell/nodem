@@ -1,11 +1,11 @@
 /*
  * Package:    NodeM
- * File:       mumps.cc
+ * File:       nodem.cc
  * Summary:    A YottaDB/GT.M database driver and binding for Node.js
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2021 Fourth Watch Software LC
+ * Copyright © 2012-2022 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -22,7 +22,7 @@
  */
 
 #include "mumps.h"
-#include "nodem.h"
+#include "compat.h"
 #include "gtm.h"
 #include "ydb.h"
 
@@ -4068,7 +4068,7 @@ void Gtm::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     }
 
-    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2021 Fourth Watch Software LC"));
+    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2022 Fourth Watch Software LC"));
     return;
 } // @end nodem::Gtm::help method
 

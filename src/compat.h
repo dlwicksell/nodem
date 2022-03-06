@@ -1,11 +1,11 @@
 /*
  * Package:    NodeM
- * File:       nodem.h
- * Summary:    Macros and functions to manage/abstract V8 changes
+ * File:       compat.h
+ * Summary:    Compatiblity macros and functions to manage/abstract V8 changes
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2020 Fourth Watch Software LC
+ * Copyright © 2020,2022 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -21,8 +21,8 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#ifndef NODEM_H
-#define NODEM_H
+#ifndef COMPAT_H
+#define COMPAT_H
 
 #if NODE_MAJOR_VERSION >= 9
 #    define UTF8_VALUE_TEMP_N(isolate, value) v8::String::Utf8Value(v8::Isolate::GetCurrent(), value)
@@ -353,4 +353,4 @@ inline static void set_prototype_method_n(v8::Isolate* isolate, v8::Local<v8::Fu
 
 } // @end namespace nodem
 
-#endif // @end NODEM_H
+#endif // @end COMPAT_H

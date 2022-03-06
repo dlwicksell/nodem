@@ -2,7 +2,7 @@
  * transaction.js - Test the transaction API
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2021 Fourth Watch Software LC
+ * Copyright © 2021-2022 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Affero General Public License (AGPL)
@@ -117,9 +117,9 @@ if (isMainThread) {
             const innerTpResult = nodem.transaction(() => {
                 console.log('\nEntering inner transaction..\n');
 
-                fs.readFile('./release-notes.md', {encoding: 'utf8'}, (error, content) => {
+                fs.readFile('./CHANGELOG.md', {encoding: 'utf8'}, (error, content) => {
                     if (error) return console.error(error);
-                    console.log('Asynchronous: release-notes.md line ' + line + ':\n' + content.split('\n')[line] + '\n');
+                    console.log('Asynchronous: CHANGELOG.md line ' + line + ':\n' + content.split('\n')[line] + '\n');
                     line = line + 2;
                 });
 

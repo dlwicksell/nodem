@@ -1,4 +1,4 @@
-# NodeM Release Notes #
+# NodeM Changelog #
 
 ## v0.20.1 - 2021 Sep 28 ##
 

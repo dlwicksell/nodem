@@ -2,7 +2,7 @@
 # binding.gyp - Nodem build script
 #
 # Written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2016,2018-2020 Fourth Watch Software LC
+# Copyright © 2012-2016,2018-2020,2022 Fourth Watch Software LC
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU Affero General Public License (AGPL)
@@ -24,7 +24,7 @@
       'target_name': 'mumps',
       'type': 'loadable_module',
       'sources': [
-        'src/mumps.cc',
+        'src/nodem.cc',
         'src/gtm.cc',
         'src/ydb.cc'
       ],
