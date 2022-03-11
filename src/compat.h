@@ -7,15 +7,15 @@
  * Written by David Wicksell <dlw@linux.com>
  * Copyright © 2020,2022 Fourth Watch Software LC
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License (AGPL)
- * as published by the Free Software Foundation, either version 3 of
- * the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License (AGPL) as published
+ * by the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+ * for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see http://www.gnu.org/licenses/.
@@ -131,8 +131,8 @@ inline static v8::Local<v8::String> new_string_n(v8::Isolate* isolate, const cha
  * @param {Local<String>&} second - The second V8 string to concatenate
  * @returns {Local<String>} - The new V8 string
  */
-inline static v8::Local<v8::String> concat_n(v8::Isolate* isolate,
-  const v8::Local<v8::String>& first, const v8::Local<v8::String>& second)
+inline static v8::Local<v8::String> concat_n(v8::Isolate* isolate, const v8::Local<v8::String>& first,
+  const v8::Local<v8::String>& second)
 {
 #if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12
     return v8::String::Concat(isolate, first, second);
@@ -330,11 +330,11 @@ inline static v8::Local<v8::Value> call_n(v8::Isolate* isolate, const v8::Local<
 
 /*
  * @function {private} nodem::set_prototype_method_n
- * @summary Add Gtm class methods and external per-thread data to the Gtm/Ydb JavaScript function prototypes
+ * @summary Add Nodem class methods and external per-thread data to the Gtm/Ydb JavaScript function prototypes
  * @param {Isolate*} isolate - The current V8 isolate
  * @param {Local<FunctionTemplate>} func_template - The function template
- * @param {const char*} method_name - The Gtm class method name
- * @param {FunctionCallback} method_callback - The Gtm class method implementation
+ * @param {const char*} method_name - The Nodem class method name
+ * @param {FunctionCallback} method_callback - The Nodem class method implementation
  * @param {Local<Value>} external_data - The external per-thread data struct to add to the prototype
  * @returns {void}
  */

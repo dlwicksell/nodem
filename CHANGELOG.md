@@ -1,5 +1,13 @@
 # NodeM Changelog #
 
+## v0.20.2 - 2022 Mar 10 ##
+
+- Reformat various parts of the source code
+- Rename several classes, instances, types, and variables
+- Rename addon module shared library
+- Rename multiple source files
+- Fix bugs in environ script
+
 ## v0.20.1 - 2021 Sep 28 ##
 
 - Fix potential segfault in version API

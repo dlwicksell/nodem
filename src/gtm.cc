@@ -5,17 +5,17 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2021 Fourth Watch Software LC
+ * Copyright © 2018-2022 Fourth Watch Software LC
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License (AGPL)
- * as published by the Free Software Foundation, either version 3 of
- * the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License (AGPL) as published
+ * by the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+ * for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see http://www.gnu.org/licenses/.
@@ -34,32 +34,31 @@ namespace gtm {
 /*
  * @function gtm::data
  * @summary Check if global or local node has data and/or children or not
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t data(nodem::GtmBaton* gtm_baton)
+gtm_status_t data(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::data enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::data enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -71,8 +70,7 @@ gtm_status_t data(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_data[] = "data";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor data_access;
 
@@ -80,21 +78,17 @@ gtm_status_t data(nodem::GtmBaton* gtm_baton)
     data_access.rtn_name.length = strlen(gtm_data);
     data_access.handle = NULL;
 
-    stat_buf = gtm_cip(&data_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&data_access, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
 
-    stat_buf = gtm_ci(gtm_data, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_ci(gtm_data, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -104,9 +98,7 @@ gtm_status_t data(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::data exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::data exit");
 
     return stat_buf;
 } // @end gtm::data function
@@ -114,32 +106,31 @@ gtm_status_t data(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::get
  * @summary Get data from a global or local node, or an intrinsic special variable
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global, local, or intrinsic special variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t get(nodem::GtmBaton* gtm_baton)
+gtm_status_t get(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::get enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::get enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -151,8 +142,7 @@ gtm_status_t get(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_get[] = "get";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor get_access;
 
@@ -160,21 +150,16 @@ gtm_status_t get(nodem::GtmBaton* gtm_baton)
     get_access.rtn_name.length = strlen(gtm_get);
     get_access.handle = NULL;
 
-    stat_buf = gtm_cip(&get_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&get_access, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_get, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_get, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -184,9 +169,7 @@ gtm_status_t get(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::get exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::get exit");
 
     return stat_buf;
 } // @end gtm::get function
@@ -194,33 +177,32 @@ gtm_status_t get(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::set
  * @summary Set a global or local node, or an intrinsic special variable
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global, local, or intrinsic special variable name
  * @member {string} args - Subscripts
  * @member {string} value - Value to set
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t set(nodem::GtmBaton* gtm_baton)
+gtm_status_t set(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::set enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::set enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    value: ", gtm_baton->value);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    value: ", nodem_baton->value);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -232,8 +214,7 @@ gtm_status_t set(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_set[] = "set";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor set_access;
 
@@ -241,21 +222,16 @@ gtm_status_t set(nodem::GtmBaton* gtm_baton)
     set_access.rtn_name.length = strlen(gtm_set);
     set_access.handle = NULL;
 
-    stat_buf = gtm_cip(&set_access, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->value.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&set_access, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->value.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_set, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->value.c_str(), gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_set, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->value.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -265,9 +241,7 @@ gtm_status_t set(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::set exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::set exit");
 
     return stat_buf;
 } // @end gtm::set function
@@ -275,33 +249,32 @@ gtm_status_t set(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::kill
  * @summary Kill a global or global node, or a local or local node, or the entire local symbol table
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {int32_t} node_only (-1|<0>|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t kill(nodem::GtmBaton* gtm_baton)
+gtm_status_t kill(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::kill enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::kill enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    node_only: ", gtm_baton->node_only);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    node_only: ", nodem_baton->node_only);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -313,8 +286,7 @@ gtm_status_t kill(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_kill[] = "kill";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor kill_access;
 
@@ -322,21 +294,17 @@ gtm_status_t kill(nodem::GtmBaton* gtm_baton)
     kill_access.rtn_name.length = strlen(gtm_kill);
     kill_access.handle = NULL;
 
-    stat_buf = gtm_cip(&kill_access, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->node_only, gtm_baton->mode);
+    stat_buf = gtm_cip(&kill_access, nodem_baton->name.c_str(), nodem_baton->args.c_str(),
+               nodem_baton->node_only, nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_kill, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->node_only, gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_kill, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->node_only, nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -346,9 +314,7 @@ gtm_status_t kill(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::kill exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::kill exit");
 
     return stat_buf;
 } // @end gtm::kill function
@@ -356,32 +322,31 @@ gtm_status_t kill(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::order
  * @summary Return the next global or local node at the same level
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t order(nodem::GtmBaton* gtm_baton)
+gtm_status_t order(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::order enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::order enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -393,8 +358,7 @@ gtm_status_t order(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_order[] = "order";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor order_access;
 
@@ -402,21 +366,16 @@ gtm_status_t order(nodem::GtmBaton* gtm_baton)
     order_access.rtn_name.length = strlen(gtm_order);
     order_access.handle = NULL;
 
-    stat_buf = gtm_cip(&order_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&order_access, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_order, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_order, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -426,9 +385,7 @@ gtm_status_t order(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::order exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::order exit");
 
     return stat_buf;
 } // @end gtm::order function
@@ -436,32 +393,31 @@ gtm_status_t order(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::previous
  * @summary Return the previous global or local node at the same level
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t previous(nodem::GtmBaton* gtm_baton)
+gtm_status_t previous(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::previous enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::previous enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -473,8 +429,7 @@ gtm_status_t previous(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_previous[] = "previous";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor previous_access;
 
@@ -482,21 +437,17 @@ gtm_status_t previous(nodem::GtmBaton* gtm_baton)
     previous_access.rtn_name.length = strlen(gtm_previous);
     previous_access.handle = NULL;
 
-    stat_buf = gtm_cip(&previous_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&previous_access, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_previous, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_previous, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -506,9 +457,7 @@ gtm_status_t previous(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::previous exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::previous exit");
 
     return stat_buf;
 } // @end gtm::previous function
@@ -516,32 +465,31 @@ gtm_status_t previous(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::next_node
  * @summary Return the next global or local node, depth first
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t next_node(nodem::GtmBaton* gtm_baton)
+gtm_status_t next_node(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::next_node enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::next_node enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -553,8 +501,7 @@ gtm_status_t next_node(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_next_node[] = "next_node";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor next_node_access;
 
@@ -562,21 +509,17 @@ gtm_status_t next_node(nodem::GtmBaton* gtm_baton)
     next_node_access.rtn_name.length = strlen(gtm_next_node);
     next_node_access.handle = NULL;
 
-    stat_buf = gtm_cip(&next_node_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&next_node_access, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_next_node, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_next_node, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -586,9 +529,7 @@ gtm_status_t next_node(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::next_node exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::next_node exit");
 
     return stat_buf;
 } // @end gtm::next_node function
@@ -596,32 +537,31 @@ gtm_status_t next_node(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::previous_node
  * @summary Return the previous global or local node, depth first
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t previous_node(nodem::GtmBaton* gtm_baton)
+gtm_status_t previous_node(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::previous_node enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::previous_node enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -633,8 +573,7 @@ gtm_status_t previous_node(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_previous_node[] = "previous_node";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor previous_node_access;
 
@@ -642,21 +581,19 @@ gtm_status_t previous_node(nodem::GtmBaton* gtm_baton)
     previous_node_access.rtn_name.length = strlen(gtm_previous_node);
     previous_node_access.handle = NULL;
 
-    stat_buf = gtm_cip(&previous_node_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&previous_node_access, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
 
-    stat_buf = gtm_ci(gtm_previous_node, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_ci(gtm_previous_node, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -666,9 +603,7 @@ gtm_status_t previous_node(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::previous_node exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::previous_node exit");
 
     return stat_buf;
 } // @end gtm::previous_node function
@@ -676,34 +611,33 @@ gtm_status_t previous_node(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::increment
  * @summary Increment or decrement the number in a global or local node
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {gtm_double_t} option - Number to increment or decrement by
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t increment(nodem::GtmBaton* gtm_baton)
+gtm_status_t increment(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::increment enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::increment enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    increment: ", gtm_baton->option);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    increment: ", nodem_baton->option);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -715,8 +649,7 @@ gtm_status_t increment(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_increment[] = "increment";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor increment_access;
 
@@ -724,23 +657,19 @@ gtm_status_t increment(nodem::GtmBaton* gtm_baton)
     increment_access.rtn_name.length = strlen(gtm_increment);
     increment_access.handle = NULL;
 
-    stat_buf = gtm_cip(&increment_access, gtm_baton->result, gtm_baton->name.c_str(),
-      gtm_baton->args.c_str(), gtm_baton->option, gtm_baton->mode);
+    stat_buf = gtm_cip(&increment_access, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->option, nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
 
-    stat_buf = gtm_ci(gtm_increment, gtm_baton->result, gtm_baton->name.c_str(),
-      gtm_baton->args.c_str(), gtm_baton->option, gtm_baton->mode);
+    stat_buf = gtm_ci(gtm_increment, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->option, nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -750,9 +679,7 @@ gtm_status_t increment(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::increment exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::increment exit");
 
     return stat_buf;
 } // @end gtm::increment function
@@ -760,34 +687,33 @@ gtm_status_t increment(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::lock
  * @summary Lock a global or local node, incrementally
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {gtm_double_t} option - The time to wait for the lock, or -1 to wait forever
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t lock(nodem::GtmBaton* gtm_baton)
+gtm_status_t lock(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::lock enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::lock enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    timeout: ", gtm_baton->option);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    timeout: ", nodem_baton->option);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -799,8 +725,7 @@ gtm_status_t lock(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_lock[] = "lock";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor lock_access;
 
@@ -808,23 +733,19 @@ gtm_status_t lock(nodem::GtmBaton* gtm_baton)
     lock_access.rtn_name.length = strlen(gtm_lock);
     lock_access.handle = NULL;
 
-    stat_buf = gtm_cip(&lock_access, gtm_baton->result, gtm_baton->name.c_str(),
-      gtm_baton->args.c_str(), gtm_baton->option, gtm_baton->mode);
+    stat_buf = gtm_cip(&lock_access, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->option, nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
 
-    stat_buf = gtm_ci(gtm_lock, gtm_baton->result, gtm_baton->name.c_str(),
-      gtm_baton->args.c_str(), gtm_baton->option, gtm_baton->mode);
+    stat_buf = gtm_ci(gtm_lock, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->option, nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -834,9 +755,7 @@ gtm_status_t lock(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::lock exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::lock exit");
 
     return stat_buf;
 } // @end gtm::lock function
@@ -844,32 +763,31 @@ gtm_status_t lock(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::unlock
  * @summary Unlock a global or local node, incrementally, or release all locks
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {string} args - Subscripts
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
+gtm_status_t unlock(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::unlock enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::unlock enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
     uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -881,8 +799,7 @@ gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_unlock[] = "unlock";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor unlock_access;
 
@@ -890,21 +807,16 @@ gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
     unlock_access.rtn_name.length = strlen(gtm_unlock);
     unlock_access.handle = NULL;
 
-    stat_buf = gtm_cip(&unlock_access, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&unlock_access, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_unlock, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_unlock, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -914,9 +826,7 @@ gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
     }
 
     uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::unlock exit");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::unlock exit");
 
     return stat_buf;
 } // @end gtm::unlock function
@@ -926,31 +836,25 @@ gtm_status_t unlock(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::version
  * @summary Return the about/version string
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - The Nodem version string
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t version(nodem::GtmBaton* gtm_baton)
+gtm_status_t version(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::version enter");
-
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM)
-        nodem::debug_log(">>>    version: ", gtm_baton->name);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::version enter");
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) nodem::debug_log(">>>    version: ", nodem_baton->name);
 
     gtm_status_t stat_buf;
 
-    if (nodem::gtm_state_g < nodem::OPEN)
-        return 0;
+    if (nodem::nodem_state_g < nodem::OPEN) return 0;
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_lock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -962,8 +866,7 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_version[] = "version";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor version_access;
 
@@ -971,21 +874,16 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
     version_access.rtn_name.length = strlen(gtm_version);
     version_access.handle = NULL;
 
-    stat_buf = gtm_cip(&version_access, gtm_baton->result, gtm_baton->name.c_str());
+    stat_buf = gtm_cip(&version_access, nodem_baton->result, nodem_baton->name.c_str());
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_version, gtm_baton->result, gtm_baton->name.c_str());
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_version, nodem_baton->result, nodem_baton->name.c_str());
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -994,11 +892,8 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::version exit");
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::version exit");
 
     return stat_buf;
 } // @end gtm::version function
@@ -1006,7 +901,7 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
 /*
  * @function gtm::merge
  * @summary Merge a global or local array tree to another global or local array tree
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name to merge from
  * @member {string} args - Subscripts to merge from
  * @member {string} to_name - Global or local variable name to merge to
@@ -1014,29 +909,27 @@ gtm_status_t version(nodem::GtmBaton* gtm_baton)
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t merge(nodem::GtmBaton* gtm_baton)
+gtm_status_t merge(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::merge enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::merge enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    from_name: ", gtm_baton->name);
-        nodem::debug_log(">>>    from_subscripts: ", gtm_baton->args);
-        nodem::debug_log(">>>    to_name: ", gtm_baton->to_name);
-        nodem::debug_log(">>>    to_subscripts: ", gtm_baton->to_args);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    from_name: ", nodem_baton->name);
+        nodem::debug_log(">>>    from_subscripts: ", nodem_baton->args);
+        nodem::debug_log(">>>    to_name: ", nodem_baton->to_name);
+        nodem::debug_log(">>>    to_subscripts: ", nodem_baton->to_args);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_lock(&nodem::mutex_g);
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -1048,8 +941,7 @@ gtm_status_t merge(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_merge[] = "merge";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor merge_access;
 
@@ -1057,23 +949,19 @@ gtm_status_t merge(nodem::GtmBaton* gtm_baton)
     merge_access.rtn_name.length = strlen(gtm_merge);
     merge_access.handle = NULL;
 
-    stat_buf = gtm_cip(&merge_access, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(),
-      gtm_baton->to_name.c_str(), gtm_baton->to_args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_cip(&merge_access, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(),
+               nodem_baton->to_name.c_str(), nodem_baton->to_args.c_str(), nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
 
-    stat_buf = gtm_ci(gtm_merge, gtm_baton->result, gtm_baton->name.c_str(), gtm_baton->args.c_str(),
-      gtm_baton->to_name.c_str(), gtm_baton->to_args.c_str(), gtm_baton->mode);
+    stat_buf = gtm_ci(gtm_merge, nodem_baton->result, nodem_baton->name.c_str(), nodem_baton->args.c_str(),
+               nodem_baton->to_name.c_str(), nodem_baton->to_args.c_str(), nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -1082,47 +970,42 @@ gtm_status_t merge(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::merge exit");
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::merge exit");
 
     return stat_buf;
 } // @end gtm::merge function
 
 /*
  * @function gtm::function
- * @summary Call a Mumps extrinsic function
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @summary Call an M extrinsic function
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Function name, with line label
  * @member {string} args - Arguments
  * @member {uint32_t} relink (<0>|1) - Whether to relink the function before calling it
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t function(nodem::GtmBaton* gtm_baton)
+gtm_status_t function(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::function enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::function enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    arguments: ", gtm_baton->args);
-        nodem::debug_log(">>>    relink: ", gtm_baton->relink);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    arguments: ", nodem_baton->args);
+        nodem::debug_log(">>>    relink: ", nodem_baton->relink);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_lock(&nodem::mutex_g);
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -1134,8 +1017,7 @@ gtm_status_t function(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_function[] = "function";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor function_access;
 
@@ -1143,23 +1025,19 @@ gtm_status_t function(nodem::GtmBaton* gtm_baton)
     function_access.rtn_name.length = strlen(gtm_function);
     function_access.handle = NULL;
 
-    stat_buf = gtm_cip(&function_access, gtm_baton->result, gtm_baton->name.c_str(),
-      gtm_baton->args.c_str(), gtm_baton->relink, gtm_baton->mode);
+    stat_buf = gtm_cip(&function_access, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
 
-    stat_buf = gtm_ci(gtm_function, gtm_baton->result, gtm_baton->name.c_str(),
-      gtm_baton->args.c_str(), gtm_baton->relink, gtm_baton->mode);
+    stat_buf = gtm_ci(gtm_function, nodem_baton->result, nodem_baton->name.c_str(),
+               nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -1168,46 +1046,41 @@ gtm_status_t function(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::function exit");
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::function exit");
 
     return stat_buf;
 } // @end gtm::function function
 
 /*
  * @function gtm::procedure
- * @summary Call a Mumps procedure/subroutine
- * @param {GtmBaton*} gtm_baton - struct containing the following members
+ * @summary Call an M procedure/subroutine
+ * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Procedure name, with line label
  * @member {string} args - Arguments
  * @member {uint32_t} relink (<0>|1) - Whether to relink the procedure before calling it
  * @member {mode_t} mode (0|1|2) - Data mode; 0 is strict mode, 1 is string mode, 2 is canonical mode
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
- * @member {GtmState*} gtm_state - Per-thread state class containing the following members
+ * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {gtm_status_t} stat_buf - Return code; 0 is success, any other number is an error code
  */
-gtm_status_t procedure(nodem::GtmBaton* gtm_baton)
+gtm_status_t procedure(nodem::NodemBaton* nodem_baton)
 {
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::procedure enter");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::procedure enter");
 
-    if (gtm_baton->gtm_state->debug > nodem::MEDIUM) {
-        nodem::debug_log(">>>    name: ", gtm_baton->name);
-        nodem::debug_log(">>>    arguments: ", gtm_baton->args);
-        nodem::debug_log(">>>    relink: ", gtm_baton->relink);
-        nodem::debug_log(">>>    mode: ", gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
+        nodem::debug_log(">>>    name: ", nodem_baton->name);
+        nodem::debug_log(">>>    arguments: ", nodem_baton->args);
+        nodem::debug_log(">>>    relink: ", nodem_baton->relink);
+        nodem::debug_log(">>>    mode: ", nodem_baton->mode);
     }
 
     gtm_status_t stat_buf;
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_lock(&nodem::mutex_g);
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
             cerr << strerror_r(errno, error, BUFSIZ);
@@ -1219,8 +1092,7 @@ gtm_status_t procedure(nodem::GtmBaton* gtm_baton)
     gtm_char_t gtm_procedure[] = "procedure";
 
 #if NODEM_CIP_API == 1
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_cip");
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_cip");
 
     ci_name_descriptor procedure_access;
 
@@ -1228,21 +1100,17 @@ gtm_status_t procedure(nodem::GtmBaton* gtm_baton)
     procedure_access.rtn_name.length = strlen(gtm_procedure);
     procedure_access.handle = NULL;
 
-    stat_buf = gtm_cip(&procedure_access, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->relink, gtm_baton->mode);
+    stat_buf = gtm_cip(&procedure_access, nodem_baton->name.c_str(), nodem_baton->args.c_str(),
+               nodem_baton->relink, nodem_baton->mode);
 #else
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   call using gtm_ci");
-
-    stat_buf = gtm_ci(gtm_procedure, gtm_baton->name.c_str(), gtm_baton->args.c_str(), gtm_baton->relink, gtm_baton->mode);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
+    stat_buf = gtm_ci(gtm_procedure, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode);
 #endif
 
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (stat_buf != EXIT_SUCCESS) gtm_zstatus(nodem_baton->error, ERR_LEN);
 
-    if (stat_buf != EXIT_SUCCESS)
-        gtm_zstatus(gtm_baton->error, ERR_LEN);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW) {
+    if (nodem_baton->nodem_state->debug > nodem::LOW) {
         funlockfile(stderr);
 
         if (dup2(nodem::save_stdout_g, STDOUT_FILENO) == -1) {
@@ -1251,11 +1119,8 @@ gtm_status_t procedure(nodem::GtmBaton* gtm_baton)
         }
     }
 
-    if (gtm_baton->gtm_state->tp_level == 0)
-        uv_mutex_unlock(&nodem::mutex_g);
-
-    if (gtm_baton->gtm_state->debug > nodem::LOW)
-        nodem::debug_log(">>   gtm::procedure exit");
+    if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   gtm::procedure exit");
 
     return stat_buf;
 } // @end gtm::procedure function

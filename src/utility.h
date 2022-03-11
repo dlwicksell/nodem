@@ -5,17 +5,17 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2019-2021 Fourth Watch Software LC
+ * Copyright © 2019-2022 Fourth Watch Software LC
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License (AGPL)
- * as published by the Free Software Foundation, either version 3 of
- * the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License (AGPL) as published
+ * by the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+ * for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see http://www.gnu.org/licenses/.
@@ -77,11 +77,8 @@ static void debug_log(A... args)
 {
     std::ostringstream stream;
     stream << "[C " << gettid() << "] DEBUG";
-
     logger(stream, args...);
-
     stream << std::endl;
-
     std::clog << stream.str();
     return;
 } // @end nodem::debug_log variadic template function

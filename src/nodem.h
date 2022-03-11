@@ -1,28 +1,28 @@
 /*
  * Package:    NodeM
- * File:       mumps.h
+ * File:       nodem.h
  * Summary:    A YottaDB/GT.M database driver and binding for Node.js
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2015-2021 Fourth Watch Software LC
+ * Copyright © 2015-2022 Fourth Watch Software LC
  *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Affero General Public License (AGPL)
- * as published by the Free Software Foundation, either version 3 of
- * the License, or (at your option) any later version.
+ * This program is free software: you can redistribute it and/or modify it
+ * under the terms of the GNU Affero General Public License (AGPL) as published
+ * by the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Affero General Public License for more details.
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+ * for more details.
  *
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#ifndef MUMPS_H
-#define MUMPS_H
+#ifndef NODEM_H
+#define NODEM_H
 
 #include "utility.h"
 
@@ -63,7 +63,7 @@ extern "C" {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 20
-#define NODEM_PATCH_VERSION 1
+#define NODEM_PATCH_VERSION 2
 
 #define NODEM_STRING(number) NODEM_STRINGIFY(number)
 #define NODEM_STRINGIFY(number) #number
@@ -88,7 +88,7 @@ enum debug_t {
     HIGH
 };
 
-enum gtm_state_t {
+enum nodem_state_t {
     CLOSED,
     NOT_OPEN,
     OPEN
@@ -100,13 +100,13 @@ extern bool utf8_g;
 extern bool auto_relink_g;
 extern enum mode_t mode_g;
 extern enum debug_t debug_g;
-extern enum gtm_state_t gtm_state_g;
+extern enum nodem_state_t nodem_state_g;
 
 /*
- * @class nodem::Gtm
+ * @class nodem::Nodem
  * @summary Wrap the Nodem API in a C++ class
- * @constructor Gtm
- * @destructor ~Gtm
+ * @constructor Nodem
+ * @destructor ~Nodem
  * @method {class} Init
  * @method {class} {private} open
  * @method {class} {private} configure
@@ -138,21 +138,17 @@ extern enum gtm_state_t gtm_state_g;
  * @member {int} {private} tp_restart
  * @member {int} {private} tp_rollback
  */
-class Gtm : public node::ObjectWrap {
+class Nodem : public node::ObjectWrap {
 public:
-    Gtm()
+    Nodem()
     {
-        if (getpid() == gettid())
-            uv_mutex_init(&mutex_g);
-
+        if (getpid() == gettid()) uv_mutex_init(&mutex_g);
         return;
     }
 
-    ~Gtm()
+    ~Nodem()
     {
-        if (getpid() == gettid())
-            uv_mutex_destroy(&mutex_g);
-
+        if (getpid() == gettid()) uv_mutex_destroy(&mutex_g);
         return;
     }
 
@@ -195,23 +191,23 @@ private:
     int tp_restart = YDB_TP_RESTART;
     int tp_rollback = YDB_TP_ROLLBACK;
 #endif
-}; // @end nodem::Gtm class
+}; // @end nodem::Nodem class
 
 /*
- * @class nodem::GtmValue
+ * @class nodem::NodemValue
  * @summary Convert UTF-8 encoded buffer to/from a byte encoded buffer
- * @constructor GtmValue
- * @destructor ~GtmValue
+ * @constructor NodemValue
+ * @destructor ~NodemValue
  * @method {instance} to_byte
  * @method {class} from_byte
  * @member {Local<String>} value
  * @member {int} size
  * @member {uint8_t*} buffer
  */
-class GtmValue {
+class NodemValue {
 public:
 #if NODE_MAJOR_VERSION >= 8
-    explicit GtmValue(v8::Local<v8::Value>& val)
+    explicit NodemValue(v8::Local<v8::Value>& val)
     {
         v8::Isolate* isolate = v8::Isolate::GetCurrent();
 
@@ -232,7 +228,7 @@ public:
         return;
     }
 #else
-    explicit GtmValue(v8::Local<v8::Value>& val) :
+    explicit NodemValue(v8::Local<v8::Value>& val) :
         value {val->ToString()},
         size {value->Length() + 1},
         buffer {new uint8_t[size]}
@@ -241,7 +237,7 @@ public:
     }
 #endif
 
-    ~GtmValue()
+    ~NodemValue()
     {
         delete[] buffer;
         return;
@@ -254,13 +250,13 @@ private:
     v8::Local<v8::String> value;
     int size;
     uint8_t* buffer;
-}; // @end nodem::GtmValue class
+}; // @end nodem::NodemValue class
 
 /*
- * @class nodem::GtmState
+ * @class nodem::NodemState
  * @summary Holds global state data in a form that can be accessed by multiple threads safely
- * @constructor GtmState
- * @destructor ~GtmState
+ * @constructor NodemState
+ * @destructor ~NodemState
  * @member {bool} utf8
  * @member {bool} auto_relink
  * @member {pid_t} pid
@@ -274,9 +270,9 @@ private:
  * @method {class} {private} DeleteState
  * @member {Persistent<Object>} {private} exports_p
  */
-class GtmState {
+class NodemState {
 public:
-    GtmState(v8::Isolate* isolate, v8::Local<v8::Object> exports) :
+    NodemState(v8::Isolate* isolate, v8::Local<v8::Object> exports) :
 #if YDB_RELEASE >= 126
         reset_handler {false},
 #endif
@@ -291,7 +287,7 @@ public:
 #if NODE_MAJOR_VERSION >= 3
         exports_p.SetWeak(this, DeleteState, v8::WeakCallbackType::kParameter);
 #else
-        exports_p.SetWeak<GtmState>(this, DeleteState);
+        exports_p.SetWeak<NodemState>(this, DeleteState);
 #endif
         pid = getpid();
         tid = gettid();
@@ -299,7 +295,7 @@ public:
         return;
     }
 
-    ~GtmState()
+    ~NodemState()
     {
         if (!exports_p.IsEmpty()) {
             exports_p.ClearWeak();
@@ -327,22 +323,24 @@ public:
 
 private:
 #if NODE_MAJOR_VERSION >= 3
-    static void DeleteState(const v8::WeakCallbackInfo<GtmState>& info)
+    static void DeleteState(const v8::WeakCallbackInfo<NodemState>& info)
     {
         delete info.GetParameter();
-#else
-    static void DeleteState(const v8::WeakCallbackData<v8::Object, GtmState>& data)
-    {
-        delete data.GetParameter();
-#endif
         return;
     }
+#else
+    static void DeleteState(const v8::WeakCallbackData<v8::Object, NodemState>& data)
+    {
+        delete data.GetParameter();
+        return;
+    }
+#endif
 
     v8::Persistent<v8::Object> exports_p;
-}; // @end nodem::GtmState class
+}; // @end nodem::NodemState class
 
 /*
- * @struct nodem::GtmBaton
+ * @struct nodem::NodemBaton
  * @summary Common structure to transfer data between main thread and worker threads when Nodem APIs are called asynchronously
  * @member {uv_work_t} request
  * @member {Persistent<Function>} callback_p
@@ -366,11 +364,11 @@ private:
  * @member {gtm_status_t} status
  * @member {gtm_char_t*} error
  * @member {gtm_char_t*} result
- * @member {gtm_status_t *(GtmBaton*)} gtm_function
- * @member {Local<Value> *(GtmBaton*)} ret_function
- * @member {GtmState*} gtm_state
+ * @member {gtm_status_t *(NodemBaton*)} nodem_function
+ * @member {Local<Value> *(NodemBaton*)} ret_function
+ * @member {NodemState*} nodem_state
  */
-struct GtmBaton {
+struct NodemBaton {
     uv_work_t                    request;
     v8::Persistent<v8::Function> callback_p;
     v8::Persistent<v8::Object>   object_p;
@@ -393,11 +391,11 @@ struct GtmBaton {
     gtm_status_t                 status;
     gtm_char_t*                  error;
     gtm_char_t*                  result;
-    gtm_status_t                 (*gtm_function)(GtmBaton*);
-    v8::Local<v8::Value>         (*ret_function)(GtmBaton*);
-    GtmState*                    gtm_state;
-}; // @end nodem::GtmBaton struct
+    gtm_status_t                 (*nodem_function)(NodemBaton*);
+    v8::Local<v8::Value>         (*ret_function)(NodemBaton*);
+    NodemState*                  nodem_state;
+}; // @end nodem::NodemBaton struct
 
 } // @end namespace nodem
 
-#endif // @end MUMPS_H
+#endif // @end NODEM_H

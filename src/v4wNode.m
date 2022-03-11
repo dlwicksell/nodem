@@ -1,4 +1,4 @@
-v4wNode() ; 0.20.1 ; Mar 03, 2022@17:23
+v4wNode() ; 0.20.2 ; Mar 07, 2022@20:16
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -8,18 +8,19 @@ v4wNode() ; 0.20.1 ; Mar 03, 2022@17:23
  ; Written by David Wicksell <dlw@linux.com>
  ; Copyright © 2012-2022 Fourth Watch Software LC
  ;
- ; This program is free software: you can redistribute it and/or modify
- ; it under the terms of the GNU Affero General Public License (AGPL)
- ; as published by the Free Software Foundation, either version 3 of
- ; the License, or (at your option) any later version.
+ ; This program is free software: you can redistribute it and/or modify it
+ ; under the terms of the GNU Affero General Public License (AGPL) as published
+ ; by the Free Software Foundation, either version 3 of the License, or (at
+ ; your option) any later version.
  ;
- ; This program is distributed in the hope that it will be useful,
- ; but WITHOUT ANY WARRANTY; without even the implied warranty of
- ; MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- ; GNU Affero General Public License for more details.
+ ; This program is distributed in the hope that it will be useful, but WITHOUT
+ ; ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ ; FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License
+ ; for more details.
  ;
  ; You should have received a copy of the GNU Affero General Public License
  ; along with this program. If not, see http://www.gnu.org/licenses/.
+ ;
  ;
  ; NOTE: Although this routine can be called directly, it is not a good idea; it
  ; is hard to use, and very clunky. It is written with the sole purpose of
@@ -295,14 +296,14 @@ debugLog:(msg)
  ;; ***Begin Integration APIs***
  ;;
  ;; These APIs are part of the integration code, called by the C Call-in interface (gtm_cip or gtm_ci)
- ;; They may be called from Mumps code directly, for unit testing
+ ;; They may be called from M code directly, for unit testing
  ;
  ;; @subroutine debug
  ;; @summary Set debugging level, defaults to off
  ;; @param {number} level (0|1|2|3) - Debugging level, 0 is off, 1 is low, 2 is medium, 3 is high
  ;; @returns {void}
 debug(level)
- ; Set principal device during Gtm::open call, for proper signal handling
+ ; Set principal device during Nodem::open call, for proper signal handling
  use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
@@ -312,7 +313,7 @@ debug(level)
  ;
  ;; @function version
  ;; @summary Return the about/version string
- ;; @param {string} v4wVersion - Nodem version string from mumps.h/nodem.cc used to confirm correct integration
+ ;; @param {string} v4wVersion - Nodem version string from nodem.h/nodem.cc used to confirm correct integration
  ;; @returns {string} - The YottaDB or GT.M version
 version(v4wVersion)
  ; Handle $zyrelease not existing in this M implementation version (150373074: %GTM-E-INVSVN, Invalid special variable name)
@@ -334,10 +335,10 @@ version(v4wVersion)
  ;
  if $get(v4wDebug,0)>1 do debugLog(">>   version exit")
  ;
- new v4wYottaVersion
- set v4wYottaVersion=$zpiece($zyrelease," ",2),$zextract(v4wYottaVersion)=""
+ new v4wYdbVersion
+ set v4wYdbVersion=$zpiece($zyrelease," ",2),$zextract(v4wYdbVersion)=""
  ;
- quit "YottaDB Version: "_v4wYottaVersion
+ quit "YottaDB Version: "_v4wYdbVersion
  ;; @end version function
  ;
  ;; @function data
