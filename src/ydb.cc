@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2022 Fourth Watch Software LC
+ * Copyright © 2018-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -22,9 +22,9 @@
  */
 
 #if NODEM_SIMPLE_API == 1
+#   include "ydb.h"
 
-#include "ydb.h"
-
+using std::boolalpha;
 using std::cerr;
 using std::string;
 
@@ -140,7 +140,7 @@ static ydb_status_t extended_ref(nodem::NodemBaton* nodem_baton, string save_res
     if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    ydb::extended_ref exit");
         nodem::debug_log(">>>    save_result: ", save_result);
-        nodem::debug_log(">>>    change_isv: ", std::boolalpha, change_isv);
+        nodem::debug_log(">>>    change_isv: ", boolalpha, change_isv);
     }
 
     return YDB_OK;
@@ -158,7 +158,7 @@ static ydb_status_t extended_ref(nodem::NodemBaton* nodem_baton, string save_res
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t data(nodem::NodemBaton* nodem_baton)
 {
@@ -169,7 +169,7 @@ ydb_status_t data(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -203,17 +203,18 @@ ydb_status_t data(nodem::NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    ydb_status_t stat_buf = ydb_data_s(&glvn, subs_size, subs_array, ret_value);
+    ydb_status_t status = ydb_data_s(&glvn, subs_size, subs_array, ret_value);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     if (int len = snprintf(nodem_baton->result, sizeof(int), "%u", *ret_value) < 0) {
         char error[BUFSIZ];
+
         cerr << strerror_r(errno, error, BUFSIZ);
 
-        stat_buf = len;
+        status = len;
     }
 
     if (change_isv) {
@@ -224,7 +225,7 @@ ydb_status_t data(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::data exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::data function
 
 /*
@@ -237,7 +238,7 @@ ydb_status_t data(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t get(nodem::NodemBaton* nodem_baton)
 {
@@ -248,7 +249,7 @@ ydb_status_t get(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -286,10 +287,10 @@ ydb_status_t get(nodem::NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    ydb_status_t stat_buf = ydb_get_s(&glvn, subs_size, subs_array, &value);
+    ydb_status_t status = ydb_get_s(&glvn, subs_size, subs_array, &value);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(nodem_baton->result, value.buf_addr, value.len_used);
@@ -303,7 +304,7 @@ ydb_status_t get(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::get exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::get function
 
 /*
@@ -316,7 +317,7 @@ ydb_status_t get(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t set(nodem::NodemBaton* nodem_baton)
 {
@@ -328,7 +329,7 @@ ydb_status_t set(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -365,10 +366,10 @@ ydb_status_t set(nodem::NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    ydb_status_t stat_buf = ydb_set_s(&glvn, subs_size, subs_array, &data_node);
+    ydb_status_t status = ydb_set_s(&glvn, subs_size, subs_array, &data_node);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     if (change_isv) {
@@ -379,7 +380,7 @@ ydb_status_t set(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::set exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::set
 
 /*
@@ -388,11 +389,11 @@ ydb_status_t set(nodem::NodemBaton* nodem_baton)
  * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {string} name - Global or local variable name
  * @member {vector<string>} subs_array - Subscripts
- * @member {int32_t} node_only (-1|<0>|1) - Whether to kill only the node, or also kill child subscripts; 0 is children, 1 node-only
+ * @member {bool} node_only (<false>|true) - Whether to kill only the node, or the node and child subscripts
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t kill(nodem::NodemBaton* nodem_baton)
 {
@@ -400,11 +401,11 @@ ydb_status_t kill(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::MEDIUM) {
         nodem::debug_log(">>>    name: ", nodem_baton->name);
-        nodem::debug_log(">>>    node_only: ", nodem_baton->node_only);
+        nodem::debug_log(">>>    node_only: ", boolalpha, nodem_baton->node_only);
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -418,7 +419,7 @@ ydb_status_t kill(nodem::NodemBaton* nodem_baton)
         if (set_stat != YDB_OK) return set_stat;
     }
 
-    ydb_status_t stat_buf;
+    ydb_status_t status;
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
 
@@ -427,7 +428,7 @@ ydb_status_t kill(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        stat_buf = ydb_delete_excl_s(1, subs_array);
+        status = ydb_delete_excl_s(1, subs_array);
     } else {
         char* var_name = (char*) nodem_baton->name.c_str();
 
@@ -443,15 +444,15 @@ ydb_status_t kill(nodem::NodemBaton* nodem_baton)
             subs_array[i].buf_addr = (char*) nodem_baton->subs_array[i].c_str();
         }
 
-        int delete_type = (nodem_baton->node_only == 1) ? YDB_DEL_NODE : YDB_DEL_TREE;
+        int delete_type = (nodem_baton->node_only) ? YDB_DEL_NODE : YDB_DEL_TREE;
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        stat_buf = ydb_delete_s(&glvn, subs_size, subs_array, delete_type);
+        status = ydb_delete_s(&glvn, subs_size, subs_array, delete_type);
     }
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     if (change_isv) {
@@ -462,7 +463,7 @@ ydb_status_t kill(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::kill exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::kill function
 
 /*
@@ -475,7 +476,7 @@ ydb_status_t kill(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t order(nodem::NodemBaton* nodem_baton)
 {
@@ -486,7 +487,7 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -529,28 +530,28 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
+        ydb_status_t status = ydb_data_s(&glvn, 0, NULL, ret_value);
 
-        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
-        if (stat_buf == YDB_OK && *ret_value == 0) {
+        if (status == YDB_OK && *ret_value == 0) {
             nodem_baton->result[0] = '\0';
 
             if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::order exit");
 
-            return stat_buf;
+            return status;
         }
     }
 
-    ydb_status_t stat_buf;
+    ydb_status_t status;
 
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
+    status = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
@@ -559,10 +560,10 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        stat_buf = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
+        status = ydb_subscript_next_s(&glvn, subs_size, subs_array, &value);
 
-        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-        if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+        if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
         if (value.len_used == 0) break;
     }
@@ -578,7 +579,7 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::order exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::order function
 
 /*
@@ -591,7 +592,7 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t previous(nodem::NodemBaton* nodem_baton)
 {
@@ -602,7 +603,7 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -645,28 +646,28 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        ydb_status_t stat_buf = ydb_data_s(&glvn, 0, NULL, ret_value);
+        ydb_status_t status = ydb_data_s(&glvn, 0, NULL, ret_value);
 
-        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
-        if (stat_buf == YDB_OK && *ret_value == 0) {
+        if (status == YDB_OK && *ret_value == 0) {
             nodem_baton->result[0] = '\0';
 
             if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous exit");
 
-            return stat_buf;
+            return status;
         }
     }
 
-    ydb_status_t stat_buf;
+    ydb_status_t status;
 
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
+    status = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
@@ -675,10 +676,10 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        stat_buf = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
+        status = ydb_subscript_previous_s(&glvn, subs_size, subs_array, &value);
 
-        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-        if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+        if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
         if (value.len_used == 0) break;
     }
@@ -694,7 +695,7 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::previous function
 
 /*
@@ -707,7 +708,7 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
 {
@@ -718,7 +719,7 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -761,19 +762,19 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
         ret_array[i].buf_addr = (char*) &next_node_data[i][0];
     }
 
-    ydb_status_t stat_buf = ydb_node_next_s(&glvn, subs_size, subs_array, subs_used, ret_array);
+    ydb_status_t status = ydb_node_next_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
 
     nodem_baton->subs_array.clear();
 
-    if (stat_buf != YDB_OK) {
+    if (status != YDB_OK) {
         ydb_zstatus(nodem_baton->error, ERR_LEN);
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
         if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::next_node exit");
 
-        return stat_buf;
+        return status;
     }
 
     if (*subs_used != YDB_NODE_END) {
@@ -795,10 +796,10 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
     value.len_used = 0;
     value.buf_addr = (char*) &ret_data;
 
-    stat_buf = ydb_get_s(&glvn, *subs_used, ret_array, &value);
+    status = ydb_get_s(&glvn, *subs_used, ret_array, &value);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(nodem_baton->result, value.buf_addr, value.len_used);
@@ -812,7 +813,7 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::next_node exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::next_node function
 
 /*
@@ -825,7 +826,7 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
 {
@@ -836,7 +837,7 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -879,19 +880,19 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
         ret_array[i].buf_addr = (char*) &previous_node_data[i][0];
     }
 
-    ydb_status_t stat_buf = ydb_node_previous_s(&glvn, subs_size, subs_array, subs_used, ret_array);
+    ydb_status_t status = ydb_node_previous_s(&glvn, subs_size, subs_array, subs_used, ret_array);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
 
     nodem_baton->subs_array.clear();
 
-    if (stat_buf != YDB_OK) {
+    if (status != YDB_OK) {
         ydb_zstatus(nodem_baton->error, ERR_LEN);
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
         if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous_node exit");
 
-        return stat_buf;
+        return status;
     }
 
     if (*subs_used != YDB_NODE_END) {
@@ -910,13 +911,13 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
     value.len_used = 0;
     value.buf_addr = (char*) &ret_data;
 
-    stat_buf = ydb_get_s(&glvn, *subs_used, ret_array, &value);
+    status = ydb_get_s(&glvn, *subs_used, ret_array, &value);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
-    if (subs_size == 0 || stat_buf == YDB_ERR_GVUNDEF || stat_buf == YDB_ERR_LVUNDEF) {
+    if (subs_size == 0 || status == YDB_ERR_GVUNDEF || status == YDB_ERR_LVUNDEF) {
         nodem_baton->result[0] = '\0';
         return YDB_NODE_END;
     } else {
@@ -932,7 +933,7 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous_node exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::previous_node function
 
 /*
@@ -946,7 +947,7 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t increment(nodem::NodemBaton* nodem_baton)
 {
@@ -958,7 +959,7 @@ ydb_status_t increment(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -990,6 +991,7 @@ ydb_status_t increment(nodem::NodemBaton* nodem_baton)
 
     if (snprintf(incr_val, YDB_MAX_STR, "%.16g", nodem_baton->option) < 0) {
         char error[BUFSIZ];
+
         cerr << strerror_r(errno, error, BUFSIZ);
     }
 
@@ -1007,10 +1009,10 @@ ydb_status_t increment(nodem::NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    ydb_status_t stat_buf = ydb_incr_s(&glvn, subs_size, subs_array, &incr, &value);
+    ydb_status_t status = ydb_incr_s(&glvn, subs_size, subs_array, &incr, &value);
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(nodem_baton->result, value.buf_addr, value.len_used);
@@ -1024,7 +1026,7 @@ ydb_status_t increment(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::increment exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::increment function
 
 /*
@@ -1038,7 +1040,7 @@ ydb_status_t increment(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t lock(nodem::NodemBaton* nodem_baton)
 {
@@ -1050,7 +1052,7 @@ ydb_status_t lock(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -1089,17 +1091,17 @@ ydb_status_t lock(nodem::NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-    ydb_status_t stat_buf = ydb_lock_incr_s(timeout, &glvn, subs_size, subs_array);
+    ydb_status_t status = ydb_lock_incr_s(timeout, &glvn, subs_size, subs_array);
 
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
 
-    if (stat_buf == YDB_OK) {
+    if (status == YDB_OK) {
         strncpy(nodem_baton->result, "1\0", 2);
-    } else if (stat_buf == YDB_LOCK_TIMEOUT) {
+    } else if (status == YDB_LOCK_TIMEOUT) {
         strncpy(nodem_baton->result, "0\0", 2);
 
-        stat_buf = YDB_OK;
+        status = YDB_OK;
     } else {
         ydb_zstatus(nodem_baton->error, ERR_LEN);
     }
@@ -1112,7 +1114,7 @@ ydb_status_t lock(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::lock exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::lock function
 
 /*
@@ -1124,7 +1126,7 @@ ydb_status_t lock(nodem::NodemBaton* nodem_baton)
  * @member {ydb_char_t*} error - Error message returned from YottaDB, via the SimpleAPI interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {ydb_status_t} stat_buf - Return code; 0 is success, any other number is an error code
+ * @returns {ydb_status_t} status - Return code; 0 is success, any other number is an error code
  */
 ydb_status_t unlock(nodem::NodemBaton* nodem_baton)
 {
@@ -1135,7 +1137,7 @@ ydb_status_t unlock(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->subs_array.size()) {
             for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
-                nodem::debug_log(">>   subscripts[", i, "]: ", nodem_baton->subs_array[i]);
+                nodem::debug_log(">>>    subscripts[", i, "]: ", nodem_baton->subs_array[i]);
             }
         }
     }
@@ -1149,14 +1151,14 @@ ydb_status_t unlock(nodem::NodemBaton* nodem_baton)
         if (set_stat != YDB_OK) return set_stat;
     }
 
-    ydb_status_t stat_buf;
+    ydb_status_t status;
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
 
     if (nodem_baton->name == "") {
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        stat_buf = ydb_lock_s(0, 0);
+        status = ydb_lock_s(0, 0);
     } else {
         char* var_name = (char*) nodem_baton->name.c_str();
 
@@ -1174,11 +1176,11 @@ ydb_status_t unlock(nodem::NodemBaton* nodem_baton)
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
-        stat_buf = ydb_lock_decr_s(&glvn, subs_size, subs_array);
+        status = ydb_lock_decr_s(&glvn, subs_size, subs_array);
     }
 
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   stat_buf: ", stat_buf);
-    if (stat_buf != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
+    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     if (change_isv) {
@@ -1189,7 +1191,7 @@ ydb_status_t unlock(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::unlock exit");
 
-    return stat_buf;
+    return status;
 } // @end ydb::unlock function
 
 // ***End Public APIs***

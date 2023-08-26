@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2022 Fourth Watch Software LC
+ * Copyright © 2012-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -25,19 +25,20 @@
 #include "compat.h"
 #include "gtm.h"
 #include "ydb.h"
-
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
-
 #include <algorithm>
+#include <limits>
+
+#define REVSE "\x1B[7m"
+#define RESET "\x1B[0m"
 
 using node::ObjectWrap;
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
 using node::AddEnvironmentCleanupHook;
 using node::GetCurrentEventLoop;
 #endif
-
 using v8::Array;
 using v8::Boolean;
 using v8::Context;
@@ -64,10 +65,12 @@ using v8::PropertyCallbackInfo;
 using v8::String;
 using v8::TryCatch;
 using v8::Value;
-
+using std::boolalpha;
 using std::cerr;
 using std::cout;
 using std::endl;
+using std::isdigit;
+using std::numeric_limits;
 using std::string;
 using std::vector;
 
@@ -84,19 +87,32 @@ inline static int unistd_close(int fd)
 
 namespace nodem {
 
-uv_mutex_t mutex_g;
-int save_stdout_g = -1;
-bool utf8_g = true;
-bool auto_relink_g = false;
-enum mode_t mode_g = CANONICAL;
-enum debug_t debug_g = OFF;
-enum nodem_state_t nodem_state_g = NOT_OPEN;
+uv_mutex_t    mutex_g;
+mode_t        mode_g = CANONICAL;
+debug_t       debug_g = OFF;
+nodem_state_t nodem_state_g = NOT_OPEN;
+int           save_stdout_g = -1;
+bool          utf8_g = true;
+bool          auto_relink_g = false;
 
-static bool reset_term_g = false;
-static bool signal_sigint_g = true;
-static bool signal_sigquit_g = true;
-static bool signal_sigterm_g = true;
+static bool   reset_term_g = false;
+static bool   signal_sigint_g = true;
+static bool   signal_sigquit_g = true;
+static bool   signal_sigterm_g = true;
 static struct termios term_attr_g;
+
+enum {
+    NONE      = 0,
+    STRICT    = 1,
+    INCREMENT = 2,
+    TIMEOUT   = 4,
+    NEXT      = 8,
+    PREVIOUS  = 16,
+    GLOBAL    = 32,
+    LOCAL     = 64
+};
+
+static char   deprecated_g = NONE;
 
 /*
  * @function nodem::clean_shutdown
@@ -113,7 +129,6 @@ void clean_shutdown(const int signal_num)
 #else
             gtm_exit();
 #endif
-
             uv_mutex_unlock(&mutex_g);
         }
 
@@ -138,7 +153,7 @@ void clean_shutdown(const int signal_num)
         abort();
     }
 
-    _exit(EXIT_FAILURE);
+    exit(EXIT_FAILURE);
 } // @end nodem::clean_shutdown function
 
 #if YDB_RELEASE >= 126
@@ -151,7 +166,6 @@ void clean_shutdown(const int signal_num)
  */
 inline static void reset_handler(NodemState* nodem_state)
 {
-
     if (nodem_state->reset_handler == false && signal_sigint_g == true) {
         struct sigaction signal_attr;
 
@@ -173,11 +187,9 @@ inline static void reset_handler(NodemState* nodem_state)
  * @function {private} nodem::is_number
  * @summary Check if a value returned from YottaDB's SimpleAPI is a canonical number
  * @param {string} data - The data value to be tested
- * @param {NodemState*} nodem_state - Per-thread state class containing the following members
- * @member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
  * @returns {boolean} - Whether the data value is a canonical number or not
  */
-inline static bool is_number(const string data, NodemState* nodem_state)
+inline static bool is_number(const string data)
 {
     /*
      * YottaDB/GT.M approximate (using number of digits, rather than number value) number limits:
@@ -190,9 +202,6 @@ inline static bool is_number(const string data, NodemState* nodem_state)
      * This is why anything over 16 characters needs to be treated as a string
      */
 
-    // In string and strict modes, all data is treated as a string
-    if (nodem_state->mode == STRICT || nodem_state->mode == STRING) return false;
-
     bool flag = false;
     size_t neg_cnt = count(data.begin(), data.end(), '-');
     size_t decp_cnt = count(data.begin(), data.end(), '.');
@@ -201,12 +210,12 @@ inline static bool is_number(const string data, NodemState* nodem_state)
     if ((decp_cnt == 1 || neg_cnt == 1) && data.length() <= 1) flag = false;
     if (data.length() > 16 || data[data.length() - 1] == '.') flag = false;
 
-    if (flag && !data.empty() && all_of(data.begin(), data.end(), [](char c) {return (std::isdigit(c) || c == '-' || c == '.');})) {
+    if (flag && !data.empty() && all_of(data.begin(), data.end(), [](char c) {return (isdigit(c) || c == '-' || c == '.');})) {
         if ((data[0] == '0' && data.length() > 1) || (decp_cnt == 1 && data[data.length() - 1] == '0')) {
             return false;
-        } else {
-            return true;
         }
+
+        return true;
     } else {
         return false;
     }
@@ -214,119 +223,14 @@ inline static bool is_number(const string data, NodemState* nodem_state)
 #endif
 
 /*
- * @function {private} nodem::json_method
- * @summary Call a method on the built-in Node.js JSON object
- * @param {Local<Value>} data - A JSON string containing the data to parse or a JavaScript object to stringify
- * @param {string} type - The name of the method to call on JSON
- * @param {NodemState*} nodem_state - Per-thread state class containing the following members
- * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @returns {Local<Value>} - An object containing the output data
- */
-static Local<Value> json_method(Local<Value> data, const string &type, NodemState* nodem_state)
-{
-    Isolate* isolate = Isolate::GetCurrent();
-    EscapableHandleScope scope(isolate);
-
-    if (nodem_state->debug > MEDIUM) {
-        debug_log(">>>    json_method enter");
-
-        if (!data->IsObject()) debug_log(">>>    data: ", *(UTF8_VALUE_TEMP_N(isolate, data)));
-
-        debug_log(">>>    type: ", type);
-    }
-
-    Local<Object> global = isolate->GetCurrentContext()->Global();
-    Local<Object> json = to_object_n(isolate, get_n(isolate, global, new_string_n(isolate, "JSON")));
-    Local<Function> method = Local<Function>::Cast(get_n(isolate, json, new_string_n(isolate, type.c_str())));
-
-    if (nodem_state->debug > MEDIUM) debug_log(">>>    json_method exit");
-
-    return scope.Escape(call_n(isolate, method, json, 1, &data));
-} // @end nodem::json_method function
-
-/*
- * @function {private} nodem::error_status
- * @summary Handle an error from the YottaDB/GT.M runtime
- * @param {gtm_char_t*} error - A character string representing the YottaDB/GT.M run-time error
- * @param {bool} position - Whether the API was called by positional arguments or not
- * @param {bool} async - Whether the API was called asynchronously or not
- * @param {NodemState*} nodem_state - Per-thread state class containing the following members
- * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
- * @returns {Local<Value>} result - An object containing the formatted error content
- */
-static Local<Value> error_status(gtm_char_t* error, const bool position, const bool async, NodemState* nodem_state)
-{
-    Isolate* isolate = Isolate::GetCurrent();
-    EscapableHandleScope scope(isolate);
-
-    if (nodem_state->debug > MEDIUM) {
-        debug_log(">>>    error_status enter");
-        debug_log(">>>    error: ", error);
-        debug_log(">>>    position: ", std::boolalpha, position);
-        debug_log(">>>    async: ", std::boolalpha, async);
-    }
-
-    char* error_msg;
-    char* code = strtok_r(error, ",", &error_msg);
-
-    int error_code = atoi(code);
-
-    // Handle SIGINT caught by YottaDB or GT.M
-    if (strstr(error_msg, "%YDB-E-CTRAP") != NULL || strstr(error_msg, "%GTM-E-CTRAP") != NULL) clean_shutdown(SIGINT);
-
-    Local<Object> result = Object::New(isolate);
-
-    if (position && !async) {
-        if (nodem_state->debug > MEDIUM) {
-            debug_log(">>>    error_status exit");
-            debug_log(">>>    error_msg: ", error_msg);
-        }
-
-        return scope.Escape(new_string_n(isolate, error_msg));
-    } else if (nodem_state->mode == STRICT) {
-        set_n(isolate, result, new_string_n(isolate, "ok"), Number::New(isolate, 0));
-        set_n(isolate, result, new_string_n(isolate, "ErrorCode"), Number::New(isolate, error_code));
-        set_n(isolate, result, new_string_n(isolate, "ErrorMessage"), new_string_n(isolate, error_msg));
-    } else {
-        set_n(isolate, result, new_string_n(isolate, "ok"), Boolean::New(isolate, false));
-        set_n(isolate, result, new_string_n(isolate, "errorCode"), Number::New(isolate, error_code));
-        set_n(isolate, result, new_string_n(isolate, "errorMessage"), new_string_n(isolate, error_msg));
-    }
-
-    if (nodem_state->debug > MEDIUM) {
-        debug_log(">>>    error_status exit");
-
-        Local<Value> result_string = json_method(result, "stringify", nodem_state);
-        debug_log(">>>    result: ", *(UTF8_VALUE_TEMP_N(isolate, result_string)));
-    }
-
-    return scope.Escape(result);
-} // @end nodem::error_status function
-
-/*
  * @function {private} nodem::invalid_name
  * @summary If a variable name contains subscripts, it is not valid, and cannot be used
  * @param {char*} name - The name to test against
- * @param {NodemState*} nodem_state - Per-thread state class containing the following members
- * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {bool} - Whether the name is invalid
  */
-static bool invalid_name(const char* name, NodemState* nodem_state)
+inline static bool invalid_name(const char* name)
 {
-    if (nodem_state->debug > MEDIUM) {
-        debug_log(">>>    invalid_name enter");
-        debug_log(">>>    name: ", name);
-    }
-
-    if (strchr(name, '(') != NULL || strchr(name, ')') != NULL) {
-        if (nodem_state->debug > MEDIUM) debug_log(">>>    invalid_name exit: ", std::boolalpha, true);
-
-        return true;
-    }
-
-    if (nodem_state->debug > MEDIUM) debug_log(">>>    invalid_name exit: ", std::boolalpha, false);
-
+    if (strchr(name, '(') != NULL || strchr(name, ')') != NULL) return true;
     return false;
 } // @end nodem::invalid_name function
 
@@ -334,25 +238,11 @@ static bool invalid_name(const char* name, NodemState* nodem_state)
  * @function {private} nodem::invalid_local
  * @summary If a local variable name starts with v4w, it is not valid, and cannot be manipulated
  * @param {char*} name - The name to test against
- * @param {NodemState*} nodem_state - Per-thread state class containing the following members
- * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {bool} - Whether the local name is invalid
  */
-static bool invalid_local(const char* name, NodemState* nodem_state)
+inline static bool invalid_local(const char* name)
 {
-    if (nodem_state->debug > MEDIUM) {
-        debug_log(">>>    invalid_local enter");
-        debug_log(">>>    name: ", name);
-    }
-
-    if (strncmp(name, "v4w", 3) == 0) {
-        if (nodem_state->debug > MEDIUM) debug_log(">>>    invalid_local exit: ", std::boolalpha, true);
-
-        return true;
-    }
-
-    if (nodem_state->debug > MEDIUM) debug_log(">>>    invalid_local exit: ", std::boolalpha, false);
-
+    if (strncmp(name, "v4w", 3) == 0) return true;
     return false;
 } // @end nodem::invalid_local function
 
@@ -407,7 +297,7 @@ static Local<Value> localize_name(const Local<Value> name, NodemState* nodem_sta
 
     if (nodem_state->debug > MEDIUM) {
         debug_log(">>>    localize_name enter");
-        debug_log(">>>     name: ", *(UTF8_VALUE_TEMP_N(isolate, name)));
+        debug_log(">>>    name: ", *(UTF8_VALUE_TEMP_N(isolate, name)));
     }
 
     UTF8_VALUE_N(isolate, data_string, name);
@@ -425,6 +315,92 @@ static Local<Value> localize_name(const Local<Value> name, NodemState* nodem_sta
 
     return scope.Escape(name);
 } // @end nodem::localize_name function
+
+/*
+ * @function {private} nodem::json_method
+ * @summary Call a method on the built-in Node.js JSON object
+ * @param {Local<Value>} data - A JSON string containing the data to parse or a JavaScript object to stringify
+ * @param {string} type - The name of the method to call on JSON
+ * @param {NodemState*} nodem_state - Per-thread state class containing the following members
+ * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @returns {Local<Value>} - An object containing the output data
+ */
+static Local<Value> json_method(Local<Value> data, const string &type, NodemState* nodem_state)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (nodem_state->debug > MEDIUM) {
+        debug_log(">>>    json_method enter");
+
+        if (!data->IsObject()) debug_log(">>>    data: ", *(UTF8_VALUE_TEMP_N(isolate, data)));
+
+        debug_log(">>>    type: ", type);
+    }
+
+    Local<Object> global = isolate->GetCurrentContext()->Global();
+    Local<Object> json = to_object_n(isolate, get_n(isolate, global, new_string_n(isolate, "JSON")));
+    Local<Function> method = Local<Function>::Cast(get_n(isolate, json, new_string_n(isolate, type.c_str())));
+
+    if (nodem_state->debug > MEDIUM) debug_log(">>>    json_method exit");
+
+    return scope.Escape(call_n(isolate, method, json, 1, &data));
+} // @end nodem::json_method function
+
+/*
+ * @function {private} nodem::error_status
+ * @summary Handle an error from the YottaDB/GT.M runtime
+ * @param {gtm_char_t*} error - A character string representing the YottaDB/GT.M run-time error
+ * @param {bool} position - Whether the API was called by positional arguments or not
+ * @param {bool} async - Whether the API was called asynchronously or not
+ * @param {NodemState*} nodem_state - Per-thread state class containing the following members
+ * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
+ * @member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
+ * @returns {Local<Value>} result - An object containing the formatted error content
+ */
+static Local<Value> error_status(gtm_char_t* error, const bool position, const bool async, NodemState* nodem_state)
+{
+    Isolate* isolate = Isolate::GetCurrent();
+    EscapableHandleScope scope(isolate);
+
+    if (nodem_state->debug > MEDIUM) {
+        debug_log(">>>    error_status enter");
+        debug_log(">>>    error: ", error);
+        debug_log(">>>    position: ", boolalpha, position);
+        debug_log(">>>    async: ", boolalpha, async);
+    }
+
+    char* error_msg;
+    char* code = strtok_r(error, ",", &error_msg);
+    int error_code = atoi(code);
+
+    // Handle SIGINT caught by YottaDB or GT.M
+    if (strstr(error_msg, "%YDB-E-CTRAP") != NULL || strstr(error_msg, "%GTM-E-CTRAP") != NULL) clean_shutdown(SIGINT);
+
+    Local<Object> result = Object::New(isolate);
+
+    if (position && !async) {
+        if (nodem_state->debug > MEDIUM) {
+            debug_log(">>>    error_status exit");
+            debug_log(">>>    error_msg: ", error_msg);
+        }
+
+        return scope.Escape(new_string_n(isolate, error_msg));
+    } else {
+        set_n(isolate, result, new_string_n(isolate, "ok"), Boolean::New(isolate, false));
+        set_n(isolate, result, new_string_n(isolate, "errorCode"), Number::New(isolate, error_code));
+        set_n(isolate, result, new_string_n(isolate, "errorMessage"), new_string_n(isolate, error_msg));
+    }
+
+    if (nodem_state->debug > MEDIUM) {
+        debug_log(">>>    error_status exit");
+
+        Local<Value> result_string = json_method(result, "stringify", nodem_state);
+        debug_log(">>>    result: ", *(UTF8_VALUE_TEMP_N(isolate, result_string)));
+    }
+
+    return scope.Escape(result);
+} // @end nodem::error_status function
 
 /*
  * @function {private} nodem::encode_arguments
@@ -477,8 +453,8 @@ static Local<Value> encode_arguments(const Local<Value> arguments, NodemState* n
                 return Undefined(isolate);
             } else if (type->StrictEquals(new_string_n(isolate, "reference"))) {
                 if (!value_test->IsString()) return Undefined(isolate);
-                if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, value)), nodem_state)) return Undefined(isolate);
-                if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, value)), nodem_state)) return Undefined(isolate);
+                if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, value)))) return Undefined(isolate);
+                if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, value)))) return Undefined(isolate);
 
                 Local<String> new_value = to_string_n(isolate, localize_name(value, nodem_state));
                 Local<String> dot = new_string_n(isolate, ".");
@@ -492,8 +468,8 @@ static Local<Value> encode_arguments(const Local<Value> arguments, NodemState* n
                 new_data = concat_n(isolate, length, concat_n(isolate, colon, concat_n(isolate, dot, new_value)));
             } else if (type->StrictEquals(new_string_n(isolate, "variable"))) {
                 if (!value_test->IsString()) return Undefined(isolate);
-                if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, value)), nodem_state)) return Undefined(isolate);
-                if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, value)), nodem_state)) return Undefined(isolate);
+                if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, value)))) return Undefined(isolate);
+                if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, value)))) return Undefined(isolate);
 
                 Local<String> new_value = to_string_n(isolate, localize_name(value, nodem_state));
 
@@ -626,10 +602,8 @@ static vector<string> build_subscripts(const Local<Value> subscripts, bool& erro
  */
 gtm_char_t* NodemValue::to_byte(void)
 {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12
-    Isolate* isolate = Isolate::GetCurrent();
-
-    value->WriteOneByte(isolate, buffer, 0, size);
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12)
+    value->WriteOneByte(Isolate::GetCurrent(), buffer, 0, size);
 #else
     value->WriteOneByte(buffer, 0, size);
 #endif
@@ -680,7 +654,7 @@ static Local<Value> version(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
     }
 
     Local<String> nodem_version = new_string_n(isolate,
@@ -719,7 +693,7 @@ static Local<Value> version(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> data(NodemBaton* nodem_baton)
@@ -734,9 +708,9 @@ static Local<Value> data(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -760,11 +734,11 @@ static Local<Value> data(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  data JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -782,21 +756,9 @@ static Local<Value> data(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  data exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"),
-                  get_n(isolate, temp_object, new_string_n(isolate, "defined")));
-
-            return scope.Escape(return_object);
-        } else {
-            return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "defined")));
-        }
+        return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "defined")));
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -829,7 +791,7 @@ static Local<Value> data(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> get(NodemBaton* nodem_baton)
@@ -844,9 +806,9 @@ static Local<Value> get(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -859,22 +821,14 @@ static Local<Value> get(NodemBaton* nodem_baton)
     Local<Object> temp_object = Object::New(isolate);
 
     if (nodem_baton->status == YDB_ERR_GVUNDEF || nodem_baton->status == YDB_ERR_LVUNDEF) {
-        if (nodem_baton->mode == STRICT) {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
-        } else {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
-        }
+        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
     } else {
-        if (nodem_baton->mode == STRICT) {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
     }
 
     string data(nodem_baton->result);
 
-    if (is_number(data, nodem_baton->nodem_state)) {
+    if (nodem_baton->nodem_state->mode == CANONICAL && is_number(data)) {
         set_n(isolate, temp_object, new_string_n(isolate, "data"), Number::New(isolate, atof(nodem_baton->result)));
     } else {
         if (nodem_baton->nodem_state->utf8 == true) {
@@ -894,11 +848,11 @@ static Local<Value> get(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  get JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -916,21 +870,9 @@ static Local<Value> get(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  get exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"),
-                  get_n(isolate, temp_object, new_string_n(isolate, "data")));
-
-            return scope.Escape(return_object);
-        } else {
-            return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "data")));
-        }
+        return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "data")));
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -963,7 +905,7 @@ static Local<Value> get(NodemBaton* nodem_baton)
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> set(NodemBaton* nodem_baton)
@@ -978,9 +920,9 @@ static Local<Value> set(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -996,23 +938,10 @@ static Local<Value> set(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  set exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "0"));
-
-            return scope.Escape(return_object);
-        } else if (nodem_baton->nodem_state->mode == STRICT) {
-            return scope.Escape(Number::New(isolate, 0));
-        } else {
-            Local<Value> ret_data = Boolean::New(isolate, true);
-            return scope.Escape(ret_data);
-        }
+        Local<Value> ret_data = Undefined(isolate);
+        return scope.Escape(ret_data);
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -1023,12 +952,6 @@ static Local<Value> set(NodemBaton* nodem_baton)
         if (!subscripts->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
 
         set_n(isolate, return_object, new_string_n(isolate, "data"), data_value);
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "0"));
-        } else if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), Number::New(isolate, 0));
-        }
     }
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  set exit");
@@ -1045,11 +968,11 @@ static Local<Value> set(NodemBaton* nodem_baton)
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
- * @member {int32_t} node_only - Whether the API was called on a single node only, or on a node and all its children
+ * @member {bool} node_only - Whether the API was called on a single node only, or on a node and all its children
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> kill(NodemBaton* nodem_baton)
@@ -1063,9 +986,9 @@ static Local<Value> kill(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -1079,23 +1002,10 @@ static Local<Value> kill(NodemBaton* nodem_baton)
 
     if (name->StrictEquals(new_string_n(isolate, "")) || nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  kill exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "0"));
-
-            return scope.Escape(return_object);
-        } else if (nodem_baton->nodem_state->mode == STRICT) {
-            return scope.Escape(Number::New(isolate, 0));
-        } else {
-            Local<Value> ret_data = Boolean::New(isolate, true);
-            return scope.Escape(ret_data);
-        }
+        Local<Value> ret_data = Undefined(isolate);
+        return scope.Escape(ret_data);
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -1105,15 +1015,7 @@ static Local<Value> kill(NodemBaton* nodem_baton)
 
         if (!subscripts->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
 
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "0"));
-        } else if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), Number::New(isolate, 0));
-        }
-
-        if (nodem_baton->node_only > -1) {
-            set_n(isolate, return_object, new_string_n(isolate, "nodeOnly"), Boolean::New(isolate, nodem_baton->node_only));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "nodeOnly"), Boolean::New(isolate, nodem_baton->node_only));
     }
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  kill exit");
@@ -1126,13 +1028,12 @@ static Local<Value> kill(NodemBaton* nodem_baton)
  * @summary Return data from a merge of a global or local array tree to another global or local array tree
  * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {Persistent<Value>} object_p - V8 object containing the input object
- * @member {gtm_char_t*} result - Data returned from merge call
  * @member {bool} local - Whether the API was called on a from local variable, or a from global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> merge(NodemBaton* nodem_baton)
@@ -1142,70 +1043,21 @@ static Local<Value> merge(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  merge enter");
 
-    Local<Object> return_object = Local<Object>::New(isolate, nodem_baton->object_p);
+    Local<Object> temp_object = Local<Object>::New(isolate, nodem_baton->object_p);
 
     if (nodem_baton->nodem_state->debug > LOW) {
-        Local<Value> object_string = json_method(return_object, "stringify", nodem_baton->nodem_state);
+        Local<Value> object_string = json_method(temp_object, "stringify", nodem_baton->nodem_state);
         debug_log(">>   object_p: ", *(UTF8_VALUE_TEMP_N(isolate, object_string)));
 
-        debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
     }
 
-    Local<String> json_string;
+    Local<Object> return_object = Object::New(isolate);
 
-    if (nodem_baton->nodem_state->utf8 == true) {
-        json_string = new_string_n(isolate, nodem_baton->result);
-    } else {
-        json_string = NodemValue::from_byte(nodem_baton->result);
-    }
-
-    uv_mutex_unlock(&mutex_g);
-
-    if (nodem_baton->nodem_state->debug > OFF) debug_log(">  merge JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
-
-#if NODE_MAJOR_VERSION >= 1
-    TryCatch try_catch(isolate);
-#else
-    TryCatch try_catch;
-#endif
-
-    Local<Object> temp_object;
-    Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
-
-    if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
-        return scope.Escape(try_catch.Exception());
-    } else {
-        temp_object = to_object_n(isolate, json);
-    }
-
-    if (nodem_baton->nodem_state->mode == STRICT) {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-
-        if (nodem_baton->local) {
-            Local<Value> local = get_n(isolate, to_object_n(isolate, get_n(isolate, return_object,
-                                 new_string_n(isolate, "from"))), new_string_n(isolate, "local"));
-
-            set_n(isolate, return_object, new_string_n(isolate, "local"), local);
-        } else {
-            Local<Value> global = get_n(isolate, to_object_n(isolate, get_n(isolate, return_object,
-                                  new_string_n(isolate, "from"))), new_string_n(isolate, "global"));
-
-            set_n(isolate, return_object, new_string_n(isolate, "global"), global);
-        }
-
-        set_n(isolate, return_object, new_string_n(isolate, "subscripts"),
-              get_n(isolate, temp_object, new_string_n(isolate, "subscripts")));
-
-        set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "1"));
-
-        delete_n(isolate, return_object, new_string_n(isolate, "from"));
-        delete_n(isolate, return_object, new_string_n(isolate, "to"));
-    } else {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-    }
+    set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+    set_n(isolate, return_object, new_string_n(isolate, "from"), get_n(isolate, temp_object, new_string_n(isolate, "from")));
+    set_n(isolate, return_object, new_string_n(isolate, "to"), get_n(isolate, temp_object, new_string_n(isolate, "to")));
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  merge exit");
 
@@ -1226,7 +1078,7 @@ static Local<Value> merge(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> order(NodemBaton* nodem_baton)
@@ -1241,9 +1093,9 @@ static Local<Value> order(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -1256,7 +1108,7 @@ static Local<Value> order(NodemBaton* nodem_baton)
     Local<Object> temp_object = Object::New(isolate);
     string data(nodem_baton->result);
 
-    if (is_number(data, nodem_baton->nodem_state)) {
+    if (nodem_baton->nodem_state->mode == CANONICAL && is_number(data)) {
         set_n(isolate, temp_object, new_string_n(isolate, "result"), Number::New(isolate, atof(nodem_baton->result)));
     } else {
         if (nodem_baton->nodem_state->utf8 == true) {
@@ -1276,11 +1128,11 @@ static Local<Value> order(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  order JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -1298,23 +1150,10 @@ static Local<Value> order(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  order exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"),
-                  get_n(isolate, temp_object, new_string_n(isolate, "result")));
-
-            return scope.Escape(return_object);
-        } else {
-            return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "result")));
-        }
+        return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "result")));
     } else {
         Local<Value> result = get_n(isolate, temp_object, new_string_n(isolate, "result"));
-
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -1351,7 +1190,7 @@ static Local<Value> order(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> previous(NodemBaton* nodem_baton)
@@ -1366,9 +1205,9 @@ static Local<Value> previous(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -1381,7 +1220,7 @@ static Local<Value> previous(NodemBaton* nodem_baton)
     Local<Object> temp_object = Object::New(isolate);
     string data(nodem_baton->result);
 
-    if (is_number(data, nodem_baton->nodem_state)) {
+    if (nodem_baton->nodem_state->mode == CANONICAL && is_number(data)) {
         set_n(isolate, temp_object, new_string_n(isolate, "result"), Number::New(isolate, atof(nodem_baton->result)));
     } else {
         if (nodem_baton->nodem_state->utf8 == true) {
@@ -1401,11 +1240,11 @@ static Local<Value> previous(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  previous JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -1423,23 +1262,10 @@ static Local<Value> previous(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  previous exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"),
-                  get_n(isolate, temp_object, new_string_n(isolate, "result")));
-
-            return scope.Escape(return_object);
-        } else {
-            return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "result")));
-        }
+        return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "result")));
     } else {
         Local<Value> result = get_n(isolate, temp_object, new_string_n(isolate, "result"));
-
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -1476,7 +1302,7 @@ static Local<Value> previous(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> next_node(NodemBaton* nodem_baton)
@@ -1489,9 +1315,9 @@ static Local<Value> next_node(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
     }
 
@@ -1499,23 +1325,15 @@ static Local<Value> next_node(NodemBaton* nodem_baton)
     Local<Object> temp_object = Object::New(isolate);
 
     if (nodem_baton->status == YDB_NODE_END) {
-        if (nodem_baton->mode == STRICT) {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
-        } else {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
-        }
+        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
     } else {
-        if (nodem_baton->mode == STRICT) {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
     }
 
     if (nodem_baton->status != YDB_NODE_END) {
         string data(nodem_baton->result);
 
-        if (is_number(data, nodem_baton->nodem_state)) {
+        if (nodem_baton->nodem_state->mode == CANONICAL && is_number(data)) {
             set_n(isolate, temp_object, new_string_n(isolate, "data"), Number::New(isolate, atof(nodem_baton->result)));
         } else {
             if (nodem_baton->nodem_state->utf8 == true) {
@@ -1532,7 +1350,7 @@ static Local<Value> next_node(NodemBaton* nodem_baton)
         for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
             if (nodem_baton->nodem_state->debug > LOW) debug_log(">>   subs_array[", i, "]: ", nodem_baton->subs_array[i]);
 
-            if (is_number(nodem_baton->subs_array[i], nodem_baton->nodem_state)) {
+            if (nodem_baton->nodem_state->mode == CANONICAL && is_number(nodem_baton->subs_array[i])) {
                 set_n(isolate, subs_array, i, Number::New(isolate, atof(nodem_baton->subs_array[i].c_str())));
             } else {
                 if (nodem_baton->nodem_state->utf8 == true) {
@@ -1556,11 +1374,11 @@ static Local<Value> next_node(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  next_node JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -1581,27 +1399,13 @@ static Local<Value> next_node(NodemBaton* nodem_baton)
 
         Local<Value> temp_subs = get_n(isolate, temp_object, new_string_n(isolate, "subscripts"));
 
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            if (temp_subs->IsUndefined()) {
-                set_n(isolate, return_object, new_string_n(isolate, "result"), Array::New(isolate));
-            } else {
-                set_n(isolate, return_object, new_string_n(isolate, "result"), temp_subs);
-            }
+        if (temp_subs->IsUndefined()) {
+            return scope.Escape(Array::New(isolate));
+        }
 
-            return scope.Escape(return_object);
-        } else {
-            if (temp_subs->IsUndefined()) {
-                return scope.Escape(Array::New(isolate));
-            } else {
-                return scope.Escape(temp_subs);
-            }
-        }
+        return scope.Escape(temp_subs);
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -1640,7 +1444,7 @@ static Local<Value> next_node(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> previous_node(NodemBaton* nodem_baton)
@@ -1653,9 +1457,9 @@ static Local<Value> previous_node(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
     }
 
@@ -1663,23 +1467,15 @@ static Local<Value> previous_node(NodemBaton* nodem_baton)
     Local<Object> temp_object = Object::New(isolate);
 
     if (nodem_baton->status == YDB_NODE_END) {
-        if (nodem_baton->mode == STRICT) {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 0));
-        } else {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
-        }
+        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, false));
     } else {
-        if (nodem_baton->mode == STRICT) {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, temp_object, new_string_n(isolate, "defined"), Boolean::New(isolate, true));
     }
 
     if (nodem_baton->status != YDB_NODE_END) {
         string data(nodem_baton->result);
 
-        if (is_number(data, nodem_baton->nodem_state)) {
+        if (nodem_baton->nodem_state->mode == CANONICAL && is_number(data)) {
             set_n(isolate, temp_object, new_string_n(isolate, "data"), Number::New(isolate, atof(nodem_baton->result)));
         } else {
             if (nodem_baton->nodem_state->utf8 == true) {
@@ -1696,7 +1492,7 @@ static Local<Value> previous_node(NodemBaton* nodem_baton)
         for (unsigned int i = 0; i < nodem_baton->subs_array.size(); i++) {
             if (nodem_baton->nodem_state->debug > LOW) debug_log(">>   subs_array[", i, "]: ", nodem_baton->subs_array[i]);
 
-            if (is_number(nodem_baton->subs_array[i], nodem_baton->nodem_state)) {
+            if (nodem_baton->nodem_state->mode == CANONICAL && is_number(nodem_baton->subs_array[i])) {
                 set_n(isolate, subs_array, i, Number::New(isolate, atof(nodem_baton->subs_array[i].c_str())));
             } else {
                 if (nodem_baton->nodem_state->utf8 == true) {
@@ -1722,11 +1518,11 @@ static Local<Value> previous_node(NodemBaton* nodem_baton)
         debug_log(">  previous_node JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
     }
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -1749,27 +1545,13 @@ static Local<Value> previous_node(NodemBaton* nodem_baton)
 
         Local<Value> temp_subs = get_n(isolate, temp_object, new_string_n(isolate, "subscripts"));
 
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            if (temp_subs->IsUndefined()) {
-                set_n(isolate, return_object, new_string_n(isolate, "result"), Array::New(isolate));
-            } else {
-                set_n(isolate, return_object, new_string_n(isolate, "result"), temp_subs);
-            }
+        if (temp_subs->IsUndefined()) {
+            return scope.Escape(Array::New(isolate));
+        }
 
-            return scope.Escape(return_object);
-        } else {
-            if (temp_subs->IsUndefined()) {
-                return scope.Escape(Array::New(isolate));
-            } else {
-                return scope.Escape(temp_subs);
-            }
-        }
+        return scope.Escape(temp_subs);
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -1803,11 +1585,12 @@ static Local<Value> previous_node(NodemBaton* nodem_baton)
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
  * @member {string} name - The name of the global or local variable
+ * @member {gtm_double_t} option - The increment value
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> increment(NodemBaton* nodem_baton)
@@ -1822,22 +1605,24 @@ static Local<Value> increment(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
             Local<Value> subscript_string = json_method(subscripts, "stringify", nodem_baton->nodem_state);
             debug_log(">>   subscripts: ", *(UTF8_VALUE_TEMP_N(isolate, subscript_string)));
         }
+
+        debug_log(">>   increment: ", nodem_baton->option);
     }
 
 #if NODEM_SIMPLE_API == 1
     Local<Object> temp_object = Object::New(isolate);
     string data(nodem_baton->result);
 
-    if (is_number(data, nodem_baton->nodem_state)) {
+    if (nodem_baton->nodem_state->mode == CANONICAL && is_number(data)) {
         set_n(isolate, temp_object, new_string_n(isolate, "data"), Number::New(isolate, atof(nodem_baton->result)));
     } else {
         if (nodem_baton->nodem_state->utf8 == true) {
@@ -1857,11 +1642,11 @@ static Local<Value> increment(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  increment JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -1879,21 +1664,9 @@ static Local<Value> increment(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  increment exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"),
-                  get_n(isolate, temp_object, new_string_n(isolate, "data")));
-
-            return scope.Escape(return_object);
-        } else {
-            return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "data")));
-        }
+        return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "data")));
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -1903,6 +1676,7 @@ static Local<Value> increment(NodemBaton* nodem_baton)
 
         if (!subscripts->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
 
+        set_n(isolate, return_object, new_string_n(isolate, "increment"), Number::New(isolate, nodem_baton->option));
         set_n(isolate, return_object, new_string_n(isolate, "data"), get_n(isolate, temp_object, new_string_n(isolate, "data")));
     }
 
@@ -1925,7 +1699,7 @@ static Local<Value> increment(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> lock(NodemBaton* nodem_baton)
@@ -1940,9 +1714,9 @@ static Local<Value> lock(NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -1953,17 +1727,8 @@ static Local<Value> lock(NodemBaton* nodem_baton)
 
 #if NODEM_SIMPLE_API == 1
     Local<Object> temp_object = Object::New(isolate);
-    string data(nodem_baton->result);
 
-    if (is_number(data, nodem_baton->nodem_state)) {
-        set_n(isolate, temp_object, new_string_n(isolate, "result"), Number::New(isolate, atof(nodem_baton->result)));
-    } else {
-        if (nodem_baton->nodem_state->utf8 == true) {
-            set_n(isolate, temp_object, new_string_n(isolate, "result"), new_string_n(isolate, nodem_baton->result));
-        } else {
-            set_n(isolate, temp_object, new_string_n(isolate, "result"), NodemValue::from_byte(nodem_baton->result));
-        }
-    }
+    set_n(isolate, temp_object, new_string_n(isolate, "result"), Boolean::New(isolate, atoi(nodem_baton->result)));
 #else
     Local<String> json_string;
 
@@ -1975,11 +1740,11 @@ static Local<Value> lock(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  lock JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
 
-#if NODE_MAJOR_VERSION >= 1
+#   if NODE_MAJOR_VERSION >= 1
     TryCatch try_catch(isolate);
-#else
+#   else
     TryCatch try_catch;
-#endif
+#   endif
 
     Local<Object> temp_object;
     Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
@@ -1999,22 +1764,9 @@ static Local<Value> lock(NodemBaton* nodem_baton)
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  lock exit");
 
         Local<Value> result = get_n(isolate, temp_object, new_string_n(isolate, "result"));
-
-        if (nodem_baton->nodem_state->mode == STRICT) result = to_string_n(isolate, result);
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), result);
-
-            return scope.Escape(return_object);
-        } else {
-            return scope.Escape(result);
-        }
+        return scope.Escape(result);
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -2022,22 +1774,17 @@ static Local<Value> lock(NodemBaton* nodem_baton)
             set_n(isolate, return_object, new_string_n(isolate, "global"), localize_name(name, nodem_baton->nodem_state));
         }
 
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            if (!subscripts->IsUndefined()) {
-                Local<Value> temp_subscripts = get_n(isolate, temp_object, new_string_n(isolate, "subscripts"));
+        if (!subscripts->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
 
-                if (!temp_subscripts->IsUndefined()) {
-                    set_n(isolate, return_object, new_string_n(isolate, "subscripts"), temp_subscripts);
-                } else {
-                    set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
-                }
-            }
+        if (nodem_baton->option > -1) {
+            set_n(isolate, return_object, new_string_n(isolate, "timeout"), Number::New(isolate, nodem_baton->option));
         } else {
-            if (!subscripts->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
+            set_n(isolate, return_object, new_string_n(isolate, "timeout"),
+                  Number::New(isolate, numeric_limits<double>::infinity()));
         }
 
-        set_n(isolate, return_object, new_string_n(isolate, "result"), to_number_n(isolate,
-              get_n(isolate, temp_object, new_string_n(isolate, "result"))));
+        set_n(isolate, return_object, new_string_n(isolate, "result"),
+              get_n(isolate, temp_object, new_string_n(isolate, "result")));
     }
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  lock exit");
@@ -2057,7 +1804,7 @@ static Local<Value> lock(NodemBaton* nodem_baton)
  * @member {Persistent<Value>} arguments_p - V8 object containing the subscripts that were called
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> unlock(NodemBaton* nodem_baton)
@@ -2071,9 +1818,9 @@ static Local<Value> unlock(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   status: ", nodem_baton->status);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!subscripts->IsUndefined()) {
@@ -2087,23 +1834,10 @@ static Local<Value> unlock(NodemBaton* nodem_baton)
 
     if (name->StrictEquals(new_string_n(isolate, "")) || nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  unlock exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), new_string_n(isolate, "0"));
-
-            return scope.Escape(return_object);
-        } else if (nodem_baton->nodem_state->mode == STRICT) {
-            return scope.Escape(new_string_n(isolate, "0"));
-        } else {
-            Local<Value> ret_data = Number::New(isolate, 0);
-            return scope.Escape(ret_data);
-        }
+        Local<Value> ret_data = Undefined(isolate);
+        return scope.Escape(ret_data);
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->local) {
             set_n(isolate, return_object, new_string_n(isolate, "local"), name);
@@ -2112,8 +1846,6 @@ static Local<Value> unlock(NodemBaton* nodem_baton)
         }
 
         if (!subscripts->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "subscripts"), subscripts);
-
-        set_n(isolate, return_object, new_string_n(isolate, "result"), Number::New(isolate, 0));
     }
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  unlock exit");
@@ -2135,7 +1867,7 @@ static Local<Value> unlock(NodemBaton* nodem_baton)
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @nested-member {bool} utf8 - UTF-8 character encoding; defaults to true
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> function(NodemBaton* nodem_baton)
@@ -2149,9 +1881,9 @@ static Local<Value> function(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   result: ", nodem_baton->result);
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!arguments->IsUndefined()) {
@@ -2193,25 +1925,14 @@ static Local<Value> function(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  function exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"),
-                  get_n(isolate, temp_object, new_string_n(isolate, "result")));
-
-            return scope.Escape(return_object);
-        } else {
-            return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "result")));
-        }
+        return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "result")));
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
-
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
         set_n(isolate, return_object, new_string_n(isolate, "function"), localize_name(function, nodem_baton->nodem_state));
 
         if (!arguments->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "arguments"), arguments);
+
+        set_n(isolate, return_object, new_string_n(isolate, "autoRelink"), Boolean::New(isolate, nodem_baton->relink));
 
         set_n(isolate, return_object, new_string_n(isolate, "result"),
               get_n(isolate, temp_object, new_string_n(isolate, "result")));
@@ -2224,7 +1945,7 @@ static Local<Value> function(NodemBaton* nodem_baton)
 
 /*
  * @function {private} nodem::procedure
- * @summary Return value from an arbitrary procedure/subroutine
+ * @summary Return value from an arbitrary procedure/routine
  * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
@@ -2234,7 +1955,7 @@ static Local<Value> function(NodemBaton* nodem_baton)
  * @member {string} relink - Whether to relink the procedure before calling it
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
- * @nested-member {mode_t} mode - Data mode: STRICT, STRING, or CANONICAL; defaults to CANONICAL
+ * @nested-member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} return_object - Data returned to Node.js
  */
 static Local<Value> procedure(NodemBaton* nodem_baton)
@@ -2247,9 +1968,9 @@ static Local<Value> procedure(NodemBaton* nodem_baton)
     Local<Value> arguments = Local<Value>::New(isolate, nodem_baton->arguments_p);
 
     if (nodem_baton->nodem_state->debug > LOW) {
-        debug_log(">>   position: ", std::boolalpha, nodem_baton->position);
-        debug_log(">>   local: ", std::boolalpha, nodem_baton->local);
-        debug_log(">>   async: ", std::boolalpha, nodem_baton->async);
+        debug_log(">>   position: ", boolalpha, nodem_baton->position);
+        debug_log(">>   local: ", boolalpha, nodem_baton->local);
+        debug_log(">>   async: ", boolalpha, nodem_baton->async);
         debug_log(">>   name: ", nodem_baton->name);
 
         if (!arguments->IsUndefined()) {
@@ -2265,23 +1986,10 @@ static Local<Value> procedure(NodemBaton* nodem_baton)
 
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  procedure exit");
-
-        if (nodem_baton->async && nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), String::Empty(isolate));
-
-            return scope.Escape(return_object);
-        } else if (nodem_baton->nodem_state->mode == STRICT) {
-            return scope.Escape(String::Empty(isolate));
-        } else {
-            Local<Value> ret_data = Undefined(isolate);
-            return scope.Escape(ret_data);
-        }
+        Local<Value> ret_data = Undefined(isolate);
+        return scope.Escape(ret_data);
     } else {
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
         if (nodem_baton->routine) {
             set_n(isolate, return_object, new_string_n(isolate, "routine"), localize_name(procedure, nodem_baton->nodem_state));
@@ -2291,9 +1999,7 @@ static Local<Value> procedure(NodemBaton* nodem_baton)
 
         if (!arguments->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "arguments"), arguments);
 
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            set_n(isolate, return_object, new_string_n(isolate, "result"), String::Empty(isolate));
-        }
+        set_n(isolate, return_object, new_string_n(isolate, "autoRelink"), Boolean::New(isolate, nodem_baton->relink));
     }
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  procedure exit");
@@ -2313,7 +2019,6 @@ static Local<Value> procedure(NodemBaton* nodem_baton)
 static int transaction(void *data)
 {
     Isolate* isolate = Isolate::GetCurrent();
-    Local<Context> context = isolate->GetCurrentContext();
 
     NodemBaton* nodem_baton = (NodemBaton*) data;
 
@@ -2332,47 +2037,37 @@ static int transaction(void *data)
         return YDB_TP_ROLLBACK;
     }
 
-    TryCatch try_catch(isolate);
+    Local<Value> value = call_n(isolate, Local<Function>::New(isolate, nodem_baton->callback_p), Null(isolate), 0, NULL);
 
-    MaybeLocal<Value> maybe_value = Local<Function>::New(isolate, nodem_baton->callback_p)->Call(context, Null(isolate), 0, NULL);
-
-    if (maybe_value.IsEmpty() || try_catch.HasCaught()) {
-        cerr << *(UTF8_VALUE_TEMP_N(isolate, to_string_n(isolate, try_catch.Exception()))) << endl;
-
-        try_catch.Reset();
-
+    if (value->IsNull()) {
         if (nodem_baton->nodem_state->tp_level == 1) nodem_baton->nodem_state->tp_restart = 0;
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  transaction exit: error thrown");
 
         return YDB_TP_ROLLBACK;
-    } else {
-        if (maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "Rollback")) ||
-          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "rollback")) ||
-          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "ROLLBACK"))) {
-            nodem_baton->nodem_state->tp_restart = 0;
-
-            if (nodem_baton->nodem_state->debug > OFF) debug_log(">  transaction exit: rollback");
-
-            return YDB_TP_ROLLBACK;
-        } else if (maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "Restart")) ||
-          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "restart")) ||
-          maybe_value.ToLocalChecked()->StrictEquals(new_string_n(isolate, "RESTART"))) {
-            if (nodem_baton->nodem_state->tp_level == 1) nodem_baton->nodem_state->tp_restart++;
-            if (nodem_baton->nodem_state->debug > OFF) debug_log(">  transaction exit: restart");
-
-            return YDB_TP_RESTART;
-        }
-
+    } else if (value->StrictEquals(new_string_n(isolate, "Rollback")) || value->StrictEquals(new_string_n(isolate, "rollback")) ||
+      value->StrictEquals(new_string_n(isolate, "ROLLBACK")) || value->StrictEquals(Number::New(isolate, YDB_TP_ROLLBACK))) {
         nodem_baton->nodem_state->tp_restart = 0;
 
-        if (nodem_baton->nodem_state->debug > OFF) debug_log(">  transaction exit: commit");
+        if (nodem_baton->nodem_state->debug > OFF) debug_log(">  transaction exit: rollback");
 
-        return YDB_OK;
+        return YDB_TP_ROLLBACK;
+    } else if (value->StrictEquals(new_string_n(isolate, "Restart")) || value->StrictEquals(new_string_n(isolate, "restart")) ||
+      value->StrictEquals(new_string_n(isolate, "RESTART")) || value->StrictEquals(Number::New(isolate, YDB_TP_RESTART))) {
+        if (nodem_baton->nodem_state->tp_level == 1) nodem_baton->nodem_state->tp_restart++;
+        if (nodem_baton->nodem_state->debug > OFF) debug_log(">  transaction exit: restart");
+
+        return YDB_TP_RESTART;
     }
+
+    nodem_baton->nodem_state->tp_restart = 0;
+
+    if (nodem_baton->nodem_state->debug > OFF) debug_log(">  transaction exit: commit");
+
+    return YDB_OK;
 } // @end nodem::transaction function
 #endif
 
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
 /*
  * @function {private} nodem::cleanup_nodem_state
  * @summary Delete heap resources after worker threads exit
@@ -2435,43 +2130,36 @@ void async_after(uv_work_t* request, int status)
 
         delete[] nodem_baton->error;
         delete[] nodem_baton->result;
-
         delete nodem_baton;
 
         char error[BUFSIZ];
 
         isolate->ThrowException(Exception::Error(new_string_n(isolate, strerror_r(errno, error, BUFSIZ))));
         return;
-    } else if (nodem_baton->status != YDB_OK && nodem_baton->status != YDB_ERR_GVUNDEF && nodem_baton->status != YDB_ERR_LVUNDEF) {
+    } else if (nodem_baton->status != YDB_OK && nodem_baton->status != YDB_ERR_GVUNDEF &&
+               nodem_baton->status != YDB_ERR_LVUNDEF && nodem_baton->status != YDB_NODE_END) {
 #else
     if (nodem_baton->status != EXIT_SUCCESS) {
 #endif
         if (nodem_baton->nodem_state->debug > LOW) debug_log(">>   " NODEM_DB " error code: ", nodem_baton->status);
 
-        if (nodem_baton->nodem_state->mode == STRICT) {
-            error_code = Number::New(isolate, 1);
-            return_object = error_status(nodem_baton->error, nodem_baton->position, nodem_baton->async, nodem_baton->nodem_state);
-        } else {
-            error_object = error_status(nodem_baton->error, nodem_baton->position, nodem_baton->async, nodem_baton->nodem_state);
+        error_object = error_status(nodem_baton->error, nodem_baton->position, nodem_baton->async, nodem_baton->nodem_state);
 
-            error_code = Exception::Error(new_string_n(isolate, *(UTF8_VALUE_TEMP_N(isolate,
-                         get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "errorMessage"))))));
+        error_code = Exception::Error(new_string_n(isolate, *(UTF8_VALUE_TEMP_N(isolate,
+                     get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "errorMessage"))))));
 
-            set_n(isolate, ((Object*) *error_code), new_string_n(isolate, "ok"),
-                  get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "ok")));
+        set_n(isolate, ((Object*) *error_code), new_string_n(isolate, "ok"),
+              get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "ok")));
 
-            set_n(isolate, ((Object*) *error_code), new_string_n(isolate, "errorCode"),
-                  get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "errorCode")));
+        set_n(isolate, ((Object*) *error_code), new_string_n(isolate, "errorCode"),
+              get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "errorCode")));
 
-            set_n(isolate, ((Object*) *error_code), new_string_n(isolate, "errorMessage"),
-                  get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "errorMessage")));
+        set_n(isolate, ((Object*) *error_code), new_string_n(isolate, "errorMessage"),
+              get_n(isolate, ((Object*) *error_object), new_string_n(isolate, "errorMessage")));
 
-            return_object = Undefined(isolate);
-        }
+        return_object = Undefined(isolate);
     } else {
         return_object = (*nodem_baton->ret_function)(nodem_baton);
-
-        if (nodem_baton->nodem_state->mode == STRICT) error_code = Number::New(isolate, 0);
     }
 
     Local<Value> argv[2] = {error_code, return_object};
@@ -2556,24 +2244,24 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
                 debug_display = (char*) "low";
             } else if (nodem_state->debug == MEDIUM) {
                 debug_display = (char*) "medium";
-            } else if (nodem_state->debug >= HIGH) {
+            } else {
                 debug_display = (char*) "high";
             }
 
-            debug_log(">>   debug: ", debug_display);
+            debug_log(">  debug: ", debug_display);
         }
 
-        Local<Value> global_directory = get_n(isolate, arg_object, new_string_n(isolate, "globalDirectory"));
+        Local<Value> global_dir = get_n(isolate, arg_object, new_string_n(isolate, "globalDirectory"));
 
-        if (global_directory->IsUndefined()) global_directory = get_n(isolate, arg_object, new_string_n(isolate, "namespace"));
+        if (global_dir->IsUndefined()) global_dir = get_n(isolate, arg_object, new_string_n(isolate, "namespace"));
 
-        if (!global_directory->IsUndefined() && global_directory->IsString()) {
-            if (nodem_state->debug > LOW) debug_log(">>   globalDirectory: ", *(UTF8_VALUE_TEMP_N(isolate, global_directory)));
+        if (!global_dir->IsUndefined() && global_dir->IsString()) {
+            if (nodem_state->debug > LOW) debug_log(">>   globalDirectory: ", *(UTF8_VALUE_TEMP_N(isolate, global_dir)));
 
 #if NODEM_SIMPLE_API == 1
-            if (setenv("ydb_gbldir", *(UTF8_VALUE_TEMP_N(isolate, global_directory)), 1) == -1) {
+            if (setenv("ydb_gbldir", *(UTF8_VALUE_TEMP_N(isolate, global_dir)), 1) == -1) {
 #else
-            if (setenv("gtmgbldir", *(UTF8_VALUE_TEMP_N(isolate, global_directory)), 1) == -1) {
+            if (setenv("gtmgbldir", *(UTF8_VALUE_TEMP_N(isolate, global_dir)), 1) == -1) {
 #endif
                 char error[BUFSIZ];
 
@@ -2617,44 +2305,55 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
         }
 
         Local<Value> addr = get_n(isolate, arg_object, new_string_n(isolate, "ipAddress"));
-        const char* addrMsg;
 
         if (addr->IsUndefined()) {
             addr = get_n(isolate, arg_object, new_string_n(isolate, "ip_address"));
-            addrMsg = "ip_address must be a string";
+
+            if (!addr->IsUndefined()) {
+                if (!addr->IsString()) {
+                    isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "ip_address must be a string")));
+                    return;
+                }
+
+                debug_log(">>   ip_address: ", *(UTF8_VALUE_TEMP_N(isolate, addr)), " [DEPRECATED - Use ipAddress instead]");
+            }
         } else {
-            addrMsg = "ipAddress must be a string";
+            if (!addr->IsString()) {
+                isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "ipAddress must be a string")));
+                return;
+            }
+
+            if (nodem_state->debug > LOW) debug_log(">>   ipAddress: ", *(UTF8_VALUE_TEMP_N(isolate, addr)));
         }
 
         Local<Value> port = get_n(isolate, arg_object, new_string_n(isolate, "tcpPort"));
-        const char* portMsg;
 
         if (port->IsUndefined()) {
             port = get_n(isolate, arg_object, new_string_n(isolate, "tcp_port"));
-            portMsg = "tcp_port must be a number or string";
+
+            if (!port->IsUndefined()) {
+                if (!port->IsNumber() && !port->IsString()) {
+                    isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "tcp_port must be a number or string")));
+                    return;
+                }
+
+                debug_log(">>   tcp_port: ", *(UTF8_VALUE_TEMP_N(isolate, port)), " [DEPRECATED - Use tcpPort instead]");
+            }
         } else {
-            portMsg = "tcpPort must be a number or string";
+            if (!port->IsNumber() && !port->IsString()) {
+                isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "tcpPort must be a number or string")));
+                return;
+            }
+
+            if (nodem_state->debug > LOW) debug_log(">>   tcpPort: ", *(UTF8_VALUE_TEMP_N(isolate, port)));
         }
 
         if (!addr->IsUndefined() || !port->IsUndefined()) {
-            Local<Value> gtcm_nodem;
-
             if (addr->IsUndefined()) addr = Local<Value>::New(isolate, new_string_n(isolate, "127.0.0.1"));
-
-            if (!addr->IsString()) {
-                isolate->ThrowException(Exception::TypeError(new_string_n(isolate, addrMsg)));
-                return;
-            }
-
             if (port->IsUndefined()) port = Local<Value>::New(isolate, new_string_n(isolate, "6789"));
 
-            if (port->IsNumber() || port->IsString()) {
-                Local<String> gtcm_port = concat_n(isolate, new_string_n(isolate, ":"), to_string_n(isolate, port));
-                gtcm_nodem = concat_n(isolate, to_string_n(isolate, addr), gtcm_port);
-            } else {
-                isolate->ThrowException(Exception::TypeError(new_string_n(isolate, portMsg)));
-                return;
-            }
+            Local<String> gtcm_port = concat_n(isolate, new_string_n(isolate, ":"), to_string_n(isolate, port));
+            Local<Value> gtcm_nodem = concat_n(isolate, to_string_n(isolate, addr), gtcm_port);
 
 #if NODEM_SIMPLE_API == 1
             if (nodem_state->debug > LOW) debug_log(">>   ydb_cm_NODEM: ", *(UTF8_VALUE_TEMP_N(isolate, gtcm_nodem)));
@@ -2682,14 +2381,17 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
             auto_relink_g = nodem_state->auto_relink;
         }
 
-        if (nodem_state->debug > LOW) debug_log(">>   autoRelink: ", std::boolalpha, nodem_state->auto_relink);
+        if (nodem_state->debug > LOW) debug_log(">>   autoRelink: ", boolalpha, nodem_state->auto_relink);
 
         UTF8_VALUE_N(isolate, nodem_mode, get_n(isolate, arg_object, new_string_n(isolate, "mode")));
 
         if (strcasecmp(*nodem_mode, "strict") == 0) {
-            mode_g = nodem_state->mode = STRICT;
+            mode_g = nodem_state->mode = STRING;
 
-            if (nodem_state->debug > LOW) debug_log(">>   mode: strict");
+            if (nodem_state->debug > OFF || !(deprecated_g & STRICT)) {
+                deprecated_g |= STRICT;
+                debug_log(">>   mode: strict [DEPRECATED - Use string instead]");
+            }
         } else if (strcasecmp(*nodem_mode, "string") == 0) {
             mode_g = nodem_state->mode = STRING;
 
@@ -2699,9 +2401,7 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
 
             if (nodem_state->debug > LOW) debug_log(">>   mode: canonical");
         } else if (nodem_state->debug > LOW) {
-            if (nodem_state->mode == STRICT) {
-                debug_log(">>   mode: strict");
-            } else if (nodem_state->mode == STRING) {
+            if (nodem_state->mode == STRING) {
                 debug_log(">>   mode: string");
             } else {
                 debug_log(">>   mode: canonical");
@@ -2731,42 +2431,42 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
 
         if (has_n(isolate, arg_object, new_string_n(isolate, "signalHandler"))) {
             if (get_n(isolate, arg_object, new_string_n(isolate, "signalHandler"))->IsObject()) {
-                Local<Object> signal_handlers =
+                Local<Object> signal_handler =
                   to_object_n(isolate, get_n(isolate, arg_object, new_string_n(isolate, "signalHandler")));
 
-                if (has_n(isolate, signal_handlers, new_string_n(isolate, "sigint"))) {
-                    signal_sigint_g = boolean_value_n(isolate, get_n(isolate, signal_handlers, new_string_n(isolate, "sigint")));
-                } else if (has_n(isolate, signal_handlers, new_string_n(isolate, "SIGINT"))) {
-                    signal_sigint_g = boolean_value_n(isolate, get_n(isolate, signal_handlers, new_string_n(isolate, "SIGINT")));
+                if (has_n(isolate, signal_handler, new_string_n(isolate, "SIGINT"))) {
+                    signal_sigint_g = boolean_value_n(isolate, get_n(isolate, signal_handler, new_string_n(isolate, "SIGINT")));
+                } else if (has_n(isolate, signal_handler, new_string_n(isolate, "sigint"))) {
+                    signal_sigint_g = boolean_value_n(isolate, get_n(isolate, signal_handler, new_string_n(isolate, "sigint")));
                 }
 
-                if (has_n(isolate, signal_handlers, new_string_n(isolate, "sigquit"))) {
-                    signal_sigquit_g = boolean_value_n(isolate, get_n(isolate, signal_handlers, new_string_n(isolate, "sigquit")));
-                } else if (has_n(isolate, signal_handlers, new_string_n(isolate, "SIGQUIT"))) {
-                    signal_sigquit_g = boolean_value_n(isolate, get_n(isolate, signal_handlers, new_string_n(isolate, "SIGQUIT")));
+                if (has_n(isolate, signal_handler, new_string_n(isolate, "SIGQUIT"))) {
+                    signal_sigquit_g = boolean_value_n(isolate, get_n(isolate, signal_handler, new_string_n(isolate, "SIGQUIT")));
+                } else if (has_n(isolate, signal_handler, new_string_n(isolate, "sigquit"))) {
+                    signal_sigquit_g = boolean_value_n(isolate, get_n(isolate, signal_handler, new_string_n(isolate, "sigquit")));
                 }
 
-                if (has_n(isolate, signal_handlers, new_string_n(isolate, "sigterm"))) {
-                    signal_sigterm_g = boolean_value_n(isolate, get_n(isolate, signal_handlers, new_string_n(isolate, "sigterm")));
-                } else if (has_n(isolate, signal_handlers, new_string_n(isolate, "SIGTERM"))) {
-                    signal_sigterm_g = boolean_value_n(isolate, get_n(isolate, signal_handlers, new_string_n(isolate, "SIGTERM")));
+                if (has_n(isolate, signal_handler, new_string_n(isolate, "SIGTERM"))) {
+                    signal_sigterm_g = boolean_value_n(isolate, get_n(isolate, signal_handler, new_string_n(isolate, "SIGTERM")));
+                } else if (has_n(isolate, signal_handler, new_string_n(isolate, "sigterm"))) {
+                    signal_sigterm_g = boolean_value_n(isolate, get_n(isolate, signal_handler, new_string_n(isolate, "sigterm")));
                 }
             } else {
-                Local<Value> signal_handlers = get_n(isolate, arg_object, new_string_n(isolate, "signalHandler"));
+                Local<Value> signal_handler = get_n(isolate, arg_object, new_string_n(isolate, "signalHandler"));
 
-                signal_sigint_g = signal_sigquit_g = signal_sigterm_g = boolean_value_n(isolate, signal_handlers);
+                signal_sigint_g = signal_sigquit_g = signal_sigterm_g = boolean_value_n(isolate, signal_handler);
             }
 
             if (nodem_state->debug > LOW) {
-                debug_log(">>   sigint: ", std::boolalpha, signal_sigint_g);
-                debug_log(">>   sigquit: ", std::boolalpha, signal_sigquit_g);
-                debug_log(">>   sigterm: ", std::boolalpha, signal_sigterm_g);
+                debug_log(">>   SIGINT: ", boolalpha, signal_sigint_g);
+                debug_log(">>   SIGQUIT: ", boolalpha, signal_sigquit_g);
+                debug_log(">>   SIGTERM: ", boolalpha, signal_sigterm_g);
             }
         }
 
         Local<Value> threadpool_size = get_n(isolate, arg_object, new_string_n(isolate, "threadpoolSize"));
 
-        if (!threadpool_size->IsUndefined() && threadpool_size->IsNumber()) {
+        if (!threadpool_size->IsUndefined() && (threadpool_size->IsNumber() || threadpool_size->IsString())) {
             if (nodem_state->debug > LOW) debug_log(">>   threadpoolSize: ", *(UTF8_VALUE_TEMP_N(isolate, threadpool_size)));
 
             if (setenv("UV_THREADPOOL_SIZE", *(UTF8_VALUE_TEMP_N(isolate, threadpool_size)), 1) == -1) {
@@ -2844,6 +2544,7 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
 
     if ((save_stdout_g = dup(STDOUT_FILENO)) == -1) {
         char error[BUFSIZ];
+
         cerr << strerror_r(errno, error, BUFSIZ);
     }
 
@@ -2852,6 +2553,7 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) {
         if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
+
             cerr << strerror_r(errno, error, BUFSIZ);
         }
 
@@ -2871,6 +2573,7 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
 
             if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
         }
@@ -2881,13 +2584,12 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    nodem_state_g = OPEN;
-
     if (nodem_state->debug > LOW) {
         funlockfile(stderr);
 
         if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
+
             cerr << strerror_r(errno, error, BUFSIZ);
         }
     }
@@ -2927,7 +2629,7 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
         }
     }
 
-    gtm_status_t stat_buf;
+    gtm_status_t status;
 
     uv_mutex_lock(&mutex_g);
 
@@ -2940,14 +2642,14 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
     access.rtn_name.length = strlen(debug);
     access.handle = NULL;
 
-    stat_buf = gtm_cip(&access, nodem_state->debug);
+    status = gtm_cip(&access, nodem_state->debug);
 #else
-    stat_buf = gtm_ci(debug, nodem_state->debug);
+    status = gtm_ci(debug, nodem_state->debug);
 #endif
 
-    if (nodem_state->debug > LOW) debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_state->debug > LOW) debug_log(">>   status: ", status);
 
-    if (stat_buf != EXIT_SUCCESS) {
+    if (status != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
@@ -2959,18 +2661,12 @@ void Nodem::open(const FunctionCallbackInfo<Value>& info)
 
     uv_mutex_unlock(&mutex_g);
 
-    Local<Object> result = Object::New(isolate);
+    nodem_state_g = OPEN;
 
-    if (nodem_state->mode == STRICT) {
-        set_n(isolate, result, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        set_n(isolate, result, new_string_n(isolate, "result"), Number::New(isolate, 1));
-        set_n(isolate, result, new_string_n(isolate, "gtm_pid"), to_string_n(isolate, Number::New(isolate, nodem_state->pid)));
-        set_n(isolate, result, new_string_n(isolate, "gtm_tid"), to_string_n(isolate, Number::New(isolate, nodem_state->tid)));
-    } else {
-        set_n(isolate, result, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        set_n(isolate, result, new_string_n(isolate, "pid"), Number::New(isolate, nodem_state->pid));
-        set_n(isolate, result, new_string_n(isolate, "tid"), Number::New(isolate, nodem_state->tid));
-    }
+    Local<Object> result = Object::New(isolate);
+    set_n(isolate, result, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+    set_n(isolate, result, new_string_n(isolate, "pid"), Number::New(isolate, nodem_state->pid));
+    set_n(isolate, result, new_string_n(isolate, "tid"), Number::New(isolate, nodem_state->tid));
 
     info.GetReturnValue().Set(result);
 
@@ -3038,24 +2734,29 @@ void Nodem::configure(const FunctionCallbackInfo<Value>& info)
             debug_display = (char*) "low";
         } else if (nodem_state->debug == MEDIUM) {
             debug_display = (char*) "medium";
-        } else if (nodem_state->debug >= HIGH) {
+        } else {
             debug_display = (char*) "high";
         }
 
-        debug_log(">>   debug: ", debug_display);
+        debug_log(">  debug: ", debug_display);
     }
 
     if (has_n(isolate, arg_object, new_string_n(isolate, "autoRelink"))) {
         nodem_state->auto_relink = boolean_value_n(isolate, get_n(isolate, arg_object, new_string_n(isolate, "autoRelink")));
     }
 
-    if (nodem_state->debug > LOW) debug_log(">>   autoRelink: ", std::boolalpha, nodem_state->auto_relink);
+    if (nodem_state->debug > LOW) debug_log(">>   autoRelink: ", boolalpha, nodem_state->auto_relink);
 
     if (has_n(isolate, arg_object, new_string_n(isolate, "mode"))) {
         UTF8_VALUE_N(isolate, nodem_mode, get_n(isolate, arg_object, new_string_n(isolate, "mode")));
 
         if (strcasecmp(*nodem_mode, "strict") == 0) {
-            nodem_state->mode = STRICT;
+            nodem_state->mode = STRING;
+
+            if (nodem_state->debug > OFF || !(deprecated_g & STRICT)) {
+                deprecated_g |= STRICT;
+                debug_log(">>   mode: strict [DEPRECATED - Use string instead]");
+            }
         } else if (strcasecmp(*nodem_mode, "string") == 0) {
             nodem_state->mode = STRING;
         } else if (strcasecmp(*nodem_mode, "canonical") == 0) {
@@ -3064,9 +2765,7 @@ void Nodem::configure(const FunctionCallbackInfo<Value>& info)
     }
 
     if (nodem_state->debug > LOW) {
-        if (nodem_state->mode == STRICT) {
-            debug_log(">>   mode: strict");
-        } else if (nodem_state->mode == STRING) {
+        if (nodem_state->mode == STRING) {
             debug_log(">>   mode: string");
         } else {
             debug_log(">>   mode: canonical");
@@ -3104,7 +2803,7 @@ void Nodem::configure(const FunctionCallbackInfo<Value>& info)
     }
 
     if (has_n(isolate, arg_object, new_string_n(isolate, "debug"))) {
-        gtm_status_t stat_buf;
+        gtm_status_t status;
 
         if (nodem_state->tp_level == 0) uv_mutex_lock(&mutex_g);
 
@@ -3117,14 +2816,14 @@ void Nodem::configure(const FunctionCallbackInfo<Value>& info)
         access.rtn_name.length = strlen(debug);
         access.handle = NULL;
 
-        stat_buf = gtm_cip(&access, nodem_state->debug);
+        status = gtm_cip(&access, nodem_state->debug);
 #else
-        stat_buf = gtm_ci(debug, nodem_state->debug);
+        status = gtm_ci(debug, nodem_state->debug);
 #endif
 
-        if (nodem_state->debug > LOW) debug_log(">>   stat_buf: ", stat_buf);
+        if (nodem_state->debug > LOW) debug_log(">>   status: ", status);
 
-        if (stat_buf != EXIT_SUCCESS) {
+        if (status != EXIT_SUCCESS) {
             gtm_char_t msg_buf[ERR_LEN];
             gtm_zstatus(msg_buf, ERR_LEN);
 
@@ -3138,17 +2837,9 @@ void Nodem::configure(const FunctionCallbackInfo<Value>& info)
     }
 
     Local<Object> result = Object::New(isolate);
-
-    if (nodem_state->mode == STRICT) {
-        set_n(isolate, result, new_string_n(isolate, "ok"), Number::New(isolate, 1));
-        set_n(isolate, result, new_string_n(isolate, "result"), Number::New(isolate, 1));
-        set_n(isolate, result, new_string_n(isolate, "gtm_pid"), to_string_n(isolate, Number::New(isolate, nodem_state->pid)));
-        set_n(isolate, result, new_string_n(isolate, "gtm_tid"), to_string_n(isolate, Number::New(isolate, nodem_state->tid)));
-    } else {
-        set_n(isolate, result, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        set_n(isolate, result, new_string_n(isolate, "pid"), Number::New(isolate, nodem_state->pid));
-        set_n(isolate, result, new_string_n(isolate, "tid"), Number::New(isolate, nodem_state->tid));
-    }
+    set_n(isolate, result, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+    set_n(isolate, result, new_string_n(isolate, "pid"), Number::New(isolate, nodem_state->pid));
+    set_n(isolate, result, new_string_n(isolate, "tid"), Number::New(isolate, nodem_state->tid));
 
     info.GetReturnValue().Set(result);
 
@@ -3187,7 +2878,7 @@ void Nodem::close(const FunctionCallbackInfo<Value>& info)
                        new_string_n(isolate, "resetTerminal")));
     }
 
-    if (nodem_state->debug > LOW) debug_log(">>   resetTerminal: ", std::boolalpha, reset_term_g);
+    if (nodem_state->debug > LOW) debug_log(">>   resetTerminal: ", boolalpha, reset_term_g);
 
 #if NODEM_SIMPLE_API == 1
     if (ydb_exit() != YDB_OK) {
@@ -3207,6 +2898,7 @@ void Nodem::close(const FunctionCallbackInfo<Value>& info)
 
     if (unistd_close(save_stdout_g) == -1) {
         char error[BUFSIZ];
+
         cerr << strerror_r(errno, error, BUFSIZ);
     }
 
@@ -3261,11 +2953,7 @@ void Nodem::close(const FunctionCallbackInfo<Value>& info)
         }
     }
 
-    if (nodem_state->mode == STRICT) {
-        info.GetReturnValue().Set(new_string_n(isolate, "1"));
-    } else {
-        info.GetReturnValue().Set(Undefined(isolate));
-    }
+    info.GetReturnValue().Set(Undefined(isolate));
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::close exit\n");
 
@@ -3284,659 +2972,697 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
     HandleScope scope(isolate);
 
     if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "open"))) {
-        cout << "open method:\n"
-            "\tOpen connection to " NODEM_DB " - all methods, except for help and version, require an open connection\n"
-            "\n\tRequired arguments: {None}\n"
-            "\n\tOptional arguments:\n"
+        cout << REVSE "open" RESET " method: "
+            "Open connection to " NODEM_DB " - all methods, except for help and version, require an open connection\n\n"
+            "Required arguments:\n"
+            "None\n\n"
+            "Optional arguments:\n"
+            "{\n"
+            "\tglobalDirectory|namespace:\t{string} <none>,\n"
+            "\troutinesPath:\t\t\t{string} <none>,\n"
+            "\tcallinTable:\t\t\t{string} <none>,\n"
+            "\tipAddress:\t\t\t{string} <none>,\n"
+            "\ttcpPort:\t\t\t{number} <none>,\n"
+            "\tcharset|encoding:\t\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
+            "\tmode:\t\t\t\t{string} [<canonical>|string]/i,\n"
+            "\tautoRelink:\t\t\t{boolean} <false>,\n"
+            "\tdebug:\t\t\t\t{boolean} <false>|{string} [<off>|low|medium|high]/i|{number} [<0>|1|2|3],\n"
+            "\tthreadpoolSize:\t\t\t{number} [1-1024] <4>,\n"
+            "\tsignalHandler:\t\t\t{boolean} <true>|{object}\n"
             "\t{\n"
-            "\t\tglobalDirectory|namespace:\t{string} <none>,\n"
-            "\t\troutinesPath:\t\t\t{string} <none>,\n"
-            "\t\tcallinTable:\t\t\t{string} <none>,\n"
-            "\t\tipAddress|ip_address:\t\t{string} <none>,\n"
-            "\t\ttcpPort|tcp_port:\t\t{number|string} <none>,\n"
-            "\t\tcharset|encoding:\t\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
-            "\t\tmode:\t\t\t\t{string} [<canonical>|string|strict]/i,\n"
-            "\t\tautoRelink:\t\t\t{boolean} <false>,\n"
-            "\t\tdebug:\t\t\t\t{boolean} <false>|{string} [<off>|low|medium|high]/i|{number} [<0>|1|2|3],\n"
-            "\t\tthreadpoolSize:\t\t\t{number} [1-1024] <4>,\n"
-            "\t\tsignalHandler:\t\t\t{boolean} <true>|{object {boolean} sigint,sigterm,sigquit/i} [<true>|false] [<1>|0]\n"
+            "\t\tSIGINT:\t\t\t{boolean} <true>,\n"
+            "\t\tSIGTERM:\t\t{boolean} <true>,\n"
+            "\t\tSIGQUIT:\t\t{boolean} <true>\n"
             "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tresult:\t\t{optional} {number} 1,\n"
-            "\t\tpid|gtm_pid:\t{number}|{string},\n"
-            "\t\ttid|gtm_tid:\t{number}|{string}\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\t- Failures from bad environment configurations result in internal errors from " NODEM_DB "\n"
-            "\n\tFor more information about the open method, please refer to the README.md file\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tpid:\t\t\t\t{number},\n"
+            "\ttid:\t\t\t\t{number}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the open method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "configure"))) {
-        cout << "configure method:\n"
-            "\tConfigure per-thread parameters of the connection to " NODEM_DB "\n"
-            "\n\tRequired arguments: {None}\n"
-            "\n\tOptional arguments:\n"
-            "\t{\n"
-            "\t\tcharset|encoding:\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
-            "\t\tmode:\t\t\t{string} [<canonical>|string|strict]/i,\n"
-            "\t\tautoRelink:\t\t{boolean} <false>,\n"
-            "\t\tdebug:\t\t\t{boolean} <false>|{string} [<off>|low|medium|high]/i|{number} [<0>|1|2|3]\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tresult:\t\t{optional} {number} 1,\n"
-            "\t\tpid|gtm_pid:\t{number}|{string},\n"
-            "\t\ttid|gtm_tid:\t{number}|{string}\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\t- Failures from bad environment configurations result in internal errors from " NODEM_DB "\n"
-            "\n\tFor more information about the configure method, please refer to the README.md file\n"
+        cout << REVSE "configure" RESET " method: "
+            "Configure per-thread parameters of the connection to " NODEM_DB "\n\n"
+            "Required arguments:\n"
+            "None\n\n"
+            "Optional arguments:\n"
+            "{\n"
+            "\tcharset|encoding:\t\t{string} [<utf8|utf-8>|m|binary|ascii]/i,\n"
+            "\tmode:\t\t\t\t{string} [<canonical>|string]/i,\n"
+            "\tautoRelink:\t\t\t{boolean} <false>,\n"
+            "\tdebug:\t\t\t\t{boolean} <false>|{string} [<off>|low|medium|high]/i|{number} [<0>|1|2|3]\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tpid:\t\t\t\t{number},\n"
+            "\ttid:\t\t\t\t{number}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the configure method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "close"))) {
-        cout << "close method:\n"
-            "\tClose connection to " NODEM_DB " - once closed, cannot be reopened during the current process\n"
-            "\n\tRequired arguments: {None}\n"
-            "\n\tOptional arguments:\n"
-            "\t{\n"
-            "\t\tresetTerminal: {boolean} <false>\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{undefined}|{string} 1\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\n\tFor more information about the close method, please refer to the README.md file\n"
+        cout << REVSE "close" RESET " method: "
+            "Close connection to " NODEM_DB " - once closed, cannot be reopened in the current process\n\n"
+            "Required arguments:\n"
+            "None\n\n"
+            "Optional arguments:\n"
+            "{\n"
+            "\tresetTerminal:\t\t\t{boolean} <false>\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{undefined}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the close method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "version"))) {
-        cout << "version or about method:\n"
-            "\tDisplay version data - includes " NODEM_DB " version if connection has been established\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments: {None}\n"
-            "\n\tReturns on success: {string}\n"
-            "\n\tReturns on failure: Should never fail\n"
-            "\n\tFor more information about the version/about method, please refer to the README.md file\n"
+        cout << REVSE "version" RESET " or " REVSE "about" RESET " method: "
+            "Display Nodem version - includes " NODEM_DB " version if connection has been established\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments:\n"
+            "None\n\n"
+            "Returns on success:\n"
+            "{string}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the version/about method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "data"))) {
-        cout << "data method:\n"
-            "\tDisplay information about the existence of data and/or children in global or local variables\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tdefined:\t{number} [0|1|10|11]\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{number} [0|1|10|11]\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the data method, please refer to the README.md file\n"
+        cout << REVSE "data" RESET " method: "
+            "Retrieve information about the existence of data and/or children in global or local variables\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tdefined:\t\t\t{number} [0|1|10|11]\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{number} [0|1|10|11]\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the data method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "get"))) {
-        cout << "get method:\n"
-            "\tRetrieve the data stored at a global or local node, or intrinsic special variable (ISV)\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tdata:\t\t{string|number},\n"
-            "\t\tdefined:\t{boolean} [false|true]|{number} [0|1]\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|$ISV|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{string|number}\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the get method, please refer to the README.md file\n"
+        cout << REVSE "get" RESET " method: "
+            "Retrieve the data stored at a global or local node, or in an intrinsic special variable (ISV)\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tdata:\t\t\t\t{string|number},\n"
+            "\tdefined:\t\t\t{boolean}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|$ISV|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{string|number}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the get method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "set"))) {
-        cout << "set method:\n"
-            "\tStore data in a global or local node, or intrinsic special variable (ISV)\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tdata:\t\t{required} {string|number}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tdata:\t\t{string|number},\n"
-            "\t\tresult:\t\t{optional} {number} 0\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|$ISV|local, [subscripts+], data\n"
-            "\n\tReturns on success:\n"
-            "\t{boolean} true|{number} 0\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the set method, please refer to the README.md file\n"
+        cout << REVSE "set" RESET " method: "
+            "Store data in a global or local node, or in an intrinsic special variable (ISV)\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
+            "\tdata:\t\t\t\t(required) {string|number}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tdata:\t\t\t\t{string|number}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|$ISV|local, [subscripts+], data\n\n"
+            "Returns on success:\n"
+            "{undefined}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the set method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "kill"))) {
-        cout << "kill method:\n"
-            "\tRemove data stored in a global or global node, or in a local or local node, or remove all local variables\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tRequired arguments: {None} - Without an argument, will clear the entire local symbol table for that process\n"
-            "\tReturns on success: {undefined}|{number} 0\n"
-            "\n\tOptional arguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tnodeOnly:\t{optional} {boolean} <false>|{number} [<0>|1]\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tresult:\t\t{optional} {number} 0\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{boolean} true|{number} 0\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the kill method, please refer to the README.md file\n"
+        cout << REVSE "kill" RESET " method: "
+            "Remove data stored in a global or global node, or in a local or local node, or remove all local variables\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Required arguments:\n"
+            "None - Without an argument, will clear the entire local symbol table for that process\n\n"
+            "Returns on success:\n"
+            "{undefined}\n\n"
+            "Optional arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
+            "\tnodeOnly:\t\t\t(optional) {boolean} <false>\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tnodeOnly:\t\t\t{boolean}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{undefined}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the kill method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "merge"))) {
-        cout << "merge method:\n"
-            "\tCopy an entire data tree, or sub-tree, from a global or local array, to another global or local array\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tRequired arguments:\n"
+        cout << REVSE "merge" RESET " method: "
+            "Copy the data from all of the nodes in a global or local tree, to another global or local tree\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Required arguments:\n"
+            "{\n"
+            "\tfrom:\n"
             "\t{\n"
-            "\t\tfrom: {\n"
-            "\t\t\tglobal|local:\t{required} {string},\n"
-            "\t\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t\t},\n"
-            "\t\tto: {\n"
-            "\t\t\tglobal|local:\t{required} {string},\n"
-            "\t\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t\t}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
+            "\t\tglobal|local:\t\t(required) {string},\n"
+            "\t\tsubscripts:\t\t(optional) {array {string|number}}\n"
+            "\t},\n"
+            "\tto:\n"
             "\t{\n"
-            "\t\tok:\t{boolean} true|{number} 1,\n"
-            "\t\tfrom: {\n"
-            "\t\t\tglobal|local:\t{string},\n"
-            "\t\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t\t},\n"
-            "\t\tto: {\n"
-            "\t\t\tglobal|local:\t{string},\n"
-            "\t\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t\t},\n"
-            "\t\tresult:\t{number} 1\n"
+            "\t\tglobal|local:\t\t(required) {string},\n"
+            "\t\tsubscripts:\t\t(optional) {array {string|number}}\n"
             "\t}\n"
-            "\tOR:\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tfrom:\n"
             "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tresult:\t\t{string} 1\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
+            "\t\tglobal|local:\t\t{string},\n"
+            "\t\tsubscripts:\t\t{array {string|number}}\n"
+            "\t},\n"
+            "\tto:\n"
             "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
+            "\t\tglobal|local:\t\t{string},\n"
+            "\t\tsubscripts:\t\t{array {string|number}}\n"
             "\t}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the merge method, please refer to the README.md file\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the merge method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "order"))) {
-        cout << "order or next method:\n"
-            "\tRetrieve the next node, at the current subscript depth\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tresult:\t\t{string|number}\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{string|number}\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the order/next method, please refer to the README.md file\n"
+        cout << REVSE "order" RESET " or " REVSE "next" RESET " method: "
+            "Retrieve the next node, at the current subscript level\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tresult:\t\t\t\t{string|number}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{string|number}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the order/next method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "previous"))) {
-        cout << "previous method:\n"
-            "\tRetrieve the previous node, at the current subscript depth\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tresult:\t\t{string|number}\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{string|number}\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the previous method, please refer to the README.md file\n"
+        cout << REVSE "previous" RESET " method: "
+            "Retrieve the previous node, at the current subscript level\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tresult:\t\t\t\t{string|number}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{string|number}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the previous method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "nextNode"))) {
-        cout << "nextNode or next_node method:\n"
-            "\tRetrieve the next node, regardless of subscript depth\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tdata:\t\t{string|number},\n"
-            "\t\tdefined:\t{boolean} [false|true]|{number} [0|1]\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{array {string|number}}\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the nextNode/next_node method, please refer to the README.md file\n"
+        cout << REVSE "nextNode" RESET " method: "
+            "Retrieve the next node, regardless of subscript level\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tdata:\t\t\t\t{string|number},\n"
+            "\tdefined:\t\t\t{boolean}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{array {string|number}}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the nextNode method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "previousNode"))) {
-        cout << "previousNode or previous_node method:\n"
-            "\tRetrieve the previous node, regardless of subscript depth\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tdata:\t\t{string|number},\n"
-            "\t\tdefined:\t{boolean} [false|true]|{number} [0|1]\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{array {string|number}}\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the previousNode/previous_node method, please refer to the README.md file\n"
+        cout << REVSE "previousNode" RESET " method: "
+            "Retrieve the previous node, regardless of subscript level\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tdata:\t\t\t\t{string|number},\n"
+            "\tdefined:\t\t\t{boolean}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{array {string|number}}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the previousNode method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "increment"))) {
-        cout << "increment method:\n"
-            "\tAtomically increment or decrement a global or local data node\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tincrement:\t{optional} {number} <1>\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tdata:\t\t{string|number}\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{string|number}\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the increment method, please refer to the README.md file\n"
+        cout << REVSE "increment" RESET " method: "
+            "Atomically increment or decrement a global or local data node\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
+            "\tincrement:\t\t\t(optional) {number} <1>\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tincrement:\t\t\t{number},\n"
+            "\tdata:\t\t\t\t{number}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{number}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the increment method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "lock"))) {
-        cout << "lock method:\n"
-            "\tLock a local or global tree, or individual node, incrementally - locks are advisory, not mandatory\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\ttimeout:\t{optional} {number} <-1>\n"
-            "\t}\n"
-            "\n\tOptional arguments: Timeout {number} <-1> as second argument\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tresult:\t\t{number} [0|1]\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{string|number} [0|1]\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the lock method, please refer to the README.md file\n"
+        cout << REVSE "lock" RESET " method: "
+            "Lock a global or local tree, or individual node, incrementally - locks are advisory, not mandatory\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
+            "\ttimeout:\t\t\t(optional) {number}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\ttimeout:\t\t\t{number},\n"
+            "\tresult:\t\t\t\t{boolean}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{boolean}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the lock method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "unlock"))) {
-        cout << "unlock method:\n"
-            "\tUnlock a local or global tree, or individual node, incrementally; or release all locks held by process\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tRequired arguments: {None} - Without an argument, will clear the entire lock table for that process\n"
-            "\tReturns on success: {undefined}|{number} 0\n"
-            "\n\tOptional arguments - via object:\n"
-            "\t{\n"
-            "\t\tglobal|local:\t{required} {string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tglobal|local:\t{string},\n"
-            "\t\tsubscripts:\t{optional} {array {string|number}},\n"
-            "\t\tresult:\t\t{optional} {number} 0\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\t^global|local, [subscripts+]\n"
-            "\n\tReturns on success:\n"
-            "\t{boolean} true|{string} 0\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the unlock method, please refer to the README.md file\n"
+        cout << REVSE "unlock" RESET " method: "
+            "Unlock a global or local tree, or individual node, incrementally; or release all locks held by a process\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Required arguments:\n"
+            "None - Without an argument, will clear the entire lock table for that process\n\n"
+            "Returns on success:\n"
+            "{undefined}\n\n"
+            "Optional arguments - via object:\n"
+            "{\n"
+            "\tglobal|local:\t\t\t(required) {string},\n"
+            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tglobal|local:\t\t\t{string},\n"
+            "\tsubscripts:\t\t\t{array {string|number}}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "^global|local, [subscripts+]\n\n"
+            "Returns on success:\n"
+            "{undefined}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the unlock method, please refer to the README.md file\n"
             << endl;
 #if NODEM_SIMPLE_API == 1
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "transaction"))) {
-        cout << "transaction method:\n"
-            "\tRun a JavaScript function containing Nodem API calls as an ACID transaction in YottaDB - synchronous only\n"
-            "\n\tRequired arguments: {function} - A JavaScript function which will be run in a YottaDB transaction\n"
-            "\n\tOptional arguments - via object:\n"
-            "\t{\n"
-            "\t\tvariables:\t{optional} {array {string}},\n"
-            "\t\ttype:\t\t{optional} {string} [Batch|batch|BATCH]\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true,\n"
-            "\t\tstatusCode:\t{number},\n"
-            "\t\tstatusMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} false,\n"
-            "\t\terrorCode:\t{number},\n"
-            "\t\terrorMessage:\t{string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the transaction method, please refer to the README.md file\n"
-            "\t}\n"
+        cout << REVSE "transaction" RESET " method: "
+            "Run a function containing Nodem API calls as an ACID transaction in YottaDB - synchronous only\n\n"
+            "Required arguments:\n"
+            "{function} - A JavaScript function, taking no arguments, which will be run in a YottaDB transaction\n\n"
+            "Optional arguments - via object:\n"
+            "{\n"
+            "\tvariables:\t\t\t(optional) {array {string}},\n"
+            "\ttype:\t\t\t\t(optional) {string} Batch|batch|BATCH\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tstatusCode:\t\t\t{number},\n"
+            "\tstatusMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            " - tpRollback and tpRestart are provided as convenience properties on the instance object\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the transaction method, please refer to the README.md file\n"
             << endl;
 #endif
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "function"))) {
-        cout << "function method:\n"
-            "\tCall an extrinsic function in " NODEM_DB " code\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tfunction:\t{required} {string},\n"
-            "\t\targuments:\t{optional} {array {string|number|empty}},\n"
-            "\t\tautoRelink:\t{optional} {boolean} <false>\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t{boolean} true|{number} 1,\n"
-            "\t\tfunction:\t{string},\n"
-            "\t\targuments:\t{optional} {array {string|number|empty}},\n"
-            "\t\tresult:\t\t{string|number}\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\tfunction, [arguments+]\n"
-            "\n\tReturns on success:\n"
-            "\t{string|number}\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the function method, please refer to the README.md file\n"
+        cout << REVSE "function" RESET " method: "
+            "Call a " NODEM_DB " extrinsic function\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tfunction:\t\t\t(required) {string},\n"
+            "\targuments:\t\t\t(optional) {array {string|number|empty}},\n"
+            "\tautoRelink:\t\t\t(optional) {boolean}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tfunction:\t\t\t{string},\n"
+            "\targuments:\t\t\t{array {string|number|empty}},\n"
+            "\tautoRelink:\t\t\t{boolean}\n"
+            "\tresult:\t\t\t\t{string|number}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "function, [arguments+]\n\n"
+            "Returns on success:\n"
+            "{string|number}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the function method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "procedure"))) {
-        cout << "procedure or routine method:\n"
-            "\tCall a procedure/routine/subroutine label in " NODEM_DB " code\n"
-            "\tPassing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
-            "\n\tArguments - via object:\n"
-            "\t{\n"
-            "\t\tprocedure|routine:\t{required} {string},\n"
-            "\t\targuments:\t\t{optional} {array {string|number|empty}},\n"
-            "\t\tautoRelink:\t\t{optional} {boolean} <false>\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t{boolean} true|{number} 1,\n"
-            "\t\tprocedure|routine:\t{string},\n"
-            "\t\targuments:\t\t{optional} {array {string|number|empty}},\n"
-            "\t\tresult:\t\t\t{optional} {string} ''\n"
-            "\t}\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\n\tArguments - via argument position:\n"
-            "\tprocedure, [arguments+]\n"
-            "\n\tReturns on success:\n"
-            "\t{undefined}|{string} ''\n"
-            "\n\tReturns on failure:\n"
-            "\t{exception string}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the procedure/routine method, please refer to the README.md file\n"
+        cout << REVSE "procedure" RESET " or " REVSE "routine" RESET " method: "
+            "Call a " NODEM_DB " routine label\n"
+            " - Passing a function, taking two arguments (error and result), as the last argument, calls the API asynchronously\n"
+            " - Callbacks return `error === {null}` on success, and `result === {undefined}` on failure\n\n"
+            "Arguments - via object:\n"
+            "{\n"
+            "\tprocedure|routine:\t\t(required) {string},\n"
+            "\targuments:\t\t\t(optional) {array {string|number|empty}},\n"
+            "\tautoRelink:\t\t\t(optional) {boolean}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} true,\n"
+            "\tprocedure|routine:\t\t{string},\n"
+            "\targuments:\t\t\t{array {string|number|empty}}\n"
+            "\tautoRelink:\t\t\t{boolean}\n"
+            "}\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            "Arguments - via position:\n"
+            "procedure, [arguments+]\n\n"
+            "Returns on success:\n"
+            "{undefined}\n\n"
+            "Returns on failure:\n"
+            "{Error object}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the procedure/routine method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "globalDirectory"))) {
-        cout << "globalDirectory or global_directory method:\n"
-            "\tList globals stored in the database\n"
-            "\n\tRequired arguments: {None} - Without an argument, will list all the globals stored in the database\n"
-            "\n\tOptional arguments:\n"
-            "\t{\n"
-            "\t\tmax:\t{optional} {number},\n"
-            "\t\tlo:\t{optional} {string},\n"
-            "\t\thi:\t{optional} {string}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t[\n"
-            "\t\t<global name>* {string}\n"
-            "\t]\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the globalDirectory/global_directory method, please refer to the README.md file\n"
+        cout << REVSE "globalDirectory" RESET " method: "
+            "List globals stored in the database\n\n"
+            "Required arguments:\n"
+            "None - Without an argument, will list all the globals stored in the database\n\n"
+            "Optional arguments:\n"
+            "{\n"
+            "\tmax:\t\t\t\t(optional) {number},\n"
+            "\tlo:\t\t\t\t(optional) {string},\n"
+            "\thi:\t\t\t\t(optional) {string}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "[\n"
+            "\t<global name>*\t\t\t{string}\n"
+            "]\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the globalDirectory method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "localDirectory"))) {
-        cout << "localDirectory or local_directory method:\n"
-            "\tList local variables stored in the symbol table\n"
-            "\n\tRequired arguments: {None} - Without an argument, will list all the variables in the local symbol table\n"
-            "\n\tOptional arguments:\n"
-            "\t{\n"
-            "\t\tmax:\t{optional} {number},\n"
-            "\t\tlo:\t{optional} {string},\n"
-            "\t\thi:\t{optional} {string}\n"
-            "\t}\n"
-            "\n\tReturns on success:\n"
-            "\t[\n"
-            "\t\t<local variable name>* {string}\n"
-            "\t]\n"
-            "\n\tReturns on failure:\n"
-            "\t{\n"
-            "\t\tok:\t\t\t\t{boolean} false|{number} 0,\n"
-            "\t\terrorCode|ErrorCode:\t\t{number},\n"
-            "\t\terrorMessage|ErrorMessage:\t{string}\n"
-            "\t}\n"
-            "\t- Failures from bad user input can result in thrown exception messages or stack traces\n"
-            "\n\tFor more information about the localDirectory/local_directory method, please refer to the README.md file\n"
+        cout << REVSE "localDirectory" RESET " method: "
+            "List local variables stored in the symbol table\n\n"
+            "Required arguments:\n"
+            "None - Without an argument, will list all the variables in the local symbol table\n\n"
+            "Optional arguments:\n"
+            "{\n"
+            "\tmax:\t\t\t\t(optional) {number},\n"
+            "\tlo:\t\t\t\t(optional) {string},\n"
+            "\thi:\t\t\t\t(optional) {string}\n"
+            "}\n\n"
+            "Returns on success:\n"
+            "[\n"
+            "\t<local variable name>*\t\t{string}\n"
+            "]\n\n"
+            "Returns on failure:\n"
+            "{\n"
+            "\tok:\t\t\t\t{boolean} false,\n"
+            "\terrorCode:\t\t\t{number},\n"
+            "\terrorMessage:\t\t\t{string}\n"
+            "}\n\n"
+            " - Some failures can result in thrown exceptions and/or stack traces\n"
+            "For more information about the localDirectory method, please refer to the README.md file\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "retrieve"))) {
-        cout << "retrieve method:\n"
-            "\tRetrieve a local or global tree or sub-tree structure as an object - NOT YET IMPLEMENTED\n"
+        cout << REVSE "retrieve" RESET " method: "
+            "Retrieve a global or local tree structure as an object - NOT YET IMPLEMENTED\n"
             << endl;
     } else if (to_string_n(isolate, info[0])->StrictEquals(new_string_n(isolate, "update"))) {
-        cout << "update method:\n"
-            "\tStore an object in a local or global tree or sub-tree structure - NOT YET IMPLEMENTED\n"
+        cout << REVSE "update" RESET " method: "
+            "Store an object as a global or local tree structure - NOT YET IMPLEMENTED\n"
             << endl;
     } else {
-#if NODEM_YDB == 1
-        cout << "NodeM: Ydb/Gtm Object API Help Menu - Methods:\n"
-#else
-        cout << "NodeM: Gtm Object API Help Menu - Methods:\n"
-#endif
-            "\nopen\t\tOpen connection to " NODEM_DB " - all methods, except for help and version, require an open connection\n"
-            "configure\tConfigure per-thread parameters of the connection to " NODEM_DB "\n"
-            "close\t\tClose connection to " NODEM_DB " - once closed, cannot be reopened during the current process\n"
-            "version\t\tDisplay version data - includes " NODEM_DB " version if connection has been established (AKA about)\n"
-            "data\t\tDisplay information about the existence of data and/or children in global or local variables\n"
-            "get\t\tRetrieve the data stored at a global or local node, or intrinsic special variable (ISV)\n"
-            "set\t\tStore data in a global or local node, or intrinsic special variable (ISV)\n"
-            "kill\t\tRemove data stored in a global or global node, or in a local or local node; or remove all local variables\n"
-            "merge\t\tCopy an entire data tree, or sub-tree, from a global or local array, to another global or local array\n"
-            "order\t\tRetrieve the next node, at the current subscript depth (AKA next)\n"
-            "previous\tRetrieve the previous node, at the current subscript depth\n"
-            "nextNode\tRetrieve the next node, regardless of subscript depth\n"
-            "previousNode\tRetrieve the previous node, regardless of subscript depth\n"
-            "increment\tAtomically increment a global or local data node\n"
-            "lock\t\tLock a global or local tree, or individual node, incrementally - locks are advisory, not mandatory\n"
-            "unlock\t\tUnlock a global or local tree, or individual node, incrementally; or release all locks held by process\n"
+        cout << REVSE "NodeM" RESET " API Help Menu - Methods:\n\n"
+            "open\t\t\tOpen connection to " NODEM_DB " - all methods, except for help and version, require an open connection\n"
+            "configure\t\tConfigure per-thread parameters of the connection to " NODEM_DB "\n"
+            "close\t\t\tClose connection to " NODEM_DB " - once closed, cannot be reopened in the current process\n"
+            "version\t\t\tDisplay Nodem version - includes " NODEM_DB " version if connection has been established (AKA about)\n"
+            "data\t\t\tRetrieve information about the existence of data and/or children in global or local variables\n"
+            "get\t\t\tRetrieve the data stored at a global or local node, or in an intrinsic special variable (ISV)\n"
+            "set\t\t\tStore data in a global or local node, or in an intrinsic special variable (ISV)\n"
+            "kill\t\t\tRemove data stored in a global or global node, or in a local or local node; or remove all local variables\n"
+            "merge\t\t\tCopy the data from all of the nodes in a global or local tree, to another global or local tree\n"
+            "order\t\t\tRetrieve the next node, at the current subscript level (AKA next)\n"
+            "previous\t\tRetrieve the previous node, at the current subscript level\n"
+            "nextNode\t\tRetrieve the next node, regardless of subscript level\n"
+            "previousNode\t\tRetrieve the previous node, regardless of subscript level\n"
+            "increment\t\tAtomically increment or decrement a global or local data node\n"
+            "lock\t\t\tLock a global or local tree, or individual node, incrementally - locks are advisory, not mandatory\n"
+            "unlock\t\t\tUnlock a global or local tree, or individual node, incrementally; or release all locks held by a process\n"
 #if NODEM_SIMPLE_API == 1
-            "transaction\tRun a function containing Nodem API calls as an ACID transaction - synchronous only\n"
+            "transaction\t\tRun a function containing Nodem API calls as an ACID transaction in YottaDB - synchronous only\n"
 #endif
-            "function\tCall an extrinsic function in " NODEM_DB " code\n"
-            "procedure\tCall a procedure/routine/subroutine label in " NODEM_DB " code (AKA routine)\n"
-            "globalDirectory\tList globals stored in the database\n"
-            "localDirectory\tList local variables stored in the symbol table\n"
-            "retrieve\tRetrieve a global or local tree or sub-tree structure - NOT YET IMPLEMENTED\n"
-            "update\t\tStore an object in a global or local tree or sub-tree structure - NOT YET IMPLEMENTED\n"
-            "\nFor more information about each method, call help with the method name as an argument\n"
+            "function\t\tCall a " NODEM_DB " extrinsic function\n"
+            "procedure\t\tCall a " NODEM_DB " routine label (AKA routine)\n"
+            "globalDirectory\t\tList globals stored in the database\n"
+            "localDirectory\t\tList local variables stored in the symbol table\n"
+            "retrieve\t\tRetrieve a global or local tree structure as an object - NOT YET IMPLEMENTED\n"
+            "update\t\t\tStore an object as a global or local tree structure - NOT YET IMPLEMENTED\n\n"
+            "For more information about each method, call help with the method name as an argument\n"
             << endl;
     }
 
-    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2022 Fourth Watch Software LC"));
+    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2023 Fourth Watch Software LC"));
     return;
 } // @end nodem::Nodem::help method
 
@@ -3998,7 +3724,7 @@ void Nodem::version(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > OFF) debug_log(">  call into ", NODEM_DB);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -4010,14 +3736,12 @@ void Nodem::version(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    nodem_baton->status = gtm::version(nodem_baton);
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from ", NODEM_DB);
 
     if (nodem_baton->status != EXIT_SUCCESS) {
-        isolate->ThrowException(Exception::Error(
-          to_string_n(isolate, error_status(nodem_baton->error, true, async, nodem_state))));
-
+        isolate->ThrowException(Exception::Error(to_string_n(isolate, error_status(nodem_baton->error, true, async, nodem_state))));
         info.GetReturnValue().Set(Undefined(isolate));
 
         nodem_baton->arguments_p.Reset();
@@ -4028,12 +3752,12 @@ void Nodem::version(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into version");
 
-    Local<Value> return_value = nodem::version(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
 
-    info.GetReturnValue().Set(return_value);
+    info.GetReturnValue().Set(return_object);
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::version exit\n");
 
@@ -4169,7 +3893,7 @@ void Nodem::data(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -4177,12 +3901,12 @@ void Nodem::data(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -4260,7 +3984,7 @@ void Nodem::data(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -4272,11 +3996,7 @@ void Nodem::data(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::data(nodem_baton);
-#else
-    nodem_baton->status = gtm::data(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -4294,8 +4014,7 @@ void Nodem::data(const FunctionCallbackInfo<Value>& info)
     if (nodem_baton->status != EXIT_SUCCESS) {
 #endif
         if (position) {
-            isolate->ThrowException(Exception::Error(
-              to_string_n(isolate, error_status(nodem_baton->error, position, async, nodem_state))));
+            isolate->ThrowException(Exception::Error( to_string_n(isolate, error_status(nodem_baton->error, position, async, nodem_state))));
 
             info.GetReturnValue().Set(Undefined(isolate));
         } else {
@@ -4310,7 +4029,7 @@ void Nodem::data(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into data");
 
-    Local<Value> return_object = nodem::data(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -4451,7 +4170,7 @@ void Nodem::get(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -4459,12 +4178,12 @@ void Nodem::get(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -4542,7 +4261,7 @@ void Nodem::get(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -4554,11 +4273,7 @@ void Nodem::get(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::get(nodem_baton);
-#else
-    nodem_baton->status = gtm::get(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -4592,7 +4307,7 @@ void Nodem::get(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into get");
 
-    Local<Value> return_object = nodem::get(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -4762,7 +4477,7 @@ void Nodem::set(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -4770,12 +4485,12 @@ void Nodem::set(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -4865,7 +4580,7 @@ void Nodem::set(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -4877,11 +4592,7 @@ void Nodem::set(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::set(nodem_baton);
-#else
-    nodem_baton->status = gtm::set(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -4915,7 +4626,7 @@ void Nodem::set(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into set");
 
-    Local<Value> return_object = nodem::set(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -4968,7 +4679,7 @@ void Nodem::kill(const FunctionCallbackInfo<Value>& info)
     Local<Value> subscripts = Undefined(isolate);
     bool local = false;
     bool position = false;
-    int32_t node_only = -1;
+    bool node_only = false;
 
     if (info[0]->IsObject() && !info[0]->IsFunction()) {
         Local<Object> arg_object = to_object_n(isolate, info[0]);
@@ -5057,7 +4768,7 @@ void Nodem::kill(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -5065,12 +4776,12 @@ void Nodem::kill(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -5149,7 +4860,7 @@ void Nodem::kill(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -5161,11 +4872,7 @@ void Nodem::kill(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::kill(nodem_baton);
-#else
-    nodem_baton->status = gtm::kill(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -5199,7 +4906,7 @@ void Nodem::kill(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into kill");
 
-    Local<Value> return_object = nodem::kill(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -5253,30 +4960,30 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
     }
 
     Local<Object> arg_object = to_object_n(isolate, info[0]);
-    Local<Value> from_test = get_n(isolate, arg_object, new_string_n(isolate, "from"));
-    Local<Value> to_test = get_n(isolate, arg_object, new_string_n(isolate, "to"));
+    Local<Value> from_object = get_n(isolate, arg_object, new_string_n(isolate, "from"));
+    Local<Value> to_object = get_n(isolate, arg_object, new_string_n(isolate, "to"));
     bool from_local = false;
     bool to_local = false;
 
     if (!has_n(isolate, arg_object, new_string_n(isolate, "from"))) {
         isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'from' property")));
         return;
-    } else if (!from_test->IsObject()) {
+    } else if (!from_object->IsObject()) {
         isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "'from' property must be an object")));
         return;
     }
 
-    Local<Object> from = to_object_n(isolate, from_test);
+    Local<Object> from = to_object_n(isolate, from_object);
 
     if (!has_n(isolate, arg_object, new_string_n(isolate, "to"))) {
         isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Need to supply a 'to' property")));
         return;
-    } else if (!to_test->IsObject()) {
+    } else if (!to_object->IsObject()) {
         isolate->ThrowException(Exception::TypeError(new_string_n(isolate, "'to' property must be an object")));
         return;
     }
 
-    Local<Object> to = to_object_n(isolate, to_test);
+    Local<Object> to = to_object_n(isolate, to_object);
     Local<Value> from_glvn = get_n(isolate, from, new_string_n(isolate, "global"));
 
     if (from_glvn->IsUndefined()) {
@@ -5367,21 +5074,21 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
     Local<Value> from_name;
 
     if (from_local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, from_glvn)), nodem_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' is an invalid name")));
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, from_glvn)))) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' in 'from' is an invalid name")));
             return;
         }
 
         from_name_msg = ">>   from_local: ";
         from_name = localize_name(from_glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, from_name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, from_name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' in 'from' cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, from_glvn)), nodem_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'global' is an invalid name")));
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, from_glvn)))) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'global' in 'from' is an invalid name")));
             return;
         }
 
@@ -5393,21 +5100,21 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
     Local<Value> to_name;
 
     if (to_local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, to_glvn)), nodem_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' is an invalid name")));
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, to_glvn)))) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' in 'to' is an invalid name")));
             return;
         }
 
         to_name_msg = ">>   to_local: ";
         to_name = localize_name(to_glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, to_name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, to_name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'local' in 'to' cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, to_glvn)), nodem_state)) {
-            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'global' is an invalid name")));
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, to_glvn)))) {
+            isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'global' in 'to' is an invalid name")));
             return;
         }
 
@@ -5425,9 +5132,9 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
 
         if (nodem_state->debug > LOW) {
             debug_log(from_name_msg, from_gvn);
-            debug_log(">> from_subscripts: ", from_sub);
+            debug_log(">>   from_subscripts: ", from_sub);
             debug_log(to_name_msg, to_gvn);
-            debug_log(">> to_subscripts: ", to_sub);
+            debug_log(">>   to_subscripts: ", to_sub);
         }
     } else {
         NodemValue gtm_from_name {from_name};
@@ -5442,9 +5149,9 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
 
         if (nodem_state->debug > LOW) {
             debug_log(from_name_msg, from_gvn);
-            debug_log(">> from_subscripts: ", from_sub);
+            debug_log(">>   from_subscripts: ", from_sub);
             debug_log(to_name_msg, to_gvn);
-            debug_log(">> to_subscripts: ", to_sub);
+            debug_log(">>   to_subscripts: ", to_sub);
         }
     }
 
@@ -5487,7 +5194,7 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -5499,7 +5206,7 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    nodem_baton->status = gtm::merge(nodem_baton);
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -5515,7 +5222,7 @@ void Nodem::merge(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into merge");
 
-    Local<Value> return_object = nodem::merge(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->object_p.Reset();
     nodem_baton->arguments_p.Reset();
@@ -5657,7 +5364,7 @@ void Nodem::order(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -5665,12 +5372,12 @@ void Nodem::order(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -5748,7 +5455,7 @@ void Nodem::order(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -5760,11 +5467,7 @@ void Nodem::order(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::order(nodem_baton);
-#else
-    nodem_baton->status = gtm::order(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -5798,7 +5501,7 @@ void Nodem::order(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into order");
 
-    Local<Value> return_object = nodem::order(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -5939,7 +5642,7 @@ void Nodem::previous(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -5947,12 +5650,12 @@ void Nodem::previous(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -6030,7 +5733,7 @@ void Nodem::previous(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -6042,11 +5745,7 @@ void Nodem::previous(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::previous(nodem_baton);
-#else
-    nodem_baton->status = gtm::previous(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -6080,7 +5779,7 @@ void Nodem::previous(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into previous");
 
-    Local<Value> return_object = nodem::previous(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -6091,6 +5790,22 @@ void Nodem::previous(const FunctionCallbackInfo<Value>& info)
 
     return;
 } // @end nodem::Nodem::previous method
+
+/*
+ * @method nodem::Nodem::next_node_deprecated
+ * @summary Calls nodem::next_node after logging that this method is deprecated
+ * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
+ * @returns {void}
+ */
+void Nodem::next_node_deprecated(const FunctionCallbackInfo<Value>& info)
+{
+    if (reinterpret_cast<NodemState*>(info.Data().As<External>()->Value())->debug > OFF || !(deprecated_g & NEXT)) {
+        deprecated_g |= NEXT;
+        debug_log(">  next_node [DEPRECATED - Use nextNode instead]");
+    }
+
+    return Nodem::next_node(info);
+}
 
 /*
  * @method nodem::Nodem::next_node
@@ -6221,7 +5936,7 @@ void Nodem::next_node(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -6229,12 +5944,12 @@ void Nodem::next_node(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -6312,7 +6027,7 @@ void Nodem::next_node(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -6324,11 +6039,7 @@ void Nodem::next_node(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::next_node(nodem_baton);
-#else
-    nodem_baton->status = gtm::next_node(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -6362,7 +6073,7 @@ void Nodem::next_node(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into next_node");
 
-    Local<Value> return_object = nodem::next_node(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -6373,6 +6084,22 @@ void Nodem::next_node(const FunctionCallbackInfo<Value>& info)
 
     return;
 } // @end nodem::Nodem::next_node method
+
+/*
+ * @method nodem::Nodem::previous_node_deprecated
+ * @summary Calls nodem::previous_node after logging that this method is deprecated
+ * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
+ * @returns {void}
+ */
+void Nodem::previous_node_deprecated(const FunctionCallbackInfo<Value>& info)
+{
+    if (reinterpret_cast<NodemState*>(info.Data().As<External>()->Value())->debug > OFF || !(deprecated_g & PREVIOUS)) {
+        deprecated_g |= PREVIOUS;
+        debug_log(">  previous_node [DEPRECATED - Use previousNode instead]");
+    }
+
+    return Nodem::previous_node(info);
+}
 
 /*
  * @method nodem::Nodem::previous_node
@@ -6503,7 +6230,7 @@ void Nodem::previous_node(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -6511,12 +6238,12 @@ void Nodem::previous_node(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -6594,7 +6321,7 @@ void Nodem::previous_node(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -6606,11 +6333,7 @@ void Nodem::previous_node(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::previous_node(nodem_baton);
-#else
-    nodem_baton->status = gtm::previous_node(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -6644,7 +6367,7 @@ void Nodem::previous_node(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into previous_node");
 
-    Local<Value> return_object = nodem::previous_node(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -6722,8 +6445,22 @@ void Nodem::increment(const FunctionCallbackInfo<Value>& info)
 
         if (has_n(isolate, arg_object, new_string_n(isolate, "increment"))) {
             increment = get_n(isolate, arg_object, new_string_n(isolate, "increment"));
-        } else if (nodem_state->mode == STRICT && args_cnt > 1) {
+        } else if (args_cnt > 1) {
             increment = info[1];
+
+            if (!increment->IsUndefined() && !(deprecated_g & INCREMENT)) {
+                deprecated_g |= INCREMENT;
+                debug_log(">>   increment by-position [DEPRECATED - Use increment property instead]");
+            }
+        }
+
+        // Make sure JavaScript numbers that M won't recognize are changed to 0
+        string test = *(UTF8_VALUE_TEMP_N(isolate, increment));
+
+        if (!all_of(test.begin(), test.end(), [](char c) {return (isdigit(c) || c == '-' || c == '.');})) {
+            increment = Number::New(isolate, 0);
+        } else if (!increment->IsNumber()) {
+            increment = Number::New(isolate, 0);
         }
     } else {
         glvn = info[0];
@@ -6742,8 +6479,6 @@ void Nodem::increment(const FunctionCallbackInfo<Value>& info)
         string test = *(UTF8_VALUE_TEMP_N(isolate, glvn));
         if (test[0] != '^') local = true;
     }
-
-    if (!increment->IsNumber()) increment = Number::New(isolate, 0);
 
     if (!glvn->IsString()) {
         if (local) {
@@ -6794,7 +6529,7 @@ void Nodem::increment(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -6802,12 +6537,12 @@ void Nodem::increment(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -6888,7 +6623,7 @@ void Nodem::increment(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -6900,11 +6635,7 @@ void Nodem::increment(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::increment(nodem_baton);
-#else
-    nodem_baton->status = gtm::increment(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -6938,7 +6669,7 @@ void Nodem::increment(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into increment");
 
-    Local<Value> return_object = nodem::increment(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -7016,12 +6747,22 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
 
         if (has_n(isolate, arg_object, new_string_n(isolate, "timeout"))) {
             timeout = get_n(isolate, arg_object, new_string_n(isolate, "timeout"));
-
-            if (number_value_n(isolate, timeout) < 0) timeout = Number::New(isolate, 0);
-        } else if (nodem_state->mode == STRICT && args_cnt > 1) {
+        } else if (args_cnt > 1) {
             timeout = info[1];
 
-            if (number_value_n(isolate, timeout) < 0) timeout = Number::New(isolate, 0);
+            if (!timeout->IsUndefined() && !(deprecated_g & TIMEOUT)) {
+                deprecated_g |= TIMEOUT;
+                debug_log(">>   timeout by-position [DEPRECATED - Use timeout property instead]");
+            }
+        }
+
+        // Make sure JavaScript numbers that M won't recognize are changed to 0
+        string test = *(UTF8_VALUE_TEMP_N(isolate, timeout));
+
+        if (!all_of(test.begin(), test.end(), [](char c) {return (isdigit(c) || c == '-' || c == '.');})) {
+            timeout = Number::New(isolate, 0);
+        } else if (!timeout->IsNumber() || number_value_n(isolate, timeout) < -1) {
+            timeout = Number::New(isolate, 0);
         }
     } else {
         glvn = info[0];
@@ -7040,8 +6781,6 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
         string test = *(UTF8_VALUE_TEMP_N(isolate, glvn));
         if (test[0] != '^') local = true;
     }
-
-    if (!timeout->IsNumber()) timeout = Number::New(isolate, 0);
 
     if (!glvn->IsString()) {
         if (local) {
@@ -7092,7 +6831,7 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -7100,12 +6839,12 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -7186,7 +6925,7 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -7198,11 +6937,7 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::lock(nodem_baton);
-#else
-    nodem_baton->status = gtm::lock(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -7236,7 +6971,7 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into lock");
 
-    Local<Value> return_object = nodem::lock(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -7373,7 +7108,7 @@ void Nodem::unlock(const FunctionCallbackInfo<Value>& info)
     Local<Value> name;
 
     if (local) {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local is an invalid name")));
             return;
         }
@@ -7381,12 +7116,12 @@ void Nodem::unlock(const FunctionCallbackInfo<Value>& info)
         name_msg = ">>   local: ";
         name = localize_name(glvn, nodem_state);
 
-        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)), nodem_state)) {
+        if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, name)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Local cannot begin with 'v4w'")));
             return;
         }
     } else {
-        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)), nodem_state)) {
+        if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, glvn)))) {
             isolate->ThrowException(Exception::Error(new_string_n(isolate, "Global is an invalid name")));
             return;
         }
@@ -7464,7 +7199,7 @@ void Nodem::unlock(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) debug_log(">>   mode: ", nodem_state->mode);
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -7476,11 +7211,7 @@ void Nodem::unlock(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-#if NODEM_SIMPLE_API == 1
-    nodem_baton->status = ydb::unlock(nodem_baton);
-#else
-    nodem_baton->status = gtm::unlock(nodem_baton);
-#endif
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -7514,7 +7245,7 @@ void Nodem::unlock(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into unlock");
 
-    Local<Value> return_object = nodem::unlock(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -7542,9 +7273,9 @@ void Nodem::transaction(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::transaction enter");
 
-#if YDB_RELEASE >= 126
+#   if YDB_RELEASE >= 126
     reset_handler(nodem_state);
-#endif
+#   endif
 
     if (nodem_state_g < OPEN) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, NODEM_DB " connection is not open")));
@@ -7561,11 +7292,11 @@ void Nodem::transaction(const FunctionCallbackInfo<Value>& info)
     if (args_cnt > 2) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Only two arguments are allowed")));
         return;
-#if NODE_MAJOR_VERSION >= 8 || NODE_MAJOR_VERSION == 7 && NODE_MINOR_VERSION >= 6
+#   if NODE_MAJOR_VERSION >= 8 || (NODE_MAJOR_VERSION == 7 && NODE_MINOR_VERSION >= 6)
     } else if (info[0]->IsAsyncFunction()) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Async function is not allowed")));
         return;
-#endif
+#   endif
     } else if (!info[0]->IsFunction()) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function is required for first argument")));
         return;
@@ -7586,7 +7317,7 @@ void Nodem::transaction(const FunctionCallbackInfo<Value>& info)
 
                 variables = get_n(isolate, arg_object, new_string_n(isolate, "variables"));
 
-                if (!variables->IsArray()) {
+                if (!variables->IsUndefined() && !variables->IsArray()) {
                     isolate->ThrowException(Exception::Error(new_string_n(isolate, "Variables must be in an array")));
                     return;
                 }
@@ -7596,7 +7327,9 @@ void Nodem::transaction(const FunctionCallbackInfo<Value>& info)
                 string vars_name;
 
                 if (vars_size > YDB_MAX_SUBS) {
-                    isolate->ThrowException(Exception::Error(new_string_n(isolate, "Max of 31 variables may be passed")));
+                    isolate->ThrowException(Exception::Error(new_string_n(
+                      isolate, "Max of " NODEM_STRING(YDB_MAX_SUBS) "variables may be passed")));
+
                     return;
                 }
 
@@ -7628,6 +7361,7 @@ void Nodem::transaction(const FunctionCallbackInfo<Value>& info)
     nodem_baton->request.data = nodem_baton;
     nodem_baton->callback_p.Reset(isolate, Local<Function>::Cast(info[0]));
     nodem_baton->nodem_state = nodem_state;
+    nodem_baton->error = nodem_state->error;
 
     if (nodem_state->tp_level == 0) uv_mutex_lock(&mutex_g);
     if (nodem_state->debug > LOW) debug_log(">>   tp_level: ", nodem_state->tp_level);
@@ -7647,25 +7381,28 @@ void Nodem::transaction(const FunctionCallbackInfo<Value>& info)
 
     Local<Object> return_object = Object::New(isolate);
 
-    set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, false));
+    set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
 
     if (status == YDB_OK) {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-
         set_n(isolate, return_object, new_string_n(isolate, "statusCode"), Number::New(isolate, status));
         set_n(isolate, return_object, new_string_n(isolate, "statusMessage"), new_string_n(isolate, "Commit"));
-    } else if (status == YDB_TP_ROLLBACK) {
-        set_n(isolate, return_object, new_string_n(isolate, "errorCode"), Number::New(isolate, status));
-        set_n(isolate, return_object, new_string_n(isolate, "errorMessage"), new_string_n(isolate, "Rollback"));
-    } else if (status == YDB_TP_RESTART) {
-        set_n(isolate, return_object, new_string_n(isolate, "errorCode"), Number::New(isolate, status));
-        set_n(isolate, return_object, new_string_n(isolate, "errorMessage"), new_string_n(isolate, "Restart"));
-    } else {
-        set_n(isolate, return_object, new_string_n(isolate, "errorCode"), Number::New(isolate, status));
-        set_n(isolate, return_object, new_string_n(isolate, "errorMessage"), new_string_n(isolate, "Unknown"));
-    }
 
-    info.GetReturnValue().Set(return_object);
+        info.GetReturnValue().Set(return_object);
+    } else if (status == YDB_TP_ROLLBACK) {
+        set_n(isolate, return_object, new_string_n(isolate, "statusCode"), Number::New(isolate, status));
+        set_n(isolate, return_object, new_string_n(isolate, "statusMessage"), new_string_n(isolate, "Rollback"));
+
+        info.GetReturnValue().Set(return_object);
+    } else if (status == YDB_TP_RESTART) {
+        set_n(isolate, return_object, new_string_n(isolate, "statusCode"), Number::New(isolate, status));
+        set_n(isolate, return_object, new_string_n(isolate, "statusMessage"), new_string_n(isolate, "Restart"));
+
+        info.GetReturnValue().Set(return_object);
+    } else {
+        ydb_zstatus(nodem_baton->error, ERR_LEN);
+
+        info.GetReturnValue().Set(error_status(nodem_baton->error, false, false, nodem_state));
+    }
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::transaction exit\n");
 
@@ -7833,7 +7570,7 @@ void Nodem::function(const FunctionCallbackInfo<Value>& info)
     }
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -7845,7 +7582,7 @@ void Nodem::function(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    nodem_baton->status = gtm::function(nodem_baton);
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -7867,7 +7604,7 @@ void Nodem::function(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into function");
 
-    Local<Value> return_object = nodem::function(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -7881,7 +7618,7 @@ void Nodem::function(const FunctionCallbackInfo<Value>& info)
 
 /*
  * @method nodem::Nodem::procedure
- * @summary Call an arbitrary procedure/subroutine
+ * @summary Call an arbitrary procedure/routine
  * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
  * @returns {void}
  */
@@ -8049,7 +7786,7 @@ void Nodem::procedure(const FunctionCallbackInfo<Value>& info)
     }
 
     if (async) {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
         uv_queue_work(GetCurrentEventLoop(isolate), &nodem_baton->request, async_work, async_after);
 #else
         uv_queue_work(uv_default_loop(), &nodem_baton->request, async_work, async_after);
@@ -8061,7 +7798,7 @@ void Nodem::procedure(const FunctionCallbackInfo<Value>& info)
         return;
     }
 
-    nodem_baton->status = gtm::procedure(nodem_baton);
+    nodem_baton->status = nodem_baton->nodem_function(nodem_baton);
 
     if (nodem_state->debug > OFF) debug_log(">  return from " NODEM_DB);
 
@@ -8083,7 +7820,7 @@ void Nodem::procedure(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > LOW) debug_log(">>   call into procedure");
 
-    Local<Value> return_object = nodem::procedure(nodem_baton);
+    Local<Value> return_object = nodem_baton->ret_function(nodem_baton);
 
     nodem_baton->arguments_p.Reset();
     nodem_baton->data_p.Reset();
@@ -8094,6 +7831,22 @@ void Nodem::procedure(const FunctionCallbackInfo<Value>& info)
 
     return;
 } // @end nodem::Nodem::procedure method
+
+/*
+ * @method nodem::Nodem::global_directory_deprecated
+ * @summary Calls nodem::global_directory after logging that this method is deprecated
+ * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
+ * @returns {void}
+ */
+void Nodem::global_directory_deprecated(const FunctionCallbackInfo<Value>& info)
+{
+    if (reinterpret_cast<NodemState*>(info.Data().As<External>()->Value())->debug > OFF || !(deprecated_g & GLOBAL)) {
+        deprecated_g |= GLOBAL;
+        debug_log(">  global_directory [DEPRECATED - Use globalDirectory instead]");
+    }
+
+    return Nodem::global_directory(info);
+}
 
 /*
  * @method nodem::Nodem::global_directory
@@ -8125,7 +7878,7 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
 
         max = get_n(isolate, arg_object, new_string_n(isolate, "max"));
 
-        if (max->IsUndefined() || !max->IsNumber() || number_value_n(isolate, max) < 0) max = Number::New(isolate, 0);
+        if (number_value_n(isolate, max) < 0) max = Number::New(isolate, 0);
 
         lo = get_n(isolate, arg_object, new_string_n(isolate, "lo"));
 
@@ -8147,7 +7900,7 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
         debug_log(">>   max: ", uint32_value_n(isolate, max));
     }
 
-    gtm_status_t stat_buf;
+    gtm_status_t status;
     gtm_char_t global_directory[] = "global_directory";
 
     static gtm_char_t ret_buf[RES_LEN];
@@ -8170,14 +7923,15 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolate, lo)),
-                   *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
+        status = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolate, lo)),
+                 *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
     } else {
         NodemValue nodem_lo {lo};
         NodemValue nodem_hi {hi};
@@ -8192,14 +7946,14 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), nodem_lo.to_byte(),
-                   nodem_hi.to_byte(), nodem_state->mode);
+        status = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), nodem_lo.to_byte(), nodem_hi.to_byte(), nodem_state->mode);
     }
 #else
     if (nodem_state->utf8 == true) {
@@ -8213,14 +7967,15 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_ci(global_directory, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolae, lo)),
-                   *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
+        status = gtm_ci(global_directory, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolae, lo)),
+                 *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
     } else {
         NodemValue nodem_lo {lo};
         NodemValue nodem_hi {hi};
@@ -8235,14 +7990,15 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_ci(global_directory, ret_buf, uint32_value_n(isolate, max),
-                   nodem_lo.to_byte(), nodem_hi.to_byte(), nodem_state->mode);
+        status = gtm_ci(global_directory, ret_buf, uint32_value_n(isolate, max),
+                 nodem_lo.to_byte(), nodem_hi.to_byte(), nodem_state->mode);
     }
 #endif
 
@@ -8251,13 +8007,14 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
 
         if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
+
             cerr << strerror_r(errno, error, BUFSIZ);
         }
+
+        debug_log(">>   status: ", status);
     }
 
-    if (nodem_state->debug > LOW) debug_log(">>   stat_buf: ", stat_buf);
-
-    if (stat_buf != EXIT_SUCCESS) {
+    if (status != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
@@ -8295,10 +8052,26 @@ void Nodem::global_directory(const FunctionCallbackInfo<Value>& info)
         info.GetReturnValue().Set(Local<Array>::Cast(json));
     }
 
-    if (nodem_state->debug > OFF) debug_log(">   Nodem::global_directory exit\n");
+    if (nodem_state->debug > OFF) debug_log(">  Nodem::global_directory exit\n");
 
     return;
 } // @end nodem::Nodem::global_directory method
+
+/*
+ * @method nodem::Nodem::local_directory_deprecated
+ * @summary Calls nodem::local_directory after logging that this method is deprecated
+ * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
+ * @returns {void}
+ */
+void Nodem::local_directory_deprecated(const FunctionCallbackInfo<Value>& info)
+{
+    if (reinterpret_cast<NodemState*>(info.Data().As<External>()->Value())->debug > OFF || !(deprecated_g & LOCAL)) {
+        deprecated_g |= LOCAL;
+        debug_log(">  local_directory [DEPRECATED - Use localDirectory instead]");
+    }
+
+    return Nodem::local_directory(info);
+}
 
 /*
  * @method nodem::Nodem::local_directory
@@ -8330,7 +8103,7 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
 
         max = get_n(isolate, arg_object, new_string_n(isolate, "max"));
 
-        if (max->IsUndefined() || !max->IsNumber() || number_value_n(isolate, max) < 0) max = Number::New(isolate, 0);
+        if (number_value_n(isolate, max) < 0) max = Number::New(isolate, 0);
 
         lo = get_n(isolate, arg_object, new_string_n(isolate, "lo"));
 
@@ -8345,22 +8118,22 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
         hi = String::Empty(isolate);
     }
 
-    if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, lo)), nodem_state)) {
+    if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, lo)))) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'lo' cannot begin with 'v4w'")));
         return;
     }
 
-    if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, lo)), nodem_state)) {
+    if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, lo)))) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'lo' is an invalid name")));
         return;
     }
 
-    if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state)) {
+    if (invalid_local(*(UTF8_VALUE_TEMP_N(isolate, hi)))) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'hi' cannot begin with 'v4w'")));
         return;
     }
 
-    if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state)) {
+    if (invalid_name(*(UTF8_VALUE_TEMP_N(isolate, hi)))) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Property 'hi' is an invalid name")));
         return;
     }
@@ -8372,7 +8145,7 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
         debug_log(">>   max: ", uint32_value_n(isolate, max));
     }
 
-    gtm_status_t stat_buf;
+    gtm_status_t status;
     gtm_char_t local_directory[] = "local_directory";
 
     static gtm_char_t ret_buf[RES_LEN];
@@ -8395,14 +8168,15 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolate, lo)),
-                   *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
+        status = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolate, lo)),
+                 *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
     } else {
         NodemValue nodem_lo {lo};
         NodemValue nodem_hi {hi};
@@ -8417,14 +8191,14 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), nodem_lo.to_byte(),
-                   nodem_hi.to_byte(), nodem_state->mode);
+        status = gtm_cip(&access, ret_buf, uint32_value_n(isolate, max), nodem_lo.to_byte(), nodem_hi.to_byte(), nodem_state->mode);
     }
 #else
     if (nodem_state->utf8 == true) {
@@ -8438,14 +8212,15 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_ci(local_directory, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolate, lo)),
-                   *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
+        status = gtm_ci(local_directory, ret_buf, uint32_value_n(isolate, max), *(UTF8_VALUE_TEMP_N(isolate, lo)),
+                 *(UTF8_VALUE_TEMP_N(isolate, hi)), nodem_state->mode);
     } else {
         NodemValue nodem_lo {lo};
         NodemValue nodem_hi {hi};
@@ -8460,14 +8235,15 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
         if (nodem_state->debug > LOW) {
             if (dup2(STDERR_FILENO, STDOUT_FILENO) == -1) {
                 char error[BUFSIZ];
+
                 cerr << strerror_r(errno, error, BUFSIZ);
             }
 
             flockfile(stderr);
         }
 
-        stat_buf = gtm_ci(local_directory, ret_buf, uint32_value_n(isolate, max),
-                   nodem_lo.to_byte(), nodem_hi.to_byte(), nodem_state->mode);
+        status = gtm_ci(local_directory, ret_buf, uint32_value_n(isolate, max),
+                 nodem_lo.to_byte(), nodem_hi.to_byte(), nodem_state->mode);
     }
 #endif
 
@@ -8476,13 +8252,14 @@ void Nodem::local_directory(const FunctionCallbackInfo<Value>& info)
 
         if (dup2(save_stdout_g, STDOUT_FILENO) == -1) {
             char error[BUFSIZ];
+
             cerr << strerror_r(errno, error, BUFSIZ);
         }
+
+        debug_log(">>   status: ", status);
     }
 
-    if (nodem_state->debug > LOW) debug_log(">>   stat_buf: ", stat_buf);
-
-    if (stat_buf != EXIT_SUCCESS) {
+    if (status != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
@@ -8547,7 +8324,7 @@ void Nodem::retrieve(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > OFF) debug_log(">  call into " NODEM_DB);
 
-    gtm_status_t stat_buf;
+    gtm_status_t status;
     gtm_char_t retrieve[] = "retrieve";
 
     static gtm_char_t ret_buf[RES_LEN];
@@ -8561,16 +8338,16 @@ void Nodem::retrieve(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->tp_level == 0) uv_mutex_lock(&mutex_g);
 
-    stat_buf = gtm_cip(&access, ret_buf);
+    status = gtm_cip(&access, ret_buf);
 #else
     if (nodem_state->tp_level == 0) uv_mutex_lock(&mutex_g);
 
-    stat_buf = gtm_ci(retrieve, ret_buf);
+    status = gtm_ci(retrieve, ret_buf);
 #endif
 
-    if (nodem_state->debug > LOW) debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_state->debug > LOW) debug_log(">>   status: ", status);
 
-    if (stat_buf != EXIT_SUCCESS) {
+    if (status != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
@@ -8605,12 +8382,9 @@ void Nodem::retrieve(const FunctionCallbackInfo<Value>& info)
     if (try_catch.HasCaught()) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         info.GetReturnValue().Set(try_catch.Exception());
-        return;
     } else {
-        temp_object = to_object_n(isolate, json);
+        info.GetReturnValue().Set(to_object_n(isolate, json));
     }
-
-    info.GetReturnValue().Set(temp_object);
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::retrieve exit\n");
 
@@ -8639,7 +8413,7 @@ void Nodem::update(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->debug > OFF) debug_log(">  call into " NODEM_DB);
 
-    gtm_status_t stat_buf;
+    gtm_status_t status;
     gtm_char_t update[] = "update";
 
     static gtm_char_t ret_buf[RES_LEN];
@@ -8653,16 +8427,16 @@ void Nodem::update(const FunctionCallbackInfo<Value>& info)
 
     if (nodem_state->tp_level == 0) uv_mutex_lock(&mutex_g);
 
-    stat_buf = gtm_cip(&access, ret_buf);
+    status = gtm_cip(&access, ret_buf);
 #else
     if (nodem_state->tp_level == 0) uv_mutex_lock(&mutex_g);
 
-    stat_buf = gtm_ci(update, ret_buf);
+    status = gtm_ci(update, ret_buf);
 #endif
 
-    if (nodem_state->debug > LOW) debug_log(">>   stat_buf: ", stat_buf);
+    if (nodem_state->debug > LOW) debug_log(">>   status: ", status);
 
-    if (stat_buf != EXIT_SUCCESS) {
+    if (status != EXIT_SUCCESS) {
         gtm_char_t msg_buf[ERR_LEN];
         gtm_zstatus(msg_buf, ERR_LEN);
 
@@ -8697,12 +8471,9 @@ void Nodem::update(const FunctionCallbackInfo<Value>& info)
     if (try_catch.HasCaught()) {
         isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
         info.GetReturnValue().Set(try_catch.Exception());
-        return;
     } else {
-        temp_object = to_object_n(isolate, json);
+        info.GetReturnValue().Set(to_object_n(isolate, json));
     }
-
-    info.GetReturnValue().Set(temp_object);
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::update exit\n");
 
@@ -8792,7 +8563,7 @@ void Nodem::Init(Local<Object> exports)
 
     NodemState* nodem_state = new NodemState(isolate, exports);
 
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
     AddEnvironmentCleanupHook(isolate, cleanup_nodem_state, static_cast<void*>(nodem_state));
 #endif
 
@@ -8824,9 +8595,9 @@ void Nodem::Init(Local<Object> exports)
     set_prototype_method_n(isolate, fn_template, "next", order, external_data);
     set_prototype_method_n(isolate, fn_template, "previous", previous, external_data);
     set_prototype_method_n(isolate, fn_template, "nextNode", next_node, external_data);
-    set_prototype_method_n(isolate, fn_template, "next_node", next_node, external_data);
+    set_prototype_method_n(isolate, fn_template, "next_node", next_node_deprecated, external_data);
     set_prototype_method_n(isolate, fn_template, "previousNode", previous_node, external_data);
-    set_prototype_method_n(isolate, fn_template, "previous_node", previous_node, external_data);
+    set_prototype_method_n(isolate, fn_template, "previous_node", previous_node_deprecated, external_data);
     set_prototype_method_n(isolate, fn_template, "increment", increment, external_data);
     set_prototype_method_n(isolate, fn_template, "lock", lock, external_data);
     set_prototype_method_n(isolate, fn_template, "unlock", unlock, external_data);
@@ -8837,9 +8608,9 @@ void Nodem::Init(Local<Object> exports)
     set_prototype_method_n(isolate, fn_template, "procedure", procedure, external_data);
     set_prototype_method_n(isolate, fn_template, "routine", procedure, external_data);
     set_prototype_method_n(isolate, fn_template, "globalDirectory", global_directory, external_data);
-    set_prototype_method_n(isolate, fn_template, "global_directory", global_directory, external_data);
+    set_prototype_method_n(isolate, fn_template, "global_directory", global_directory_deprecated, external_data);
     set_prototype_method_n(isolate, fn_template, "localDirectory", local_directory, external_data);
-    set_prototype_method_n(isolate, fn_template, "local_directory", local_directory, external_data);
+    set_prototype_method_n(isolate, fn_template, "local_directory", local_directory_deprecated, external_data);
     set_prototype_method_n(isolate, fn_template, "retrieve", retrieve, external_data);
     set_prototype_method_n(isolate, fn_template, "update", update, external_data);
 
@@ -8867,7 +8638,7 @@ void Nodem::Init(Local<Object> exports)
     return;
 } // @end nodem::Nodem::Init method
 
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 7)
 /*
  * @macro function NODE_MODULE_INIT
  * @summary Register the nodem.node module with Node.js in a context-aware way

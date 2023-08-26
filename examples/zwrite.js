@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2016,2018,2020-2022 Fourth Watch Software LC
+ * Copyright © 2012-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -28,20 +28,14 @@
  * it will use a default of ^v4wTest. You can optionally supply the following
  * arguments, in any order, before or after the global name.
  *
- * -f [fast mode] - <on> - Creates a temporary GT.M routine and calls into the
- *    routine (which will also dump the entire contents of the global), and then
- *    cleans up after itself. Calling it this way will execute much faster than
- *    the default JavaScript implementation.
- *
- * -m [data mode] - <canonical>|string|strict - The operating mode, which
- *    controls the way data is formatted, and a few other aspects of the API.
- *    Canonical mode treats all data according to M canonical rules. String mode
- *    treats all data as a string. Strict mode follows the cache.node API as
- *    closely as possible, including treating all data as a string.
+ * -m [data mode] - <canonical>|string - The operating mode, which controls the
+ *    way data is formatted. Canonical mode treats all data according to M
+ *    canonical rules. String mode treats all data as a string.
  *
  * -c [character set encoding] - <utf-8>|m - The character encoding of the data
  *
- * -d [debug mode] - [<false>|true]|[<off>|low|medium|high]|[<0>|1|2|3] - Turns on debug mode, which provides debug tracing data
+ * -d [debug mode] - <off>|low|medium|high - Turns on debug mode, which provides
+ *    debug tracing data
  */
 
 process.on('uncaughtException', function(err) {
@@ -55,7 +49,6 @@ var nodem = require('../lib/nodem.js').Gtm();
 var charset = 'utf-8',
     command,
     debug = false,
-    fast = false,
     global = 'v4wTest',
     mode = 'canonical',
     node = {};
@@ -77,10 +70,7 @@ process.argv.forEach(function(argument) {
         return;
     }
 
-    if (argument === '-f') {
-        fast = true;
-        return;
-    } else if (argument === '-c') {
+    if (argument === '-c') {
         command = '-c';
         return;
     } else if (argument === '-d') {
@@ -96,18 +86,6 @@ process.argv.forEach(function(argument) {
 
 nodem.open({mode: mode, charset: charset, debug: debug});
 
-if (process.env.ydb_routines !== undefined) {
-    process.env.ydb_routines = '. ' + process.env.ydb_routines;
-} else {
-    process.env.ydb_routines = '.';
-}
-
-if (process.env.gtmroutines !== undefined) {
-    process.env.gtmroutines = '. ' + process.env.gtmroutines;
-} else {
-    process.env.gtmroutines = '.';
-}
-
 var version = nodem.version();
 
 if (typeof version === 'object') {
@@ -116,37 +94,20 @@ if (typeof version === 'object') {
     process.exit(1);
 }
 
-if (fast) {
-    var fs = require('fs');
-    var code = 'zwrite(glvn) set:$extract(glvn)\'="^" glvn="^"_glvn zwrite @glvn quit ""\n';
-    var fd = fs.openSync('v4wTest.m', 'w');
+if (charset === 'm') process.stdout.setDefaultEncoding('binary');
 
-    fs.writeSync(fd, code);
-    var result = nodem.function({function: 'zwrite^v4wTest', arguments: [global]});
+var pre = '';
+if (global[0] != '^') pre = '^';
 
-    fs.closeSync(fd);
-    fs.unlinkSync('v4wTest.m');
-    fs.unlinkSync('v4wTest.o');
+if (nodem.data({global: global}).defined % 2) {
+    node = nodem.get({global: global});
+    console.log(pre + global + '=' + JSON.stringify(node.data));
+}
 
-    if (!result.ok) console.log(result);
-} else {
-    if (charset === 'm') process.stdout.setDefaultEncoding('binary');
-
-    var pre = '';
-    if (global[0] != '^') pre = '^';
-
-    if (nodem.data({global: global}).defined % 2) {
-        node = nodem.get({global: global});
-        console.log(pre + global + '=' + JSON.stringify(node.data));
-    }
-
-    while (true) {
-        node = nodem.nextNode({global: global, subscripts: node.subscripts});
-
-        if (!node.defined) break;
-
-        console.log(pre + global + '(' + JSON.stringify(node.subscripts).slice(1, -1) + ')=' + JSON.stringify(node.data));
-    }
+while (true) {
+    node = nodem.nextNode({global: global, subscripts: node.subscripts});
+    if (!node.defined) break;
+    console.log(pre + global + '(' + JSON.stringify(node.subscripts).slice(1, -1) + ')=' + JSON.stringify(node.data));
 }
 
 nodem.close();

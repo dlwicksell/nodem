@@ -1,5 +1,3 @@
-[![NPM Info][info-image]][npm-url]
-
 [![Node Version][version-image]][npm-url]
 [![NPM License][license-image]][npm-url]
 [![NPM Downloads][downloads-image]][npm-url]
@@ -8,12 +6,12 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.2 - 2022 Mar 10
+Version 0.20.3 - 2023 Aug 26
 
 ## Copyright and License ##
 
-Addon Module written and maintained by David Wicksell <dlw@linux.com>  
-Copyright © 2012-2022 Fourth Watch Software LC
+Addon module written and maintained by David Wicksell <dlw@linux.com>  
+Copyright © 2012-2023 Fourth Watch Software LC
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License (AGPL) as published by the
@@ -39,9 +37,7 @@ their database systems and some language features, as well as networked access
 to their core database functionality. Nodem provides access to the basic global
 database handling operations, as well as providing the ability to invoke M
 language functions and procedures. It also supports full local symbol table
-management and manipulation. Although designed for use with YottaDB and GT.M,
-Nodem aims to be API-compatible (while in `strict` mode) with the Node.js
-database driver for [Caché][].
+management and manipulation of the M environment.
 
 All of Nodem's APIs support synchronous operation and accept arguments passed
 via a single JavaScript object (except for help, which takes no arguments or an
@@ -72,31 +68,9 @@ Nodem uses YottaDB's SimpleAPI for the `data`, `get`, `set`, `kill`, `order`,
 `previous`, `nextNode`, `previousNode`, `increment`, `lock`, and `unlock` APIs,
 when it is available, and falls back to the Call-in interface when it is not.
 
-### Worker Threads ###
+YottaDB has created extensive documentation for [Nodem][].
 
-Nodem now supports the Worker Threads [API][worker-threads], for both
-synchronous and asynchronous calls. Since YottaDB and GT.M are single-threaded,
-opening and closing a connection to their database and runtime, should only be
-done once per process lifetime. Nodem's `open` and `close` APIs will only work
-when called from the main thread of the process. In order to work with the
-worker threads API, you should call the Nodem `open` API in the main thread
-before creating any worker threads, and you should call the Nodem `close` API in
-the main thread, after all the worker threads have exited. You will still need
-to make sure that you require Nodem in each worker thread, as well as the main
-thread, in order to have access to the Nodem API in each thread.
-
-Nodem has a `configure` API, which will allow worker threads to change some
-per-thread database configuration options. It can be called from the worker
-threads, or the main thread, and will allow you to change per-thread
-configuration options as often as you like. There are four configuration options
-that are now set per-thread. They can be set in the `open` API, by the main
-thread, before any other Nodem calls are made, or they can be set in the
-`configure` API, anytime you like, in the main thread, or in the worker threads.
-Those configuration options are: `charset`, `mode`, `autoRelink`, and `debug`.
-
-**NOTE:** The Nodem Developer API and User Guide [Wiki][] is in development. In
-the meantime, please refer to the Caché Node.js [API][BXJS] documentation for
-further details.
+**NOTE:** The Nodem Developer API and User Guide [Wiki][] is in development.
 
 ## Example Usage ##
 
@@ -108,7 +82,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.2 (ABI=102) [FWS]; YottaDB Version: 1.34'
+'Node.js Adaptor for YottaDB: Version: 0.20.3 (ABI=115) [FWS]; YottaDB Version: 1.38'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -148,7 +122,7 @@ true
   ok: false,
   errorCode: 150373498,
   errorMessage:
-   '(SimpleAPI),%YDB-E-NULSUBSC, DB access failed because Null subscripts are not allowed for current region,%YDB-I-GVIS, \t\tGlobal variable: ^v4wTest("")'
+   '(SimpleAPI),%YDB-E-NULSUBSC, DB access failed because Null subscripts are not allowed for current region,%YDB-I-GVIS, Global variable: ^v4wTest("")'
 }
 > ydb.close(); // Close connection to YottaDB, releasing resources and restoring terminal settings
 undefined
@@ -157,16 +131,16 @@ undefined
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v17.7.1 at this time), as well as every version of
+through the current release (v20.5.1 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.
 
 In order to use the Nodem addon, you will need to have YottaDB (or GT.M)
-installed and [configured][Start] correctly, including setting up your
+installed and [configured][get-started] correctly, including setting up your
 environment with the required YottaDB (or GT.M) environment variables, or
 setting the appropriate options in the `open` API. Make sure you have either
-$ydb_dist (only applicable for YottaDB) or $gtm_dist set to the root of the
+`$ydb_dist` (only applicable for YottaDB) or `$gtm_dist` set to the root of the
 YottaDB (or GT.M) instance before you compile Nodem, whether manually, or via
 `npm`. You will also need to have Node.js installed and working.
 
@@ -181,10 +155,10 @@ called `builderror.log`, and if that file contains no build errors for
 `v4wNode.m` integration routine, and there might be warnings from that, which
 won't affect the building of `nodem.node` itself. If you downloaded Nodem any
 other way, including cloning it from its github repository, then you'll have to
-build it from source. Remember to make sure that either $ydb_dist or $gtm_dist
-is set to the root of the YottaDB (or GT.M) instance before building Nodem. In
-order to build it, while in the root of the Nodem repository, run the `npm
-install` command, e.g.
+build it from source. Remember to make sure that either `$ydb_dist` or
+`$gtm_dist` is set to the root of the YottaDB (or GT.M) instance before building
+Nodem. In order to build it, while in the root of the Nodem repository, run the
+`npm run install` command, e.g.
 
 ```bash
 $ cd ~/nodem
@@ -199,8 +173,8 @@ In addition you will need to set a few environment variables, or set the
 appropriate configuration options in the call to the `open` API, in order for
 YottaDB (or GT.M) to find the Call-in table and the `v4wNode.m` routine that it
 maps to. The Nodem package supplies a sample environment file, called `environ`.
-It has a commented out command to set $LD_LIBRARY_PATH to $ydb_dist or
-$gtm_dist, which you will need to uncomment if you need it. It is located in
+It has a commented out command to set `$LD_LIBRARY_PATH` to `$ydb_dist` or
+`$gtm_dist`, which you will need to uncomment if you need it. It is located in
 `~/nodem/resources` and can be sourced into your working environment, either
 directly, or from your own environment scripts or profile/login script, e.g.
 
@@ -214,14 +188,14 @@ $ echo "source ~/nodem/resources/environ" >> ~/.profile
 ```
 
 If you don't source the `environ` file, then you will need to put a copy of
-`v4wNode.m` into a directory that is specified in your $ydb_routines (only
-applicable for YottaDB) or $gtmroutines routines path, or in the `routinesPath`
-property in your call to the `open` API, so that YottaDB (or GT.M) can find it.
-It is located in the `~/nodem/src` directory. Again, if you don't source the
-`environ` file, then you will also need to define the $ydb_ci (only applicable
-for YottaDB) or $GTMCI environment variable, or set the `callinTable` property
-in your call to the `open` API, and point it at the file `nodem.ci`, located in
-the `~/nodem/resources` directory, e.g.
+`v4wNode.m` into a directory that is specified in your `$ydb_routines` (only
+applicable for YottaDB) or `$gtmroutines` routines path, or in the
+`routinesPath` property in your call to the `open` API, so that YottaDB (or
+GT.M) can find it. It is located in the `~/nodem/src` directory. Again, if you
+don't source the `environ` file, then you will also need to define the `$ydb_ci`
+(only applicable for YottaDB) or `$GTMCI` environment variable, or set the
+`callinTable` property in your call to the `open` API, and point it at the file
+`nodem.ci`, located in the `~/nodem/resources` directory, e.g.
 
 ```bash
 $ export ydb_ci=~/nodem/resources/nodem.ci
@@ -246,24 +220,33 @@ You can also install it via `npm` with this command..
 $ npm install nodem
 ```
 
+If you are having an issue installing `nodem`, you can try this..
+
+```bash
+$ npm install nodem --ignore-scripts
+```
+
 You can update to the latest version with this command..
 
 ```bash
 $ npm update nodem
 ```
+or
+```bash
+$ npm install nodem@latest
+```
 
 ## Important Notes ##
 
-The `open` call works a bit differently than the Caché version; it does not
-require any arguments, and will connect with the database specified in the
-environment variable $ydb_gbldir (only applicable for YottaDB) or $gtmgbldir.
-If you have more than one database and would like to connect to a different one
-than what is defined in your environment, you can pass an object, with a
-property called either `globalDirectory` or `namespace`, defined as the path to
-your global directory file for that database, e.g.
+The `open` call does not require any arguments, and will connect with the
+database specified in the environment variable `$ydb_gbldir` (only applicable
+for YottaDB) or `$gtmgbldir`. If you have more than one database and would like
+to connect to a different one than what is defined in your environment, you can
+pass an object, with a property called either `globalDirectory` or `namespace`,
+defined as the path to your global directory file for that database, e.g.
 
 ```javascript
-> ydb.open({globalDirectory: process.env.HOME + '/g/db_utf.gld'});
+> ydb.open({globalDirectory: process.env.HOME + '/data/globals/db_utf8.gld'});
 ```
 
 Nodem supports setting up a custom routines path, for resolving calls to other M
@@ -277,15 +260,15 @@ default environment configuration, e.g.
 
 ```javascript
 > const HOME = process.env.HOME;
-> ydb.open({routinesPath: `${HOME}/p/r130(${HOME}/p)`});
+> ydb.open({routinesPath: `${HOME}/code/local/r138(${HOME}/code/local)`});
 ```
 
 Nodem supports setting the Call-in path directly in the `open` call, via the
 `callinTable` property. This can be handy if you are running Nodem in an
 environment that has other software that uses the YottaDB (or GT.M) Call-in
 interface, and you don't want to worry about namespace issues. Nor would you
-need to set the $ydb_ci/$GTMCI environment variable, in order for Nodem to be
-fully functional, e.g.
+need to set the `$ydb_ci`/`$GTMCI` environment variable, in order for Nodem to
+be fully functional, e.g.
 
 ```javascript
 > ydb.open({callinTable: process.env.HOME + '/nodem/resources/nodem.ci'});
@@ -297,8 +280,8 @@ connect with a remote database. In the `open` method, you can set an
 to connect with a YottaDB (or GT.M) database on a remote server that already has
 a GT.CM server running on that address and port. If only `ipAddress` or
 `tcpPort` is defined, the other one will be set with a default value; 127.0.0.1
-for `ipAddress`, or 6789 for `tcpPort`. Nodem will then set the $ydb_cm_NODEM
-(if you are using YottaDB) or $GTCM_NODEM (if you are using GT.M) environment
+for `ipAddress`, or 6789 for `tcpPort`. Nodem will then set the `$ydb_cm_NODEM`
+(if you are using YottaDB) or `$GTCM_NODEM` (if you are using GT.M) environment
 variable, for that Nodem process only, with the address and port you set in the
 `open` call, e.g.
 
@@ -316,12 +299,12 @@ brackets, e.g.
 You will also need to create, or modify, a global directory file that maps one
 or more database segments to a data file on the remote server you want to
 connect with, noting that the prefix to the `-file=` argument in the example
-below must be NODEM, in order to match the $ydb_cm_NODEM/$GTCM_NODEM environment
-variable name that Nodem sets up for you, e.g.
+below must be NODEM, in order to match the `$ydb_cm_NODEM`/`$GTCM_NODEM`
+environment variable name that Nodem sets up for you, e.g.
 
 ```bash
 $ $ydb_dist/mumps -run GDE
-GDE> change -segment DEFAULT -file=NODEM:/home/dlw/g/gtcm-server.dat
+GDE> change -segment DEFAULT -file=NODEM:/home/user/data/globals/gtcm-server.dat
 ```
 
 Then on the server you are connecting to, make sure you have the data file set
@@ -341,20 +324,21 @@ local calls, not remote [RPC] calls.
 Nodem supports two different character encodings, UTF-8 and M. It defaults to
 UTF-8 mode. M mode is similar to ASCII, except that it utilizes all 8 bits in a
 byte, and it collates slightly differently. Instead of collation based only on
-the character codes themselves, it sorts numbers before everything else. The
-character encoding you set in Nodem is decoupled from the underlying character
-encoding you have set up for the YottaDB (or GT.M) environment it is running in.
-So it is possible to work with UTF-8 encoded data in the database, while in
-Nodem, even if you haven't set up YottaDB (or GT.M) to work with UTF-8 directly.
-You can set it to UTF-8 mode directly by passing `utf-8` or `utf8`, case
-insensitively, to the `charset` property. If you'd rather work with an older
-byte-encoding scheme, that stores all characters in a single byte, you can set
-charset to either `m`, `ascii`, or `binary`, case insensitively. One thing to
-keep in mind when you do so, is that Node.js internally stores data in UTF-16,
-but interprets data in UTF-8 in most cases. You can control this through the
-process stream encoding methods inside of your Node.js code. Call those methods
-to change the encoding to `binary` or `ascii`, and it will interpret your data
-as a byte encoding, using the character glyphs in your current locale, e.g.
+the character codes themselves, it sorts numbers before everything else (except
+for the empty string). The character encoding you set in Nodem is decoupled from
+the underlying character encoding you have set up for the YottaDB (or GT.M)
+environment it is running in. So it is possible to work with UTF-8 encoded data
+in the database, while in Nodem, even if you haven't set up YottaDB (or GT.M) to
+work with UTF-8 directly. You can set it to UTF-8 mode directly by passing
+`utf-8` or `utf8`, case insensitively, to the `charset` property. If you'd
+rather work with an older byte-encoding scheme, that stores all characters in a
+single byte, you can set charset to either `m`, `ascii`, or `binary`, case
+insensitively. One thing to keep in mind when you do so, is that Node.js
+internally stores data in UTF-16, but interprets data in UTF-8 in most cases.
+You can control this through the process stream encoding methods inside of your
+Node.js code. Call those methods to change the encoding to `binary` or `ascii`,
+and it will interpret your data as a byte encoding, using the character glyphs
+in your current locale, e.g.
 
 ```javascript
 > process.stdin.setEncoding('binary');
@@ -368,20 +352,23 @@ or
 > ydb.configure({charset: 'm'}); // For the current thread
 ```
 
-There are currently three different data modes that Nodem supports. The mode can
-be set to `canonical`, `string`, or `strict`. The default is `canonical`, and
-interprets data using the M canonical representation. I.e. Numbers will be
-represented numerically, rather than as strings, and numbers collate before
-strings. The other two modes, `string` and `strict` interpret all data as
-strings, with `strict` mode also strictly following the API conventions set with
-the Caché Node.js driver, e.g.
+There are currently two different data modes that Nodem supports. The mode can
+be set to `canonical` or `string`. The default is `canonical`, and interprets
+data using the M canonical representation. I.e. Numbers will be represented
+numerically, rather than as strings, and numbers collate before strings (except
+for the empty string). The other mode, `string`, interprets all data as strings,
+e.g.
 
 ```javascript
-> ydb.open({mode: 'string'}); // For all threads
+> ydb.open({mode: 'canonical'}); // For all threads
+> ydb.get('v4wTest', 'numOfBeds');
+25
 ```
 or
 ```javascript
-> ydb.configure({mode: 'strict'}); // For the current thread
+> ydb.configure({mode: 'string'}); // For the current thread
+> ydb.get('v4wTest', 'numOfBeds');
+'25'
 ```
 
 Nodem also has a debug tracing mode, in case something doesn't seem to be
@@ -493,6 +480,28 @@ terminal to typically sane settings, the `close` call allows this by setting the
 > ydb.close({resetTerminal: true});
 ```
 
+### Worker Threads ###
+
+Nodem supports the Worker Threads [API][worker-threads], for both synchronous
+and asynchronous calls. Since YottaDB and GT.M are single-threaded, opening and
+closing a connection to their database and runtime, should only be done once per
+process lifetime. Nodem's `open` and `close` APIs will only work when called
+from the main thread of the process. In order to work with the worker threads
+API, you should call the Nodem `open` API in the main thread before creating any
+worker threads, and you should call the Nodem `close` API in the main thread,
+after all the worker threads have exited. You will still need to make sure that
+you require Nodem in each worker thread, as well as the main thread, in order to
+have access to the Nodem API in each thread.
+
+Nodem has a `configure` API, which will allow worker threads to change some
+per-thread database configuration options. It can be called from the worker
+threads, or the main thread, and will allow you to change per-thread
+configuration options as often as you like. There are four configuration options
+that are set per-thread. They can be set in the `open` API, by the main thread,
+before any other Nodem calls are made, or they can be set in the `configure`
+API, anytime you like, in the main thread, or in the worker threads. Those
+configuration options are: `charset`, `mode`, `autoRelink`, and `debug`.
+
 ### transaction API ###
 
 Nodem has a `transaction` API, which provides support for full ACID
@@ -513,28 +522,29 @@ the rest of the ACID semantics). If `variables` has `'*'` as its only array
 item, then every local variable in the symbol table will be reset during a
 transaction restart.
 
-In order to restart a transaction, pass the string 'Restart' ('restart' or
-'RESTART' will also work), as the argument to the return statement. In order to
-rollback a transaction, pass the string 'Rollback' ('rollback' or 'ROLLBACK'
-will also work), as the argument to the return statement. Any other argument to
-the return statement will commit the transaction, including functions without a
-return statement. When you call a Nodem API within a transaction, make sure to
-check for returned errors, and return with 'Rollback' in that case. If any Nodem
-API within a transaction returns with an error code of 2147483647 (a YottaDB
-restart code), or with an error code of 2147483646 (a YottaDB rollback code)
-make sure to return with the appropriate transaction message, 'Restart' or
-'Rollback' respectively. In order to make it simpler to test for restart and
-rollback codes from the YottaDB transaction engine, Nodem stores the restart
-code in the `tpRestart` property, and the rollback code in the `tpRollback`
-property, for convenience.
+In order to restart a transaction, pass the string 'Restart' ('restart',
+'RESTART', or the `tpRestart` property will also work), as the argument to the
+return statement. In order to rollback a transaction, pass the string 'Rollback'
+('rollback', 'ROLLBACK', or the `tpRollback` property will also work), as the
+argument to the return statement. Any other argument to the return statement
+will commit the transaction, including functions without a return statement.
+When you call a Nodem API within a transaction, make sure to check for returned
+errors, and return with 'Rollback' in that case. If any Nodem API within a
+transaction returns with an error code of `YDB_TP_RESTART` (a YottaDB restart
+code), or with an error code of `YDB_TP_ROLLBACK` (a YottaDB rollback code) make
+sure to return with the appropriate transaction message, 'Restart' or 'Rollback'
+respectively, or simply return with the `YDB_TP_*` error code directly. In order
+to make it simpler to test for restart and rollback error codes from the YottaDB
+transaction engine, when more sophisticated logic is desired, Nodem stores the
+restart code in the `tpRestart` property, and the rollback code in the
+`tpRollback` property, for convenience.
 
 If you throw a JavaScript error inside of the transaction function, it will be
 written to standard error, and will cause a rollback operation to occur. If you
 handle it with a try-catch block, then what happens will depend upon how you
 handle it, and whether you throw another error, or return with a specific
-transaction processing message or not. The `transaction` API is experimental at
-this time; for simple transaction logic, it should work quite well in practice,
-e.g.
+transaction processing message or not. Transaction code should be as short and
+simple as possbile, and should avoid calling any code with side effects, e.g.
 
 ```javascript
 > ydb.transaction(() => {
@@ -581,7 +591,7 @@ supplied `transaction.js` program in the `examples` directory.
 ### procedure API ###
 
 Nodem has a `procedure` or `routine` API, which is similar to the `function`
-API, except that it is used to call M procedures or subroutines, which do not
+API, except that it is used to call M procedures or routines, which do not
 return any values. If the `procedure` API is called via a JavaScript object,
 then the object must contain the required `procedure`/`routine` property, set to
 the name of the procedure/routine. It may also contain an optional property,
@@ -591,11 +601,11 @@ API. It also supports the `autoRelink` option, just as described in the
 `function` API, e.g.
 
 ```javascript
-> ydb.procedure({procedure: 'set^v4wTest', arguments: ['dlw', 5]});
+> ydb.procedure({procedure: 'set^v4wTest', arguments: ['test', 5]});
 ```
 or
 ```javascript
-> ydb.procedure('set^v4wTest', 'dlw', 5);
+> ydb.procedure('set^v4wTest', 'test', 5);
 ```
 
 ### lock API ###
@@ -768,7 +778,7 @@ API                      | Description
 *unlock*                 | Unlock a global or global node, or local or local node, incrementally; or release all locks
 *transaction*            | Call a JavaScript function within a YottaDB transaction - synchronous only
 *function*               | Call an extrinsic function
-*procedure* or *routine* | Call a procedure/routine/subroutine
+*procedure* or *routine* | Call a procedure/routine
 *globalDirectory*        | List the names of the globals in the database
 *localDirectory*         | List the names of the variables in the local symbol table
 *retrieve*               | Not yet implemented
@@ -776,8 +786,8 @@ API                      | Description
 
 ## Disclaimer ##
 
-Fourth Watch Software endeavors not to make any breaking changes to APIs, but
-as Nodem is still in development, its interface may change in future versions.
+Fourth Watch Software endeavors not to make any breaking changes to APIs, but as
+Nodem is still in development, its interface may change in future versions.
 
 ## Contact Info ##
 
@@ -790,19 +800,17 @@ To report any issues, visit <https://github.com/dlwicksell/nodem/issues>
 * The [YottaDB][] implementation of M.
 * The [GT.M][] implementation of M.
 
-[info-image]: https://nodei.co/npm/nodem.png?downloads=true&downloadRank=true&stars=true
 [version-image]: https://img.shields.io/node/v/nodem.svg
 [license-image]: https://img.shields.io/npm/l/nodem.svg?colorB=blue
 [downloads-image]: https://img.shields.io/npm/dm/nodem.svg?colorB=orange
 [npm-url]: https://npmjs.org/package/nodem
 [license-text]: https://github.com/dlwicksell/nodem/blob/HEAD/COPYING
+[get-started]: https://yottadb.com/product/get-started
 [worker-threads]: https://nodejs.org/api/worker_threads.html
 
-[Wiki]: https://github.com/dlwicksell/nodem/wiki
 [Node.js]: https://nodejs.org
 [YottaDB]: https://yottadb.com
-[Start]: https://yottadb.com/product/get-started
 [GT.M]: https://sourceforge.net/projects/fis-gtm
+[Nodem]: https://docs.yottadb.com/MultiLangProgGuide/nodeprogram.html
+[Wiki]: https://github.com/dlwicksell/nodem/wiki
 [GT.CM]: https://docs.yottadb.com/AdminOpsGuide/gtcm.html
-[Caché]: https://www.intersystems.com/products/cache
-[BXJS]: https://docs.intersystems.com/latest/csp/docbook/pdfs/pdfs/BXJS.pdf

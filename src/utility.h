@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2019-2022 Fourth Watch Software LC
+ * Copyright © 2019-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -22,18 +22,17 @@
  */
 
 #ifndef UTILITY_H
-#define UTILITY_H
+#   define UTILITY_H
 
 #include <unistd.h>
-
 #include <iostream>
 #include <sstream>
 
 namespace nodem {
 
-#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30 || __GLIBC__ < 2
-#    include <sys/syscall.h>
-#    define gettid() syscall(SYS_gettid)
+#if __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 30)
+#   include <sys/syscall.h>
+#   define gettid() syscall(SYS_gettid)
 #endif
 
 /*
@@ -76,6 +75,7 @@ template<class... A>
 static void debug_log(A... args)
 {
     std::ostringstream stream;
+
     stream << "[C " << gettid() << "] DEBUG";
     logger(stream, args...);
     stream << std::endl;

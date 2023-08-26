@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2021-2022 Fourth Watch Software LC
+ * Copyright © 2021-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -123,7 +123,7 @@ if (isMainThread) {
 
                 fs.readFile('./CHANGELOG.md', {encoding: 'utf8'}, (error, content) => {
                     if (error) return console.error(error);
-                    console.log('Asynchronous: CHANGELOG.md line ' + line + ':\n' + content.split('\n')[line] + '\n');
+                    console.log('Asynchronous: CHANGELOG.md line ' + (line + 1) + ':\n' + content.split('\n')[line] + '\n');
                     line = line + 2;
                 });
 

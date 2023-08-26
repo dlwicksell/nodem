@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2020,2022 Fourth Watch Software LC
+ * Copyright © 2018-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -22,9 +22,8 @@
  */
 
 #if NODEM_SIMPLE_API == 1
-
-#ifndef YDB_H
-#define YDB_H
+#   ifndef YDB_H
+#       define YDB_H
 
 #include "nodem.h"
 
@@ -44,6 +43,5 @@ ydb_status_t unlock(nodem::NodemBaton*);
 
 } // @end ydb namespace
 
-#endif // @end YDB_H
-
+#   endif // @end YDB_H
 #endif // @end NODEM_SIMPLE_API

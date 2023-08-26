@@ -6,7 +6,7 @@
 # Maintainer: David Wicksell <dlw@linux.com>
 #
 # Written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2015,2018-2020,2022 Fourth Watch Software LC
+# Copyright © 2012-2023 Fourth Watch Software LC
 #
 # This program is free software: you can redistribute it and/or modify it
 # under the terms of the GNU Affero General Public License (AGPL) as published
@@ -95,9 +95,10 @@ else
 fi
 
 # Runtime loader path for YottaDB/GT.M shared library, if necessary (see README.md)
-if [[ -n $LD_LIBRARY_PATH ]]
-then
-    export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}:${LD_LIBRARY_PATH}
-else
-    export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}
-fi
+# Uncomment the following lines of code, if you are running Nodem in a different environment than it was compiled in
+#if [[ -n $LD_LIBRARY_PATH ]]
+#then
+#    export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}:${LD_LIBRARY_PATH}
+#else
+#    export LD_LIBRARY_PATH=${ydb_dist:-${gtm_dist:-.}}
+#fi

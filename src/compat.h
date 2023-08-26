@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2020,2022 Fourth Watch Software LC
+ * Copyright © 2020-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -22,14 +22,14 @@
  */
 
 #ifndef COMPAT_H
-#define COMPAT_H
+#   define COMPAT_H
 
 #if NODE_MAJOR_VERSION >= 9
-#    define UTF8_VALUE_TEMP_N(isolate, value) v8::String::Utf8Value(v8::Isolate::GetCurrent(), value)
-#    define UTF8_VALUE_N(isolate, name, value) v8::String::Utf8Value name(v8::Isolate::GetCurrent(), value)
+#   define UTF8_VALUE_TEMP_N(isolate, value) v8::String::Utf8Value(v8::Isolate::GetCurrent(), value)
+#   define UTF8_VALUE_N(isolate, name, value) v8::String::Utf8Value name(v8::Isolate::GetCurrent(), value)
 #else
-#    define UTF8_VALUE_TEMP_N(isolate, value) v8::String::Utf8Value(value)
-#    define UTF8_VALUE_N(isolate, name, value) v8::String::Utf8Value name(value)
+#   define UTF8_VALUE_TEMP_N(isolate, value) v8::String::Utf8Value(value)
+#   define UTF8_VALUE_N(isolate, name, value) v8::String::Utf8Value name(value)
 #endif
 
 namespace nodem {
@@ -52,7 +52,10 @@ inline static v8::Local<v8::Value> get_n(v8::Isolate* isolate, const Object& obj
     v8::MaybeLocal<v8::Value> maybe_property = object->Get(isolate->GetCurrentContext(), property);
 
     if (maybe_property.IsEmpty() || try_catch.HasCaught()) {
-        return v8::Undefined(isolate);
+        isolate->ThrowException(try_catch.Exception());
+        try_catch.Reset();
+
+        return v8::Null(isolate);
     } else {
         return maybe_property.ToLocalChecked();
     }
@@ -111,12 +114,15 @@ inline static v8::Local<v8::String> new_string_n(v8::Isolate* isolate, const cha
     v8::TryCatch try_catch(isolate);
     try_catch.SetVerbose(true);
 
-    v8::MaybeLocal<v8::String> string = v8::String::NewFromUtf8(isolate, value, v8::NewStringType::kNormal);
+    v8::MaybeLocal<v8::String> maybe_string = v8::String::NewFromUtf8(isolate, value, v8::NewStringType::kNormal);
 
-    if (string.IsEmpty() || try_catch.HasCaught()) {
+    if (maybe_string.IsEmpty() || try_catch.HasCaught()) {
+        isolate->ThrowException(try_catch.Exception());
+        try_catch.Reset();
+
         return v8::String::Empty(isolate);
     } else {
-        return string.ToLocalChecked();
+        return maybe_string.ToLocalChecked();
     }
 #else
     return v8::String::NewFromUtf8(isolate, value);
@@ -134,7 +140,7 @@ inline static v8::Local<v8::String> new_string_n(v8::Isolate* isolate, const cha
 inline static v8::Local<v8::String> concat_n(v8::Isolate* isolate, const v8::Local<v8::String>& first,
   const v8::Local<v8::String>& second)
 {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12)
     return v8::String::Concat(isolate, first, second);
 #else
     return v8::String::Concat(first, second);
@@ -171,12 +177,15 @@ inline static v8::Local<v8::String> to_string_n(v8::Isolate* isolate, const v8::
     v8::TryCatch try_catch(isolate);
     try_catch.SetVerbose(true);
 
-    v8::MaybeLocal<v8::String> string = value->ToString(isolate->GetCurrentContext());
+    v8::MaybeLocal<v8::String> maybe_string = value->ToString(isolate->GetCurrentContext());
 
-    if (string.IsEmpty() || try_catch.HasCaught()) {
+    if (maybe_string.IsEmpty() || try_catch.HasCaught()) {
+        isolate->ThrowException(try_catch.Exception());
+        try_catch.Reset();
+
         return v8::String::Empty(isolate);
     } else {
-        return string.ToLocalChecked();
+        return maybe_string.ToLocalChecked();
     }
 #else
     return value->ToString();
@@ -196,12 +205,15 @@ inline static v8::Local<v8::Number> to_number_n(v8::Isolate* isolate, const v8::
     v8::TryCatch try_catch(isolate);
     try_catch.SetVerbose(true);
 
-    v8::MaybeLocal<v8::Number> number = value->ToNumber(isolate->GetCurrentContext());
+    v8::MaybeLocal<v8::Number> maybe_number = value->ToNumber(isolate->GetCurrentContext());
 
-    if (number.IsEmpty() || try_catch.HasCaught()) {
+    if (maybe_number.IsEmpty() || try_catch.HasCaught()) {
+        isolate->ThrowException(try_catch.Exception());
+        try_catch.Reset();
+
         return v8::Number::New(isolate, 0);
     } else {
-        return number.ToLocalChecked();
+        return maybe_number.ToLocalChecked();
     }
 #else
     return value->ToNumber();
@@ -221,12 +233,15 @@ inline static v8::Local<v8::Object> to_object_n(v8::Isolate* isolate, const v8::
     v8::TryCatch try_catch(isolate);
     try_catch.SetVerbose(true);
 
-    v8::MaybeLocal<v8::Object> object = value->ToObject(isolate->GetCurrentContext());
+    v8::MaybeLocal<v8::Object> maybe_object = value->ToObject(isolate->GetCurrentContext());
 
-    if (object.IsEmpty() || try_catch.HasCaught()) {
+    if (maybe_object.IsEmpty() || try_catch.HasCaught()) {
+        isolate->ThrowException(try_catch.Exception());
+        try_catch.Reset();
+
         return v8::Object::New(isolate);
     } else {
-        return object.ToLocalChecked();
+        return maybe_object.ToLocalChecked();
     }
 #else
     return value->ToObject();
@@ -292,7 +307,7 @@ inline static unsigned int uint32_value_n(v8::Isolate* isolate, const v8::Local<
  */
 inline static int utf8_length_n(v8::Isolate* isolate, const v8::Local<v8::String>& string)
 {
-#if NODE_MAJOR_VERSION >= 11 || NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12
+#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12)
     return string->Utf8Length(isolate);
 #else
     return string->Utf8Length();
@@ -316,12 +331,15 @@ inline static v8::Local<v8::Value> call_n(v8::Isolate* isolate, const v8::Local<
     v8::TryCatch try_catch(isolate);
     try_catch.SetVerbose(true);
 
-    v8::MaybeLocal<v8::Value> return_value = method->Call(isolate->GetCurrentContext(), json, num, data);
+    v8::MaybeLocal<v8::Value> maybe_value = method->Call(isolate->GetCurrentContext(), json, num, data);
 
-    if (return_value.IsEmpty() || try_catch.HasCaught()) {
-        return v8::String::Empty(isolate);
+    if (maybe_value.IsEmpty() || try_catch.HasCaught()) {
+        isolate->ThrowException(try_catch.Exception());
+        try_catch.Reset();
+
+        return v8::Null(isolate);
     } else {
-        return return_value.ToLocalChecked();
+        return maybe_value.ToLocalChecked();
     }
 #else
     return method->Call(json, num, data);

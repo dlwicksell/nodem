@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2015-2022 Fourth Watch Software LC
+ * Copyright © 2015-2023 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -22,85 +22,81 @@
  */
 
 #ifndef NODEM_H
-#define NODEM_H
+#   define NODEM_H
 
 #include "utility.h"
-
 #include <node.h>
 #include <node_object_wrap.h>
 #include <uv.h>
 
 extern "C" {
-#    include <gtmxc_types.h>
+#include <gtmxc_types.h>
 }
 
 #if NODEM_SIMPLE_API == 1
 extern "C" {
-#    include <libydberrors.h>
+#   include <libydberrors.h>
 }
 
-// SimpleAPI && Node.js <= 5 don't work quite right with large amounts of data [zwrite.js] (this is a hack)
-#    if NODE_MAJOR_VERSION <= 5
-#        undef NODEM_SIMPLE_API
-#        define NODEM_SIMPLE_API 0
-#    endif
+//  SimpleAPI && Node.js <= 5 don't work quite right with large amounts of data [zwrite.js] (this is a hack)
+#   if NODE_MAJOR_VERSION <= 5
+#       undef NODEM_SIMPLE_API
+#       define NODEM_SIMPLE_API 0
+#   endif
 #endif
 
 #include <cstring>
-
 #include <string>
 #include <vector>
 
-#if YDB_RELEASE >= 124
-#    define YDB_NODE_END YDB_ERR_NODEEND
-#endif
-
 #if NODEM_YDB == 1
-#    define NODEM_DB "YottaDB"
+#   define NODEM_DB "YottaDB"
 #else
-#    define NODEM_DB "GT.M"
+#   define NODEM_DB "GT.M"
 #endif
 
-#define NODEM_MAJOR_VERSION 0
-#define NODEM_MINOR_VERSION 20
-#define NODEM_PATCH_VERSION 2
+#if YDB_RELEASE >= 124
+#   define YDB_NODE_END YDB_ERR_NODEEND
+#endif
 
-#define NODEM_STRING(number) NODEM_STRINGIFY(number)
+#define NODEM_MAJOR_VERSION     0
+#define NODEM_MINOR_VERSION     20
+#define NODEM_PATCH_VERSION     3
+
 #define NODEM_STRINGIFY(number) #number
-
+#define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_VERSION NODEM_STRING(NODEM_MAJOR_VERSION) "." NODEM_STRING(NODEM_MINOR_VERSION) "." NODEM_STRING(NODEM_PATCH_VERSION)
 
-#define ERR_LEN 2048
-#define RES_LEN 1048576
+#define ERR_LEN   2048
+#define RES_LEN   1048576
 
 namespace nodem {
 
-enum mode_t {
-    STRICT,
+typedef enum {
     STRING,
     CANONICAL
-};
+} mode_t;
 
-enum debug_t {
+typedef enum {
     OFF,
     LOW,
     MEDIUM,
     HIGH
-};
+} debug_t;
 
-enum nodem_state_t {
+typedef enum {
     CLOSED,
     NOT_OPEN,
     OPEN
-};
+} nodem_state_t;
 
-extern uv_mutex_t mutex_g;
-extern int save_stdout_g;
-extern bool utf8_g;
-extern bool auto_relink_g;
-extern enum mode_t mode_g;
-extern enum debug_t debug_g;
-extern enum nodem_state_t nodem_state_g;
+extern uv_mutex_t    mutex_g;
+extern mode_t        mode_g;
+extern debug_t       debug_g;
+extern nodem_state_t nodem_state_g;
+extern bool          utf8_g;
+extern bool          auto_relink_g;
+extern int           save_stdout_g;
 
 /*
  * @class nodem::Nodem
@@ -155,6 +151,7 @@ public:
     static void Init(v8::Local<v8::Object>);
 
 private:
+    static void New(const v8::FunctionCallbackInfo<v8::Value>&);
     static void open(const v8::FunctionCallbackInfo<v8::Value>&);
     static void configure(const v8::FunctionCallbackInfo<v8::Value>&);
     static void close(const v8::FunctionCallbackInfo<v8::Value>&);
@@ -168,7 +165,9 @@ private:
     static void order(const v8::FunctionCallbackInfo<v8::Value>&);
     static void previous(const v8::FunctionCallbackInfo<v8::Value>&);
     static void next_node(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void next_node_deprecated(const v8::FunctionCallbackInfo<v8::Value>&);
     static void previous_node(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void previous_node_deprecated(const v8::FunctionCallbackInfo<v8::Value>&);
     static void increment(const v8::FunctionCallbackInfo<v8::Value>&);
     static void lock(const v8::FunctionCallbackInfo<v8::Value>&);
     static void unlock(const v8::FunctionCallbackInfo<v8::Value>&);
@@ -178,12 +177,11 @@ private:
     static void function(const v8::FunctionCallbackInfo<v8::Value>&);
     static void procedure(const v8::FunctionCallbackInfo<v8::Value>&);
     static void global_directory(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void global_directory_deprecated(const v8::FunctionCallbackInfo<v8::Value>&);
     static void local_directory(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void local_directory_deprecated(const v8::FunctionCallbackInfo<v8::Value>&);
     static void retrieve(const v8::FunctionCallbackInfo<v8::Value>&);
     static void update(const v8::FunctionCallbackInfo<v8::Value>&);
-
-    static void New(const v8::FunctionCallbackInfo<v8::Value>&);
-
 #if NODEM_SIMPLE_API == 1
     static void restart(v8::Local<v8::String>, const v8::PropertyCallbackInfo<v8::Value>&);
     static void rollback(v8::Local<v8::String>, const v8::PropertyCallbackInfo<v8::Value>&);
@@ -210,13 +208,15 @@ public:
     explicit NodemValue(v8::Local<v8::Value>& val)
     {
         v8::Isolate* isolate = v8::Isolate::GetCurrent();
-
         v8::TryCatch try_catch(isolate);
         try_catch.SetVerbose(true);
 
         v8::MaybeLocal<v8::String> maybe_string = val->ToString(isolate->GetCurrentContext());
 
         if (maybe_string.IsEmpty() || try_catch.HasCaught()) {
+            isolate->ThrowException(try_catch.Exception());
+            try_catch.Reset();
+
             value = v8::String::Empty(isolate);
         } else {
             value = maybe_string.ToLocalChecked();
@@ -224,7 +224,6 @@ public:
 
         size = value->Length() + 1;
         buffer = new uint8_t[size];
-
         return;
     }
 #else
@@ -263,12 +262,12 @@ private:
  * @member {pid_t} tid
  * @member {gtm_char_t[]} error
  * @member {gtm_char_t[]} result
- * @member {enum mode_t} mode
- * @member {enum debug_t} debug
+ * @member {mode_t} mode
+ * @member {debug_t} debug
  * @member {struct sigaction} signal_attr
- * @member {Persistent<Function>} constructor_p
+ * @member {Persistent/Global<Function>} constructor_p
  * @method {class} {private} DeleteState
- * @member {Persistent<Object>} {private} exports_p
+ * @member {Persistent/Global<Object>} {private} exports_p
  */
 class NodemState {
 public:
@@ -316,10 +315,14 @@ public:
     short                        tp_restart;
     gtm_char_t                   error[ERR_LEN];
     gtm_char_t                   result[RES_LEN];
-    enum mode_t                  mode;
-    enum debug_t                 debug;
+    mode_t                       mode;
+    debug_t                      debug;
     struct sigaction             signal_attr;
+#if NODE_MAJOR_VERSION >= 3
+    v8::Global<v8::Function>     constructor_p;
+#else
     v8::Persistent<v8::Function> constructor_p;
+#endif
 
 private:
 #if NODE_MAJOR_VERSION >= 3
@@ -336,17 +339,21 @@ private:
     }
 #endif
 
+#if NODE_MAJOR_VERSION >= 3
+    v8::Global<v8::Object> exports_p;
+#else
     v8::Persistent<v8::Object> exports_p;
+#endif
 }; // @end nodem::NodemState class
 
 /*
  * @struct nodem::NodemBaton
  * @summary Common structure to transfer data between main thread and worker threads when Nodem APIs are called asynchronously
  * @member {uv_work_t} request
- * @member {Persistent<Function>} callback_p
- * @member {Persistent<Function>} object_p
- * @member {Persistent<Function>} arguments_p
- * @member {Persistent<Function>} data_p
+ * @member {Persistent/Global<Function>} callback_p
+ * @member {Persistent/Global<Function>} object_p
+ * @member {Persistent/Global<Function>} arguments_p
+ * @member {Persistent/Global<Function>} data_p
  * @member {string} name
  * @member {string} to_name
  * @member {string} args
@@ -358,7 +365,7 @@ private:
  * @member {bool} local
  * @member {bool} position
  * @member {bool} routine
- * @member {int32_t} node_only
+ * @member {bool} node_only
  * @member {uint32_t} relink
  * @member {gtm_double_t} option
  * @member {gtm_status_t} status
@@ -370,10 +377,17 @@ private:
  */
 struct NodemBaton {
     uv_work_t                    request;
+#if NODE_MAJOR_VERSION >= 3
+    v8::Global<v8::Function>     callback_p;
+    v8::Global<v8::Object>       object_p;
+    v8::Global<v8::Value>        arguments_p;
+    v8::Global<v8::Value>        data_p;
+#else
     v8::Persistent<v8::Function> callback_p;
     v8::Persistent<v8::Object>   object_p;
     v8::Persistent<v8::Value>    arguments_p;
     v8::Persistent<v8::Value>    data_p;
+#endif
     std::string                  name;
     std::string                  to_name;
     std::string                  args;
@@ -385,7 +399,7 @@ struct NodemBaton {
     bool                         local;
     bool                         position;
     bool                         routine;
-    int32_t                      node_only;
+    bool                         node_only;
     uint32_t                     relink;
     gtm_double_t                 option;
     gtm_status_t                 status;
