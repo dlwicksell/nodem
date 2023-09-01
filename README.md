@@ -6,7 +6,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.3 - 2023 Aug 26
+Version 0.20.4 - 2023 Sep 1
 
 ## Copyright and License ##
 
@@ -44,8 +44,8 @@ via a single JavaScript object (except for help, which takes no arguments or an
 argument string, and version, which takes no arguments), containing specific
 per-API properties, usually `global` or `local`, and `subscripts` or
 `arguments`. The APIs that currently support both synchronous and asynchronous
-operation, as well as accepting arguments passed by-position (except version,
-which takes no arguments, and merge, which requires passing arguments via a
+operation, as well as accepting arguments passed by-position (except `version`,
+which takes no arguments, and `merge`, which requires passing arguments via a
 JavaScript object), are: `version`, `data`, `get`, `set`, `kill`, `merge`,
 `order`, `previous`, `nextNode`, `previousNode`, `increment`, `lock`, `unlock`,
 `function`, and `procedure`. In order to use the asynchronous versions of those
@@ -82,7 +82,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.3 (ABI=115) [FWS]; YottaDB Version: 1.38'
+'Node.js Adaptor for YottaDB: Version: 0.20.4 (ABI=115) [FWS]; YottaDB Version: 1.38'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,

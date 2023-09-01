@@ -524,26 +524,6 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
 
-    if (strncmp(glvn.buf_addr, "^", 1) != 0 && subs_size > 0) {
-        unsigned int  temp_value = 0;
-        unsigned int* ret_value = &temp_value;
-
-        if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
-
-        ydb_status_t status = ydb_data_s(&glvn, 0, NULL, ret_value);
-
-        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
-        if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
-
-        if (status == YDB_OK && *ret_value == 0) {
-            nodem_baton->result[0] = '\0';
-
-            if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::order exit");
-
-            return status;
-        }
-    }
-
     ydb_status_t status;
 
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
@@ -557,6 +537,7 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
         glvn.len_alloc = glvn.len_used = strlen(value.buf_addr);
         glvn.buf_addr = value.buf_addr;
+        value.len_used = 0;
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
@@ -565,7 +546,7 @@ ydb_status_t order(nodem::NodemBaton* nodem_baton)
         if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
         if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
-        if (value.len_used == 0) break;
+        if (value.len_used == 0 || status != YDB_OK) break;
     }
 
     strncpy(nodem_baton->result, value.buf_addr, value.len_used);
@@ -640,26 +621,6 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using SimpleAPI");
 
-    if (strncmp(glvn.buf_addr, "^", 1) != 0 && subs_size > 0) {
-        unsigned int  temp_value = 0;
-        unsigned int* ret_value = &temp_value;
-
-        if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
-
-        ydb_status_t status = ydb_data_s(&glvn, 0, NULL, ret_value);
-
-        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
-        if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
-
-        if (status == YDB_OK && *ret_value == 0) {
-            nodem_baton->result[0] = '\0';
-
-            if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous exit");
-
-            return status;
-        }
-    }
-
     ydb_status_t status;
 
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
@@ -673,6 +634,7 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
     while (strncmp(value.buf_addr, "v4w", 3) == 0 && subs_size == 0) {
         glvn.len_alloc = glvn.len_used = strlen(value.buf_addr);
         glvn.buf_addr = value.buf_addr;
+        value.len_used = 0;
 
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_lock(&nodem::mutex_g);
 
@@ -681,7 +643,7 @@ ydb_status_t previous(nodem::NodemBaton* nodem_baton)
         if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
         if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
-        if (value.len_used == 0) break;
+        if (value.len_used == 0 || status != YDB_OK) break;
     }
 
     strncpy(nodem_baton->result, value.buf_addr, value.len_used);
@@ -774,6 +736,12 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
         if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::next_node exit");
 
+        if (change_isv) {
+            ydb_status_t set_stat = extended_ref(nodem_baton, save_result, change_isv);
+
+            if (set_stat != YDB_OK) return set_stat;
+        }
+
         return status;
     }
 
@@ -784,6 +752,13 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
         }
     } else {
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
+        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::next_node exit");
+
+        if (change_isv) {
+            ydb_status_t set_stat = extended_ref(nodem_baton, save_result, change_isv);
+
+            if (set_stat != YDB_OK) return set_stat;
+        }
 
         nodem_baton->result[0] = '\0';
         return YDB_NODE_END;
@@ -805,13 +780,13 @@ ydb_status_t next_node(nodem::NodemBaton* nodem_baton)
     strncpy(nodem_baton->result, value.buf_addr, value.len_used);
     nodem_baton->result[value.len_used] = '\0';
 
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::next_node exit");
+
     if (change_isv) {
         ydb_status_t set_stat = extended_ref(nodem_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK) return set_stat;
     }
-
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::next_node exit");
 
     return status;
 } // @end ydb::next_node function
@@ -892,6 +867,12 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
         if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
         if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous_node exit");
 
+        if (change_isv) {
+            ydb_status_t set_stat = extended_ref(nodem_baton, save_result, change_isv);
+
+            if (set_stat != YDB_OK) return set_stat;
+        }
+
         return status;
     }
 
@@ -918,6 +899,14 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     if (subs_size == 0 || status == YDB_ERR_GVUNDEF || status == YDB_ERR_LVUNDEF) {
+        if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::next_node exit");
+
+        if (change_isv) {
+            ydb_status_t set_stat = extended_ref(nodem_baton, save_result, change_isv);
+
+            if (set_stat != YDB_OK) return set_stat;
+        }
+
         nodem_baton->result[0] = '\0';
         return YDB_NODE_END;
     } else {
@@ -925,13 +914,13 @@ ydb_status_t previous_node(nodem::NodemBaton* nodem_baton)
         nodem_baton->result[value.len_used] = '\0';
     }
 
+    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous_node exit");
+
     if (change_isv) {
         ydb_status_t set_stat = extended_ref(nodem_baton, save_result, change_isv);
 
         if (set_stat != YDB_OK) return set_stat;
     }
-
-    if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   ydb::previous_node exit");
 
     return status;
 } // @end ydb::previous_node function

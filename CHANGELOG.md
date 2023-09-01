@@ -1,5 +1,11 @@
 # NodeM Changelog #
 
+## v0.20.4 - 2023 Sep 1 ##
+
+- Fix infinite loop bug in `ydb::order` and `ydb::previous`
+- Improve error handling in `ydb::next_node` and `ydb::previous_node`
+- Remove unnecessary handling of locals from `ydb::order` and `ydb::previous`
+
 ## v0.20.3 - 2023 Aug 26 ##
 
 - Improve consistency of API usage and return values
