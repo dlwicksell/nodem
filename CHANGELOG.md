@@ -1,5 +1,9 @@
 # NodeM Changelog #
 
+## v0.20.6 - 2024 Apr 29 ##
+
+- Fix broken link to documentation on the YottaDB, LLC. site
+
 ## v0.20.5 - 2024 Apr 28 ##
 
 - Add support for Node.js 22.x

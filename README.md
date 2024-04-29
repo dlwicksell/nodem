@@ -6,7 +6,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.5 - 2024 Apr 28
+Version 0.20.6 - 2024 Apr 29
 
 ## Copyright and License ##
 
@@ -68,7 +68,7 @@ Nodem uses YottaDB's SimpleAPI for the `data`, `get`, `set`, `kill`, `order`,
 `previous`, `nextNode`, `previousNode`, `increment`, `lock`, and `unlock` APIs,
 when it is available, and falls back to the Call-in interface when it is not.
 
-YottaDB has created extensive documentation for [Nodem][].
+YottaDB, LLC. has created extensive documentation for [Nodem][].
 
 **NOTE:** The Nodem Developer API and User Guide [Wiki][] is in development.
 
@@ -82,7 +82,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.5 (ABI=127) [FWS]; YottaDB Version: 2.00'
+'Node.js Adaptor for YottaDB: Version: 0.20.6 (ABI=127) [FWS]; YottaDB Version: 2.00'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -812,6 +812,6 @@ To report any issues, visit <https://github.com/dlwicksell/nodem/issues>
 [Node.js]: https://nodejs.org
 [YottaDB]: https://yottadb.com
 [GT.M]: https://sourceforge.net/projects/fis-gtm
-[Nodem]: https://docs.yottadb.com/MultiLangProgGuide/nodeprogram.html
+[Nodem]: https://docs.yottadb.com/MultiLangProgGuide/jsprogram.html
 [Wiki]: https://github.com/dlwicksell/nodem/wiki
 [GT.CM]: https://docs.yottadb.com/AdminOpsGuide/gtcm.html
