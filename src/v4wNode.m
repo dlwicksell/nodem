@@ -1,4 +1,4 @@
-v4wNode() ; 0.20.4 ; Aug 31, 2023@18:50
+v4wNode() ; 0.20.5 ; Apr 25, 2024@00:01
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -6,7 +6,7 @@ v4wNode() ; 0.20.4 ; Aug 31, 2023@18:50
  ; Maintainer: David Wicksell <dlw@linux.com>
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2023 Fourth Watch Software LC
+ ; Copyright © 2012-2024 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify it
  ; under the terms of the GNU Affero General Public License (AGPL) as published
@@ -819,6 +819,9 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  new v4wResult
  ;
  do
+ . ; Set principal device during Nodem::function call, for proper signal handling
+ . use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
+ . set ($ecode,$etrap)="" ; Turn off defaut error trap
  . new v4wArgs,v4wDebug,v4wFunc,v4wInputArgs,v4wMode,v4wRelink
  . set @("v4wResult=$$"_v4wFunction)
  ;
@@ -859,6 +862,9 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  if $get(v4wDebug,0)>1 do debugLog(">>   procedure:") zwrite v4wProcedure use $principal
  ;
  do
+ . ; Set principal device during Nodem::function call, for proper signal handling
+ . use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
+ . set ($ecode,$etrap)="" ; Turn off defaut error trap
  . new v4wArgs,v4wDebug,v4wInputArgs,v4wMode,v4wProc,v4wRelink
  . do @v4wProcedure
  ;

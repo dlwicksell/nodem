@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2023 Fourth Watch Software LC
+ * Copyright © 2012-2024 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -62,6 +62,10 @@ using v8::NewStringType;
 using v8::Number;
 using v8::Object;
 using v8::PropertyCallbackInfo;
+#if NODE_MAJOR_VERSION >= 22
+using v8::ReadOnly;
+using v8::SideEffectType;
+#endif
 using v8::String;
 using v8::TryCatch;
 using v8::Value;
@@ -254,7 +258,7 @@ inline static bool invalid_local(const char* name)
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {Local<Value>} [new_name|name] - A string containing the normalized name
  */
-static Local<Value> globalize_name(const Local<Value> name, NodemState* nodem_state)
+static Local<Value> globalize_name(const Local<Value> name, const NodemState* nodem_state)
 {
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
@@ -290,7 +294,7 @@ static Local<Value> globalize_name(const Local<Value> name, NodemState* nodem_st
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {Local<Value>} [data_name|name] - A string containing the normalized name
  */
-static Local<Value> localize_name(const Local<Value> name, NodemState* nodem_state)
+static Local<Value> localize_name(const Local<Value> name, const NodemState* nodem_state)
 {
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
@@ -325,7 +329,7 @@ static Local<Value> localize_name(const Local<Value> name, NodemState* nodem_sta
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
  * @returns {Local<Value>} - An object containing the output data
  */
-static Local<Value> json_method(Local<Value> data, const string &type, NodemState* nodem_state)
+static Local<Value> json_method(Local<Value> data, const string &type, const NodemState* nodem_state)
 {
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
@@ -358,7 +362,7 @@ static Local<Value> json_method(Local<Value> data, const string &type, NodemStat
  * @member {mode_t} mode - Data mode: STRING or CANONICAL; defaults to CANONICAL
  * @returns {Local<Value>} result - An object containing the formatted error content
  */
-static Local<Value> error_status(gtm_char_t* error, const bool position, const bool async, NodemState* nodem_state)
+static Local<Value> error_status(gtm_char_t* error, const bool position, const bool async, const NodemState* nodem_state)
 {
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
@@ -372,7 +376,6 @@ static Local<Value> error_status(gtm_char_t* error, const bool position, const b
 
     char* error_msg;
     char* code = strtok_r(error, ",", &error_msg);
-    int error_code = atoi(code);
 
     // Handle SIGINT caught by YottaDB or GT.M
     if (strstr(error_msg, "%YDB-E-CTRAP") != NULL || strstr(error_msg, "%GTM-E-CTRAP") != NULL) clean_shutdown(SIGINT);
@@ -387,6 +390,8 @@ static Local<Value> error_status(gtm_char_t* error, const bool position, const b
 
         return scope.Escape(new_string_n(isolate, error_msg));
     } else {
+        int error_code = atoi(code);
+
         set_n(isolate, result, new_string_n(isolate, "ok"), Boolean::New(isolate, false));
         set_n(isolate, result, new_string_n(isolate, "errorCode"), Number::New(isolate, error_code));
         set_n(isolate, result, new_string_n(isolate, "errorMessage"), new_string_n(isolate, error_msg));
@@ -412,7 +417,7 @@ static Local<Value> error_status(gtm_char_t* error, const bool position, const b
  * @param {boolean} function <false> - Whether the arguments to encode are from the function or procedure call or not
  * @returns {Local<Value>} [Undefined|encoded_array] - The encoded array of subscripts or arguments, or Undefined if it has bad data
  */
-static Local<Value> encode_arguments(const Local<Value> arguments, NodemState* nodem_state, const bool function = false)
+static Local<Value> encode_arguments(const Local<Value> arguments, const NodemState* nodem_state, const bool function = false)
 {
     Isolate* isolate = Isolate::GetCurrent();
     EscapableHandleScope scope(isolate);
@@ -2990,9 +2995,9 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "\tthreadpoolSize:\t\t\t{number} [1-1024] <4>,\n"
             "\tsignalHandler:\t\t\t{boolean} <true>|{object}\n"
             "\t{\n"
-            "\t\tSIGINT:\t\t\t{boolean} <true>,\n"
-            "\t\tSIGTERM:\t\t{boolean} <true>,\n"
-            "\t\tSIGQUIT:\t\t{boolean} <true>\n"
+            "\t\tsigint|SIGINT:\t\t{boolean} <true>,\n"
+            "\t\tsigterm|SIGTERM:\t{boolean} <true>,\n"
+            "\t\tsigquit|SIGQUIT:\t{boolean} <true>\n"
             "\t}\n"
             "}\n\n"
             "Returns on success:\n"
@@ -3079,13 +3084,13 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
             "\tdefined:\t\t\t{number} [0|1|10|11]\n"
             "}\n\n"
             "Returns on failure:\n"
@@ -3111,14 +3116,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
-            "\tdata:\t\t\t\t{string|number},\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
+            "\tdata:\t\t\t\t{number|string},\n"
             "\tdefined:\t\t\t{boolean}\n"
             "}\n\n"
             "Returns on failure:\n"
@@ -3130,7 +3135,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via position:\n"
             "^global|$ISV|local, [subscripts+]\n\n"
             "Returns on success:\n"
-            "{string|number}\n\n"
+            "{number|string}\n\n"
             "Returns on failure:\n"
             "{Error object}\n\n"
             " - Some failures can result in thrown exceptions and/or stack traces\n"
@@ -3144,15 +3149,15 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
-            "\tdata:\t\t\t\t(required) {string|number}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}},\n"
+            "\tdata:\t\t\t\t(required) {number|string}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
-            "\tdata:\t\t\t\t{string|number}\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
+            "\tdata:\t\t\t\t{number|string}\n"
             "}\n\n"
             "Returns on failure:\n"
             "{\n"
@@ -3181,14 +3186,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Optional arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}},\n"
             "\tnodeOnly:\t\t\t(optional) {boolean} <false>\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
             "\tnodeOnly:\t\t\t{boolean}\n"
             "}\n\n"
             "Returns on failure:\n"
@@ -3216,12 +3221,12 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "\tfrom:\n"
             "\t{\n"
             "\t\tglobal|local:\t\t(required) {string},\n"
-            "\t\tsubscripts:\t\t(optional) {array {string|number}}\n"
+            "\t\tsubscripts:\t\t(optional) {array {number|string}}\n"
             "\t},\n"
             "\tto:\n"
             "\t{\n"
             "\t\tglobal|local:\t\t(required) {string},\n"
-            "\t\tsubscripts:\t\t(optional) {array {string|number}}\n"
+            "\t\tsubscripts:\t\t(optional) {array {number|string}}\n"
             "\t}\n"
             "}\n\n"
             "Returns on success:\n"
@@ -3230,12 +3235,12 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "\tfrom:\n"
             "\t{\n"
             "\t\tglobal|local:\t\t{string},\n"
-            "\t\tsubscripts:\t\t{array {string|number}}\n"
+            "\t\tsubscripts:\t\t{array {number|string}}\n"
             "\t},\n"
             "\tto:\n"
             "\t{\n"
             "\t\tglobal|local:\t\t{string},\n"
-            "\t\tsubscripts:\t\t{array {string|number}}\n"
+            "\t\tsubscripts:\t\t{array {number|string}}\n"
             "\t}\n"
             "}\n\n"
             "Returns on failure:\n"
@@ -3255,14 +3260,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
-            "\tresult:\t\t\t\t{string|number}\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
+            "\tresult:\t\t\t\t{number|string}\n"
             "}\n\n"
             "Returns on failure:\n"
             "{\n"
@@ -3273,7 +3278,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via position:\n"
             "^global|local, [subscripts+]\n\n"
             "Returns on success:\n"
-            "{string|number}\n\n"
+            "{number|string}\n\n"
             "Returns on failure:\n"
             "{Error object}\n\n"
             " - Some failures can result in thrown exceptions and/or stack traces\n"
@@ -3287,14 +3292,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
-            "\tresult:\t\t\t\t{string|number}\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
+            "\tresult:\t\t\t\t{number|string}\n"
             "}\n\n"
             "Returns on failure:\n"
             "{\n"
@@ -3305,7 +3310,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via position:\n"
             "^global|local, [subscripts+]\n\n"
             "Returns on success:\n"
-            "{string|number}\n\n"
+            "{number|string}\n\n"
             "Returns on failure:\n"
             "{Error object}\n\n"
             " - Some failures can result in thrown exceptions and/or stack traces\n"
@@ -3319,14 +3324,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
-            "\tdata:\t\t\t\t{string|number},\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
+            "\tdata:\t\t\t\t{number|string},\n"
             "\tdefined:\t\t\t{boolean}\n"
             "}\n\n"
             "Returns on failure:\n"
@@ -3338,7 +3343,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via position:\n"
             "^global|local, [subscripts+]\n\n"
             "Returns on success:\n"
-            "{array {string|number}}\n\n"
+            "{array {number|string}}\n\n"
             "Returns on failure:\n"
             "{Error object}\n\n"
             " - Some failures can result in thrown exceptions and/or stack traces\n"
@@ -3352,14 +3357,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
-            "\tdata:\t\t\t\t{string|number},\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
+            "\tdata:\t\t\t\t{number|string},\n"
             "\tdefined:\t\t\t{boolean}\n"
             "}\n\n"
             "Returns on failure:\n"
@@ -3371,7 +3376,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via position:\n"
             "^global|local, [subscripts+]\n\n"
             "Returns on success:\n"
-            "{array {string|number}}\n\n"
+            "{array {number|string}}\n\n"
             "Returns on failure:\n"
             "{Error object}\n\n"
             " - Some failures can result in thrown exceptions and/or stack traces\n"
@@ -3385,16 +3390,16 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}},\n"
             "\tincrement:\t\t\t(optional) {number} <1>\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
             "\tincrement:\t\t\t{number},\n"
-            "\tdata:\t\t\t\t{number}\n"
+            "\tdata:\t\t\t\t{number|string}\n"
             "}\n\n"
             "Returns on failure:\n"
             "{\n"
@@ -3405,7 +3410,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via position:\n"
             "^global|local, [subscripts+]\n\n"
             "Returns on success:\n"
-            "{number}\n\n"
+            "{number|string}\n\n"
             "Returns on failure:\n"
             "{Error object}\n\n"
             " - Some failures can result in thrown exceptions and/or stack traces\n"
@@ -3419,14 +3424,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}},\n"
-            "\ttimeout:\t\t\t(optional) {number}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}},\n"
+            "\ttimeout:\t\t\t(optional) {number} <Infinity>\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}},\n"
+            "\tsubscripts:\t\t\t{array {number|string}},\n"
             "\ttimeout:\t\t\t{number},\n"
             "\tresult:\t\t\t\t{boolean}\n"
             "}\n\n"
@@ -3457,13 +3462,13 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Optional arguments - via object:\n"
             "{\n"
             "\tglobal|local:\t\t\t(required) {string},\n"
-            "\tsubscripts:\t\t\t(optional) {array {string|number}}\n"
+            "\tsubscripts:\t\t\t(optional) {array {number|string}}\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tglobal|local:\t\t\t{string},\n"
-            "\tsubscripts:\t\t\t{array {string|number}}\n"
+            "\tsubscripts:\t\t\t{array {number|string}}\n"
             "}\n\n"
             "Returns on failure:\n"
             "{\n"
@@ -3488,8 +3493,8 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "{function} - A JavaScript function, taking no arguments, which will be run in a YottaDB transaction\n\n"
             "Optional arguments - via object:\n"
             "{\n"
-            "\tvariables:\t\t\t(optional) {array {string}},\n"
-            "\ttype:\t\t\t\t(optional) {string} Batch|batch|BATCH\n"
+            "\tvariables:\t\t\t{array {string}},\n"
+            "\ttype:\t\t\t\t{string} Batch|batch|BATCH\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
@@ -3516,16 +3521,16 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tfunction:\t\t\t(required) {string},\n"
-            "\targuments:\t\t\t(optional) {array {string|number|empty}},\n"
-            "\tautoRelink:\t\t\t(optional) {boolean}\n"
+            "\targuments:\t\t\t(optional) {array {number|string|empty}},\n"
+            "\tautoRelink:\t\t\t(optional) {boolean} <false>\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tfunction:\t\t\t{string},\n"
-            "\targuments:\t\t\t{array {string|number|empty}},\n"
-            "\tautoRelink:\t\t\t{boolean}\n"
-            "\tresult:\t\t\t\t{string|number}\n"
+            "\targuments:\t\t\t{array {number|string|empty}},\n"
+            "\tautoRelink:\t\t\t{boolean},\n"
+            "\tresult:\t\t\t\t{number|string}\n"
             "}\n\n"
             "Returns on failure:\n"
             "{\n"
@@ -3536,7 +3541,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via position:\n"
             "function, [arguments+]\n\n"
             "Returns on success:\n"
-            "{string|number}\n\n"
+            "{number|string}\n\n"
             "Returns on failure:\n"
             "{Error object}\n\n"
             " - Some failures can result in thrown exceptions and/or stack traces\n"
@@ -3550,14 +3555,14 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "Arguments - via object:\n"
             "{\n"
             "\tprocedure|routine:\t\t(required) {string},\n"
-            "\targuments:\t\t\t(optional) {array {string|number|empty}},\n"
-            "\tautoRelink:\t\t\t(optional) {boolean}\n"
+            "\targuments:\t\t\t(optional) {array {number|string|empty}},\n"
+            "\tautoRelink:\t\t\t(optional) {boolean} <false>\n"
             "}\n\n"
             "Returns on success:\n"
             "{\n"
             "\tok:\t\t\t\t{boolean} true,\n"
             "\tprocedure|routine:\t\t{string},\n"
-            "\targuments:\t\t\t{array {string|number|empty}}\n"
+            "\targuments:\t\t\t{array {number|string|empty}},\n"
             "\tautoRelink:\t\t\t{boolean}\n"
             "}\n\n"
             "Returns on failure:\n"
@@ -3582,13 +3587,13 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "None - Without an argument, will list all the globals stored in the database\n\n"
             "Optional arguments:\n"
             "{\n"
-            "\tmax:\t\t\t\t(optional) {number},\n"
-            "\tlo:\t\t\t\t(optional) {string},\n"
-            "\thi:\t\t\t\t(optional) {string}\n"
+            "\tmax:\t\t\t\t{number},\n"
+            "\tlo:\t\t\t\t{string},\n"
+            "\thi:\t\t\t\t{string}\n"
             "}\n\n"
             "Returns on success:\n"
             "[\n"
-            "\t<global name>*\t\t\t{string}\n"
+            "\t<global variable name>*\t\t{string}\n"
             "]\n\n"
             "Returns on failure:\n"
             "{\n"
@@ -3606,9 +3611,9 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             "None - Without an argument, will list all the variables in the local symbol table\n\n"
             "Optional arguments:\n"
             "{\n"
-            "\tmax:\t\t\t\t(optional) {number},\n"
-            "\tlo:\t\t\t\t(optional) {string},\n"
-            "\thi:\t\t\t\t(optional) {string}\n"
+            "\tmax:\t\t\t\t{number},\n"
+            "\tlo:\t\t\t\t{string},\n"
+            "\thi:\t\t\t\t{string}\n"
             "}\n\n"
             "Returns on success:\n"
             "[\n"
@@ -3662,7 +3667,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     }
 
-    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2023 Fourth Watch Software LC"));
+    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2024 Fourth Watch Software LC"));
     return;
 } // @end nodem::Nodem::help method
 
@@ -6760,7 +6765,11 @@ void Nodem::lock(const FunctionCallbackInfo<Value>& info)
         string test = *(UTF8_VALUE_TEMP_N(isolate, timeout));
 
         if (!all_of(test.begin(), test.end(), [](char c) {return (isdigit(c) || c == '-' || c == '.');})) {
-            timeout = Number::New(isolate, 0);
+            if (test == "Infinity") {
+                timeout = Number::New(isolate, -1);
+            } else {
+                timeout = Number::New(isolate, 0);
+            }
         } else if (!timeout->IsNumber() || number_value_n(isolate, timeout) < -1) {
             timeout = Number::New(isolate, 0);
         }
@@ -8313,7 +8322,7 @@ void Nodem::retrieve(const FunctionCallbackInfo<Value>& info)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    NodemState* nodem_state = reinterpret_cast<NodemState*>(info.Data().As<External>()->Value());
+    const NodemState* nodem_state = reinterpret_cast<NodemState*>(info.Data().As<External>()->Value());
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::retrieve enter");
 
@@ -8402,7 +8411,7 @@ void Nodem::update(const FunctionCallbackInfo<Value>& info)
     Isolate* isolate = Isolate::GetCurrent();
     HandleScope scope(isolate);
 
-    NodemState* nodem_state = reinterpret_cast<NodemState*>(info.Data().As<External>()->Value());
+    const NodemState* nodem_state = reinterpret_cast<NodemState*>(info.Data().As<External>()->Value());
 
     if (nodem_state->debug > OFF) debug_log(">  Nodem::update enter");
 
@@ -8572,11 +8581,19 @@ void Nodem::Init(Local<Object> exports)
 
     fn_template->SetClassName(new_string_n(isolate, "Nodem"));
 #if NODEM_SIMPLE_API == 1
+#   if NODE_MAJOR_VERSION >= 22
+    fn_template->InstanceTemplate()->SetAccessor(String::NewFromUtf8Literal(isolate, "tpRestart"),
+                 restart, nullptr, Local<Value>(), ReadOnly, SideEffectType::kHasNoSideEffect);
+
+    fn_template->InstanceTemplate()->SetAccessor(String::NewFromUtf8Literal(isolate, "tpRollback"),
+                 rollback, nullptr, Local<Value>(), ReadOnly, SideEffectType::kHasNoSideEffect);
+#   else
     fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRestart"),
                  restart, nullptr, Local<Value>(), DEFAULT, DontDelete);
 
     fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRollback"),
                  rollback, nullptr, Local<Value>(), DEFAULT, DontDelete);
+#   endif
 #endif
     fn_template->InstanceTemplate()->SetInternalFieldCount(1);
 

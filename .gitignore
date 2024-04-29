@@ -4,5 +4,5 @@ src/v4wNode.o
 tags
 TODO
 .cppcheckrc
-.eslintrc.json
+.eslint.config.mjs
 **/.*.sw[ponx]

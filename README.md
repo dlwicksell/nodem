@@ -6,12 +6,12 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.4 - 2023 Sep 1
+Version 0.20.5 - 2024 Apr 28
 
 ## Copyright and License ##
 
 Addon module written and maintained by David Wicksell <dlw@linux.com>  
-Copyright © 2012-2023 Fourth Watch Software LC
+Copyright © 2012-2024 Fourth Watch Software LC
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License (AGPL) as published by the
@@ -82,7 +82,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.4 (ABI=115) [FWS]; YottaDB Version: 1.38'
+'Node.js Adaptor for YottaDB: Version: 0.20.5 (ABI=127) [FWS]; YottaDB Version: 2.00'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -131,7 +131,7 @@ undefined
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v20.5.1 at this time), as well as every version of
+through the current release (v22.0.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.
@@ -319,7 +319,8 @@ $ $ydb_dist/gtcm_gnp_server -log=gtcm.log -service=6789
 **NOTE:** GT.CM only allows remote connections for the database access APIs, not
 the `function` nor `procedure` APIs. So while using Nodem in a remote GT.CM
 configuration, any calls to the `function` or `procedure` APIs will result in
-local calls, not remote [RPC] calls.
+local calls, not remote [RPC] calls. Data nodes accessed by GT.CM cannot
+participate in transactions.
 
 Nodem supports two different character encodings, UTF-8 and M. It defaults to
 UTF-8 mode. M mode is similar to ASCII, except that it utilizes all 8 bits in a
@@ -357,7 +358,7 @@ be set to `canonical` or `string`. The default is `canonical`, and interprets
 data using the M canonical representation. I.e. Numbers will be represented
 numerically, rather than as strings, and numbers collate before strings (except
 for the empty string). The other mode, `string`, interprets all data as strings,
-e.g.
+though they still collate the same as canonical mode, e.g.
 
 ```javascript
 > ydb.open({mode: 'canonical'}); // For all threads
@@ -411,9 +412,9 @@ routine object containing any function or procedure called by the `function` or
 `procedure` API. By default auto-relink is off. You can enable it in one of four
 ways. First, you can pass it as a property of the JavaScript object argument
 which is passed to the `function` or `procedure` API directly, with a value of
-true, or any non-zero number. This will turn on auto-relink just for that call.
-You can also disable it, by setting `autoRelink` to false, or 0, if it was
-already enabled by one of the global settings, e.g.
+true. This will turn on auto-relink just for that call. You can also disable it,
+by setting `autoRelink` to false if it was already enabled by one of the global
+settings, e.g.
 
 ```javascript
 > ydb.function({function: 'version^v4wTest', autoRelink: true});
@@ -474,7 +475,7 @@ Nodem resets them when it closes the database connection. By default, Nodem will
 restore the terminal device to the state it was in when the `open` call was
 invoked. Normally this is the desired option, however, if you wish to reset the
 terminal to typically sane settings, the `close` call allows this by setting the
-`resetTerminal` property to true, or any non-zero number, e.g.
+`resetTerminal` property to true, e.g.
 
 ```javascript
 > ydb.close({resetTerminal: true});

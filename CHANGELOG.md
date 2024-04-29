@@ -1,5 +1,12 @@
 # NodeM Changelog #
 
+## v0.20.5 - 2024 Apr 28 ##
+
+- Add support for Node.js 22.x
+- Add better support for the `Infinity` primitive to `lock` timeouts
+- Improve signal handling when calling functions and procedures in v4wNode.m
+- Make minor type improvements
+
 ## v0.20.4 - 2023 Sep 1 ##
 
 - Fix infinite loop bug in `ydb::order` and `ydb::previous`

@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2015-2023 Fourth Watch Software LC
+ * Copyright © 2015-2024 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -61,7 +61,7 @@ extern "C" {
 
 #define NODEM_MAJOR_VERSION     0
 #define NODEM_MINOR_VERSION     20
-#define NODEM_PATCH_VERSION     4
+#define NODEM_PATCH_VERSION     5
 
 #define NODEM_STRINGIFY(number) #number
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
