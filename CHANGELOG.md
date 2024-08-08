@@ -1,5 +1,17 @@
 # NodeM Changelog #
 
+## v0.20.7 - 2024 Aug 7 ##
+
+- Fix incompatible data type bugs in data component of the `set` API
+- Make improvements to the nodem.js script
+  - Add default use of nodem.ci in the repository to simplify configuration
+  - No longer necessary to set `ydb_ci` or `GTMCI`, or `callinTable` in `open`
+- Make improvements to the postinstall.js script
+  - Add default routine search path to simplify configuration when used without
+    the need to call other M code with the `function` or `procedure` APIs
+  - No longer necessary to set `ydb_routines` or `gtmroutines`, or
+    `routinesPath` in `open`
+
 ## v0.20.6 - 2024 Apr 29 ##
 
 - Fix broken link to documentation on the YottaDB, LLC. site

@@ -6,7 +6,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.6 - 2024 Apr 29
+Version 0.20.7 - 2024 Aug 7
 
 ## Copyright and License ##
 
@@ -82,7 +82,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.6 (ABI=127) [FWS]; YottaDB Version: 2.00'
+'Node.js Adaptor for YottaDB: Version: 0.20.7 (ABI=127) [FWS]; YottaDB Version: 2.00'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -208,6 +208,16 @@ or
 > ydb.open({callinTable: callinTable, routinesPath: routinesPath});
 ```
 
+**NOTE:** As of Nodem version 0.20.7, if `$ydb_ci` and `$GTMCI` are undefined,
+Nodem will use the path to the `nodem.ci` file within the repository, without
+having to set the `callinTable` property, by default, simplifying configuration.
+
+**NOTE:** As of Nodem version 0.20.7, if `$ydb_routines` and `$gtmroutines` are
+undefined, Nodem will use the path to the `v4wNode.m` file within the
+repository, without having to set the `routinesPath` property, by default,
+simplifying configuration when you don't need to call other M code with the
+`function` or `procedure` APIs.
+
 You can clone the repository with this command..
 
 ```bash
@@ -274,6 +284,8 @@ be fully functional, e.g.
 > ydb.open({callinTable: process.env.HOME + '/nodem/resources/nodem.ci'});
 ```
 
+### GT.CM Networking Support ###
+
 You can configure Nodem to function as a [GT.CM][] client, allowing Nodem to
 connect with a remote database. In the `open` method, you can set an
 `ipAddress`, and/or a `tcpPort` property, and Nodem will set up the environment
@@ -322,6 +334,8 @@ configuration, any calls to the `function` or `procedure` APIs will result in
 local calls, not remote [RPC] calls. Data nodes accessed by GT.CM cannot
 participate in transactions.
 
+### Character Encodings ###
+
 Nodem supports two different character encodings, UTF-8 and M. It defaults to
 UTF-8 mode. M mode is similar to ASCII, except that it utilizes all 8 bits in a
 byte, and it collates slightly differently. Instead of collation based only on
@@ -353,6 +367,8 @@ or
 > ydb.configure({charset: 'm'}); // For the current thread
 ```
 
+### Data Modes ###
+
 There are currently two different data modes that Nodem supports. The mode can
 be set to `canonical` or `string`. The default is `canonical`, and interprets
 data using the M canonical representation. I.e. Numbers will be represented
@@ -372,6 +388,8 @@ or
 '25'
 ```
 
+### Debug Tracing Mode ###
+
 Nodem also has a debug tracing mode, in case something doesn't seem to be
 working right, or you want to see what happens to data as it moves through the
 Nodem APIs. It has four levels of debugging, defaulting to `off`. The other
@@ -390,6 +408,8 @@ or
 > ydb.configure({debug: 'high'}); // For the current thread
 ```
 
+### Signal Handling ###
+
 Nodem handles several common signals that are typically used to stop processes,
 by closing the database connection, resetting the controlling terminal
 configuration, and stopping the Node.js process. These signals include `SIGINT`,
@@ -406,6 +426,8 @@ or
 ```javascript
 > ydb.open({signalHandler: false});
 ```
+
+### Function and Procedure Auto-relink ###
 
 Nodem supports a feature called auto-relink, which will automatically relink a
 routine object containing any function or procedure called by the `function` or
@@ -448,6 +470,8 @@ or
 $ NODEM_AUTO_RELINK=1 node function.js
 ```
 
+### Asynchronous APIs ###
+
 Nodem's asynchronous APIs, do their work in a separate thread pool,
 pre-allocated by Node.js via libuv. By default, four threads are created, and
 will take turns executing each asynchronous call, including asynchronous calls
@@ -469,6 +493,8 @@ pre-allocated thread pool is.
 the same worker thread pool in libuv, allows complete control of creating and
 destroying threads, and does not utilize the threadpoolSize (which just sets the
 libuv environment variable `UV_THREADPOOL_SIZE`) set in the Nodem `open` API.
+
+### Terminal Handling ###
 
 YottaDB (and GT.M) changes some settings of its controlling terminal device, and
 Nodem resets them when it closes the database connection. By default, Nodem will
@@ -494,6 +520,8 @@ after all the worker threads have exited. You will still need to make sure that
 you require Nodem in each worker thread, as well as the main thread, in order to
 have access to the Nodem API in each thread.
 
+### Configure API ###
+
 Nodem has a `configure` API, which will allow worker threads to change some
 per-thread database configuration options. It can be called from the worker
 threads, or the main thread, and will allow you to change per-thread
@@ -503,7 +531,7 @@ before any other Nodem calls are made, or they can be set in the `configure`
 API, anytime you like, in the main thread, or in the worker threads. Those
 configuration options are: `charset`, `mode`, `autoRelink`, and `debug`.
 
-### transaction API ###
+### Transaction API ###
 
 Nodem has a `transaction` API, which provides support for full ACID
 transactions. It is only supported when running Nodem with YottaDB at this time.
@@ -589,7 +617,7 @@ asynchronous pattern, as the running transaction will not block the main thread,
 or any of the other worker threads. For an example of this pattern, see the
 supplied `transaction.js` program in the `examples` directory.
 
-### procedure API ###
+### Procedure API ###
 
 Nodem has a `procedure` or `routine` API, which is similar to the `function`
 API, except that it is used to call M procedures or routines, which do not
@@ -609,7 +637,7 @@ or
 > ydb.procedure('set^v4wTest', 'test', 5);
 ```
 
-### lock API ###
+### Lock API ###
 
 The `lock` API takes an optional `timeout` argument. If you do not set a
 timeout, it will wait to acquire the lock indefinitely. If you wish to come back
@@ -624,7 +652,7 @@ or
 > ydb.lock({global: 'v4wTest', timeout: 0});
 ```
 
-### kill API ###
+### Kill API ###
 
 The `kill` API takes an optional `nodeOnly` argument. It can be set to true or
 false, defaulting to false. If set to true, then it will only remove the node
@@ -643,7 +671,7 @@ The `nodeOnly` option is available when calling the `kill` API by passing
 arguments in a single JavaScript object, like above, but not when passing
 arguments by-position.
 
-## Additional Features ##
+### Additional Features ###
 
 Nodem provides a built-in API usage help menu. By calling the `help` method
 without an argument, Nodem will display a list of APIs and a short description

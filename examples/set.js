@@ -30,6 +30,8 @@
  * Pass, in any order, the number of nodes you want to store data in to.
  */
 
+'use strict';
+
 process.on('uncaughtException', function(error) {
     console.trace('Uncaught Exception:\n', error);
     nodem.close();

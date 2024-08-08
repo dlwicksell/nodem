@@ -1,7 +1,7 @@
 {
   "name": "nodem",
   "description": "A YottaDB and GT.M database driver and language binding for Node.js",
-  "version": "0.20.6",
+  "version": "0.20.7",
   "author": {
     "name": "David Wicksell",
     "email": "dlw@linux.com",
@@ -26,7 +26,7 @@
     "YottaDB"
   ],
   "main": "./lib/nodem",
-  "license": "AGPL-3.0",
+  "license": "AGPL-3.0-or-later",
   "engines": {
     "node": ">=0.12.0"
   },

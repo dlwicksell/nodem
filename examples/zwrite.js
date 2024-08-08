@@ -38,6 +38,8 @@
  *    debug tracing data
  */
 
+'use strict';
+
 process.on('uncaughtException', function(err) {
     console.trace('Uncaught Exception:\n', err);
     nodem.close();

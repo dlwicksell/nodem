@@ -27,6 +27,8 @@
  * -r [restart/rollback mode] - Test transaction restarts/rollbacks
  */
 
+'use strict';
+
 process.on('uncaughtException', (error) => {
     console.trace('Uncaught Exception:\n', error);
     nodem.close();

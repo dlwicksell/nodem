@@ -375,7 +375,7 @@ static Local<Value> error_status(gtm_char_t* error, const bool position, const b
     }
 
     char* error_msg;
-    char* code = strtok_r(error, ",", &error_msg);
+    const char* code = strtok_r(error, ",", &error_msg);
 
     // Handle SIGINT caught by YottaDB or GT.M
     if (strstr(error_msg, "%YDB-E-CTRAP") != NULL || strstr(error_msg, "%GTM-E-CTRAP") != NULL) clean_shutdown(SIGINT);
@@ -4473,7 +4473,8 @@ void Nodem::set(const FunctionCallbackInfo<Value>& info)
     data_node = encode_arguments(data_array, nodem_state);
 #endif
 
-    if (data_node->IsUndefined()) {
+    if (data_node->IsSymbol() || data_node->IsSymbolObject() || data_node->IsObject() ||
+      data_node->IsArray() || data_node->IsUndefined()) {
         isolate->ThrowException(Exception::SyntaxError(new_string_n(isolate, "Property 'data' contains invalid data")));
         return;
     }

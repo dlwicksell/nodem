@@ -61,7 +61,7 @@ extern "C" {
 
 #define NODEM_MAJOR_VERSION     0
 #define NODEM_MINOR_VERSION     20
-#define NODEM_PATCH_VERSION     6
+#define NODEM_PATCH_VERSION     7
 
 #define NODEM_STRINGIFY(number) #number
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)

@@ -90,7 +90,6 @@ inline static bool set_n(v8::Isolate* isolate, const Object& object, const Prope
  * @param {class Object&} object - The V8 object
  * @param {class Property&} property - The V8 object property
  * @returns {bool} - Whether the V8 property was deleted or not
- */
 template <class Object, class Property>
 inline static bool delete_n(v8::Isolate* isolate, const Object& object, const Property& property)
 {
@@ -100,6 +99,7 @@ inline static bool delete_n(v8::Isolate* isolate, const Object& object, const Pr
     return object->Delete(property);
 #endif
 } // @end nodem::template_n template function
+ */
 
 /*
  * @function {private} nodem::new_string_n
@@ -198,7 +198,6 @@ inline static v8::Local<v8::String> to_string_n(v8::Isolate* isolate, const v8::
  * @param {Isolate*} isolate - The current V8 isolate
  * @param {Local<Value>&} value - The V8 value to set the number to
  * @returns {Local<Number>} - The converted V8 string
- */
 inline static v8::Local<v8::Number> to_number_n(v8::Isolate* isolate, const v8::Local<v8::Value>& value)
 {
 #if NODE_MAJOR_VERSION >= 6
@@ -219,6 +218,7 @@ inline static v8::Local<v8::Number> to_number_n(v8::Isolate* isolate, const v8::
     return value->ToNumber();
 #endif
 } // @end nodem::to_number_n function
+ */
 
 /*
  * @function {private} nodem::to_object_n
