@@ -1,5 +1,10 @@
 # NodeM Changelog #
 
+## v0.20.8 - 2024 Aug 19 ##
+
+- Improve the `function` and `procedure` implementations
+- Add speed optimizations to the `function` method implementation
+
 ## v0.20.7 - 2024 Aug 7 ##
 
 - Fix incompatible data type bugs in data component of the `set` API

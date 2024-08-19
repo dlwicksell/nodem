@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2020-2023 Fourth Watch Software LC
+ * Copyright © 2020-2024 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -198,6 +198,7 @@ inline static v8::Local<v8::String> to_string_n(v8::Isolate* isolate, const v8::
  * @param {Isolate*} isolate - The current V8 isolate
  * @param {Local<Value>&} value - The V8 value to set the number to
  * @returns {Local<Number>} - The converted V8 string
+ */
 inline static v8::Local<v8::Number> to_number_n(v8::Isolate* isolate, const v8::Local<v8::Value>& value)
 {
 #if NODE_MAJOR_VERSION >= 6
@@ -218,7 +219,6 @@ inline static v8::Local<v8::Number> to_number_n(v8::Isolate* isolate, const v8::
     return value->ToNumber();
 #endif
 } // @end nodem::to_number_n function
- */
 
 /*
  * @function {private} nodem::to_object_n

@@ -59,16 +59,16 @@ extern "C" {
 #   define YDB_NODE_END YDB_ERR_NODEEND
 #endif
 
-#define NODEM_MAJOR_VERSION     0
-#define NODEM_MINOR_VERSION     20
-#define NODEM_PATCH_VERSION     7
+#define NODEM_MAJOR_VERSION 0
+#define NODEM_MINOR_VERSION 20
+#define NODEM_PATCH_VERSION 8
 
 #define NODEM_STRINGIFY(number) #number
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
 #define NODEM_VERSION NODEM_STRING(NODEM_MAJOR_VERSION) "." NODEM_STRING(NODEM_MINOR_VERSION) "." NODEM_STRING(NODEM_PATCH_VERSION)
 
-#define ERR_LEN   2048
-#define RES_LEN   1048576
+#define ERR_LEN 2048
+#define RES_LEN 1048576
 
 namespace nodem {
 
@@ -369,6 +369,7 @@ private:
  * @member {uint32_t} relink
  * @member {gtm_double_t} option
  * @member {gtm_status_t} status
+ * @member {gtm_uint_t} info
  * @member {gtm_char_t*} error
  * @member {gtm_char_t*} result
  * @member {gtm_status_t *(NodemBaton*)} nodem_function
@@ -403,6 +404,7 @@ struct NodemBaton {
     uint32_t                     relink;
     gtm_double_t                 option;
     gtm_status_t                 status;
+    gtm_uint_t                   info;
     gtm_char_t*                  error;
     gtm_char_t*                  result;
     gtm_status_t                 (*nodem_function)(NodemBaton*);

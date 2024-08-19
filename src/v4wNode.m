@@ -1,4 +1,4 @@
-v4wNode() ; 0.20.7 ; Aug 06, 2024@10:50
+v4wNode() ; 0.20.8 ; Aug 19, 2024@17:42
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -238,7 +238,7 @@ stringify:(inputArray,outputString)
  ;; @function {private} process
  ;; @summary Process an encoded string of subscripts, arguments, or an unencoded data node
  ;; @param {string} inputString - Input string to be transformed
- ;; @param {string} direction (input|output|pass) - Processing control direction
+ ;; @param {string} direction (input|output) - Processing control direction
  ;; @param {number} mode (0|1) - Data mode; 0 is string mode, 1 is canonical mode
  ;; @param {number} type (0|1) - Data type; 0 is subscripts or arguments, 1 is data node
  ;; @param {number} encode (0|1) - Whether subscripts or arguments are encoded, 0 is no, 1 is yes
@@ -265,11 +265,6 @@ process:(inputString,direction,mode,type,encode)
  . . set array(num)=$$inputEscape(array(num),type)
  . . set array(num)=$$inputConvert(array(num),mode,type)
  . else  if direction="output" do
- . . set array(num)=$$outputEscape(array(num))
- . . set array(num)=$$outputConvert(array(num),mode)
- . else  if direction="pass" do
- . . set $zextract(array(num))=$ztranslate($zextract(array(num)),"""","")
- . . set $zextract(array(num),$zlength(array(num)))=$ztranslate($zextract(array(num),$zlength(array(num))),"""","")
  . . set array(num)=$$outputEscape(array(num))
  . . set array(num)=$$outputConvert(array(num),mode)
  ;
@@ -322,7 +317,7 @@ version(v4wVersion)
  new v4wNodeVersion
  set v4wNodeVersion=$piece($text(^v4wNode)," ; ",2)
  ;
- if $get(v4wDebug,0)>0 do
+ if $get(v4wDebug,0)>0&(v4wVersion'="UNKNOWN") do
  . if v4wVersion=v4wNodeVersion do debugLog(">  NodeM version "_v4wVersion_" matches v4wNode version "_v4wNodeVersion)
  . else  do debugLog(">  NodeM version "_v4wVersion_" does not match v4wNode version "_v4wNodeVersion)
  ;
@@ -798,11 +793,12 @@ unlock(v4wGlvn,v4wSubs,v4wMode)
  ;; @param {string} v4wArgs - Arguments represented as a string, encoded with argument lengths
  ;; @param {number} v4wRelink (0|1) - Whether to relink the function to be called, if it has changed, defaults to off
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is string mode, 1 is canonical mode
- ;; @returns {string} {JSON} - The return value of the function call
-function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
+ ;; @param {number} v4wInfo - Indirection limit on input - (0|1) Return data type on output; 0 is string, 1 is canonical number
+ ;; @returns {string} - The return value of the function call
+function(v4wFunc,v4wArgs,v4wRelink,v4wMode,v4wInfo)
  set v4wRelink=$get(v4wRelink,0)
  set v4wMode=$get(v4wMode,1)
- if $get(v4wDebug,0)>1 do debugLog(">>   function enter:") zwrite v4wFunc,v4wArgs,v4wRelink,v4wMode use $principal
+ if $get(v4wDebug,0)>1 do debugLog(">>   function enter:") zwrite v4wFunc,v4wArgs,v4wRelink,v4wMode,v4wInfo use $principal
  ;
  new v4wInputArgs
  set v4wInputArgs=$$process(v4wArgs,"input",v4wMode)
@@ -812,8 +808,8 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  new v4wFunction
  set v4wFunction=$$construct(v4wFunc,v4wInputArgs)
  ;
- ; Construct a full function reference to get around the 8192 indirection limit
- if $zlength(v4wFunction)>8180 new v4wTempArgs set v4wFunction=$$constructFunction(v4wFunc,v4wInputArgs,.v4wTempArgs)
+ ; Construct a full function reference to get around the 8192 or 32766 indirection limit
+ if $zlength(v4wFunction)>v4wInfo new v4wTempArgs set v4wFunction=$$constructFunction(v4wFunc,v4wInputArgs,.v4wTempArgs)
  if $get(v4wDebug,0)>1 do debugLog(">>   function:") zwrite v4wFunction use $principal
  ;
  new v4wResult
@@ -822,18 +818,18 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  . ; Set principal device during Nodem::function call, for proper signal handling
  . use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
  . set ($ecode,$etrap)="" ; Turn off defaut error trap
- . new v4wArgs,v4wDebug,v4wFunc,v4wInputArgs,v4wMode,v4wRelink
+ . new v4wArgs,v4wDebug,v4wFunc,v4wInfo,v4wInputArgs,v4wMode,v4wRelink
  . set @("v4wResult=$$"_v4wFunction)
  ;
- set v4wResult=$$process(v4wResult,"output",v4wMode,1,0)
- ;
- if $get(v4wDebug,0)>1 do debugLog(">>   function exit:") zwrite v4wResult use $principal
+ if v4wMode,'$$isString(v4wResult,"output") set v4wInfo=1
+ else  set v4wInfo=0
+ if $get(v4wDebug,0)>1 do debugLog(">>   function exit:") zwrite v4wInfo,v4wResult use $principal
  ;
  ; Reset principal device after coming back from user code
  use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
  set ($ecode,$etrap)="" ; Turn off defaut error trap
  ;
- quit "{""result"":"_v4wResult_"}"
+ quit v4wResult
  ;; @end function function
  ;
  ;; @label procedure
@@ -842,11 +838,12 @@ function(v4wFunc,v4wArgs,v4wRelink,v4wMode)
  ;; @param {string} v4wArgs - Arguments represented as a string, encoded with argument lengths
  ;; @param {number} v4wRelink (0|1) - Whether to relink the procedure/routine to be called, if it has changed, defaults to off
  ;; @param {number} v4wMode (0|1) - Data mode; 0 is string mode, 1 is canonical mode
+ ;; @param {number} v4wInfo - Indirection limit
  ;; @returns {void}
-procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
+procedure(v4wProc,v4wArgs,v4wRelink,v4wMode,v4wInfo)
  set v4wRelink=$get(v4wRelink,0)
  set v4wMode=$get(v4wMode,1)
- if $get(v4wDebug,0)>1 do debugLog(">>   procedure enter:") zwrite v4wProc,v4wArgs,v4wRelink,v4wMode use $principal
+ if $get(v4wDebug,0)>1 do debugLog(">>   procedure enter:") zwrite v4wProc,v4wArgs,v4wRelink,v4wMode,v4wInfo use $principal
  ;
  new v4wInputArgs
  set v4wInputArgs=$$process(v4wArgs,"input",v4wMode)
@@ -857,15 +854,15 @@ procedure(v4wProc,v4wArgs,v4wRelink,v4wMode)
  new v4wProcedure
  set v4wProcedure=$$construct(v4wProc,v4wInputArgs)
  ;
- ; Construct a full procedure reference to get around the 8192 indirection limit
- if $zlength(v4wProcedure)>8192 new v4wTempArgs set v4wProcedure=$$constructFunction(v4wProc,v4wInputArgs,.v4wTempArgs)
+ ; Construct a full procedure reference to get around the 8192 or 32766 indirection limit
+ if $zlength(v4wProcedure)>v4wInfo new v4wTempArgs set v4wProcedure=$$constructFunction(v4wProc,v4wInputArgs,.v4wTempArgs)
  if $get(v4wDebug,0)>1 do debugLog(">>   procedure:") zwrite v4wProcedure use $principal
  ;
  do
  . ; Set principal device during Nodem::function call, for proper signal handling
  . use $principal:ctrap=$zchar(3) ; Catch SIGINT and pass to nodem.cc for handling
  . set ($ecode,$etrap)="" ; Turn off defaut error trap
- . new v4wArgs,v4wDebug,v4wInputArgs,v4wMode,v4wProc,v4wRelink
+ . new v4wArgs,v4wDebug,v4wInfo,v4wInputArgs,v4wMode,v4wProc,v4wRelink
  . do @v4wProcedure
  ;
  if $get(v4wDebug,0)>1 do debugLog(">>   procedure exit")

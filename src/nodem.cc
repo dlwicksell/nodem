@@ -252,7 +252,7 @@ inline static bool invalid_local(const char* name)
 
 /*
  * @function {private} nodem::globalize_name
- * @summary If a variable name (or function/procedure) doesn't start with (or contain) the optional '^' character, add it for output
+ * @summary If a variable name (or function/procedure) doesn't start with (or contain) the optional '^' character, add it
  * @param {Local<Value>} name - The name to be normalized for output
  * @param {NodemState*} nodem_state - Per-thread state class containing the following members
  * @member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
@@ -1863,6 +1863,7 @@ static Local<Value> unlock(NodemBaton* nodem_baton)
  * @summary Return value from an arbitrary extrinsic function
  * @param {NodemBaton*} nodem_baton - struct containing the following members
  * @member {gtm_char_t*} result - Data returned from function call
+ * @member {gtm_uint_t*} info - Indirection limit on input - (0|1) Return data type on output; 0 is string, 1 is canonical number
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
@@ -1886,6 +1887,7 @@ static Local<Value> function(NodemBaton* nodem_baton)
 
     if (nodem_baton->nodem_state->debug > LOW) {
         debug_log(">>   result: ", nodem_baton->result);
+        debug_log(">>   info: ", nodem_baton->info);
         debug_log(">>   position: ", boolalpha, nodem_baton->position);
         debug_log(">>   local: ", boolalpha, nodem_baton->local);
         debug_log(">>   async: ", boolalpha, nodem_baton->async);
@@ -1899,49 +1901,31 @@ static Local<Value> function(NodemBaton* nodem_baton)
         debug_log(">>   relink: ", nodem_baton->relink);
     }
 
-    Local<String> json_string;
+    Local<Value> ret_string;
 
     if (nodem_baton->nodem_state->utf8 == true) {
-        json_string = new_string_n(isolate, nodem_baton->result);
+        ret_string = new_string_n(isolate, nodem_baton->result);
     } else {
-        json_string = NodemValue::from_byte(nodem_baton->result);
+        ret_string = NodemValue::from_byte(nodem_baton->result);
     }
 
-    if (nodem_baton->nodem_state->debug > OFF) debug_log(">  function JSON string: ", *(UTF8_VALUE_TEMP_N(isolate, json_string)));
+    if (nodem_baton->info == 1) ret_string = to_number_n(isolate, ret_string);
 
-#if NODE_MAJOR_VERSION >= 1
-    TryCatch try_catch(isolate);
-#else
-    TryCatch try_catch;
-#endif
-
-    Local<Object> temp_object;
-    Local<Value> json = json_method(json_string, "parse", nodem_baton->nodem_state);
-
-    if (try_catch.HasCaught()) {
-        isolate->ThrowException(Exception::Error(new_string_n(isolate, "Function has missing or invalid JSON data")));
-        return scope.Escape(try_catch.Exception());
-    } else {
-        temp_object = to_object_n(isolate, json);
+    if (nodem_baton->position) {
+        if (nodem_baton->nodem_state->debug > OFF) debug_log(">  function exit");
+        return scope.Escape(ret_string);
     }
 
     Local<Object> return_object = Object::New(isolate);
     Local<String> function = new_string_n(isolate, nodem_baton->name.c_str());
 
-    if (nodem_baton->position) {
-        if (nodem_baton->nodem_state->debug > OFF) debug_log(">  function exit");
-        return scope.Escape(get_n(isolate, temp_object, new_string_n(isolate, "result")));
-    } else {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-        set_n(isolate, return_object, new_string_n(isolate, "function"), localize_name(function, nodem_baton->nodem_state));
+    set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+    set_n(isolate, return_object, new_string_n(isolate, "function"), localize_name(function, nodem_baton->nodem_state));
 
-        if (!arguments->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "arguments"), arguments);
+    if (!arguments->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "arguments"), arguments);
 
-        set_n(isolate, return_object, new_string_n(isolate, "autoRelink"), Boolean::New(isolate, nodem_baton->relink));
-
-        set_n(isolate, return_object, new_string_n(isolate, "result"),
-              get_n(isolate, temp_object, new_string_n(isolate, "result")));
-    }
+    set_n(isolate, return_object, new_string_n(isolate, "autoRelink"), Boolean::New(isolate, nodem_baton->relink));
+    set_n(isolate, return_object, new_string_n(isolate, "result"), ret_string);
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  function exit");
 
@@ -1952,6 +1936,7 @@ static Local<Value> function(NodemBaton* nodem_baton)
  * @function {private} nodem::procedure
  * @summary Return value from an arbitrary procedure/routine
  * @param {NodemBaton*} nodem_baton - struct containing the following members
+ * @member {gtm_uint_t} info - Indirection limit
  * @member {bool} position - Whether the API was called by position, or with a specially-formatted JavaScript object
  * @member {bool} local - Whether the API was called on a local variable, or a global variable
  * @member {bool} async - Whether the API was called asynchronously, or synchronously
@@ -1986,26 +1971,26 @@ static Local<Value> procedure(NodemBaton* nodem_baton)
         debug_log(">>   relink: ", nodem_baton->relink);
     }
 
-    Local<Object> return_object = Object::New(isolate);
-    Local<String> procedure = new_string_n(isolate, nodem_baton->name.c_str());
-
     if (nodem_baton->position) {
         if (nodem_baton->nodem_state->debug > OFF) debug_log(">  procedure exit");
         Local<Value> ret_data = Undefined(isolate);
         return scope.Escape(ret_data);
-    } else {
-        set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
-
-        if (nodem_baton->routine) {
-            set_n(isolate, return_object, new_string_n(isolate, "routine"), localize_name(procedure, nodem_baton->nodem_state));
-        } else {
-            set_n(isolate, return_object, new_string_n(isolate, "procedure"), localize_name(procedure, nodem_baton->nodem_state));
-        }
-
-        if (!arguments->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "arguments"), arguments);
-
-        set_n(isolate, return_object, new_string_n(isolate, "autoRelink"), Boolean::New(isolate, nodem_baton->relink));
     }
+
+    Local<Object> return_object = Object::New(isolate);
+    Local<String> procedure = new_string_n(isolate, nodem_baton->name.c_str());
+
+    set_n(isolate, return_object, new_string_n(isolate, "ok"), Boolean::New(isolate, true));
+
+    if (nodem_baton->routine) {
+        set_n(isolate, return_object, new_string_n(isolate, "routine"), localize_name(procedure, nodem_baton->nodem_state));
+    } else {
+        set_n(isolate, return_object, new_string_n(isolate, "procedure"), localize_name(procedure, nodem_baton->nodem_state));
+    }
+
+    if (!arguments->IsUndefined()) set_n(isolate, return_object, new_string_n(isolate, "arguments"), arguments);
+
+    set_n(isolate, return_object, new_string_n(isolate, "autoRelink"), Boolean::New(isolate, nodem_baton->relink));
 
     if (nodem_baton->nodem_state->debug > OFF) debug_log(">  procedure exit");
 
@@ -7568,6 +7553,11 @@ void Nodem::function(const FunctionCallbackInfo<Value>& info)
     nodem_baton->local = local;
     nodem_baton->position = position;
     nodem_baton->status = 0;
+#if NODEM_YDB == 1 && YDB_RELEASE >= 124
+    nodem_baton->info = 32754;  // Subtract 12 for v4wResult=$$
+#else
+    nodem_baton->info = 8180;   // Subtract 12 for v4wResult=$$
+#endif
     nodem_baton->nodem_function = &gtm::function;
     nodem_baton->ret_function = &nodem::function;
     nodem_baton->nodem_state = nodem_state;
@@ -7577,6 +7567,7 @@ void Nodem::function(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) {
         debug_log(">>   relink: ", relink);
         debug_log(">>   mode: ", nodem_state->mode);
+        debug_log(">>   info: ", nodem_baton->info);
     }
 
     if (async) {
@@ -7784,6 +7775,11 @@ void Nodem::procedure(const FunctionCallbackInfo<Value>& info)
     nodem_baton->position = position;
     nodem_baton->routine = routine;
     nodem_baton->status = 0;
+#if NODEM_YDB == 1 && YDB_RELEASE >= 124
+    nodem_baton->info = 32766;
+#else
+    nodem_baton->info = 8192;
+#endif
     nodem_baton->nodem_function = &gtm::procedure;
     nodem_baton->ret_function = &nodem::procedure;
     nodem_baton->nodem_state = nodem_state;
@@ -7793,6 +7789,7 @@ void Nodem::procedure(const FunctionCallbackInfo<Value>& info)
     if (nodem_state->debug > LOW) {
         debug_log(">>   relink: ", relink);
         debug_log(">>   mode: ", nodem_state->mode);
+        debug_log(">>   info: ", nodem_baton->info);
     }
 
     if (async) {

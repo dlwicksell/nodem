@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2023 Fourth Watch Software LC
+ * Copyright © 2018-2024 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -1006,6 +1006,7 @@ gtm_status_t merge(nodem::NodemBaton* nodem_baton)
  * @member {string} args - Arguments
  * @member {uint32_t} relink (<0>|1) - Whether to relink the function before calling it
  * @member {mode_t} mode (0|1) - Data mode; 0 is string mode, 1 is canonical mode
+ * @member {gtm_uint_t*} info - Indirection limit on input - (0|1) Return data type on output; 0 is string, 1 is canonical number
  * @member {gtm_char_t*} result - Data returned from YottaDB/GT.M, via the Call-in interface
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
@@ -1021,6 +1022,7 @@ gtm_status_t function(nodem::NodemBaton* nodem_baton)
         nodem::debug_log(">>>    arguments: ", nodem_baton->args);
         nodem::debug_log(">>>    relink: ", nodem_baton->relink);
         nodem::debug_log(">>>    mode: ", nodem_baton->mode);
+        nodem::debug_log(">>>    info: ", nodem_baton->info);
     }
 
     gtm_status_t status;
@@ -1049,12 +1051,12 @@ gtm_status_t function(nodem::NodemBaton* nodem_baton)
     function_access.handle = NULL;
 
     status = gtm_cip(&function_access, nodem_baton->result, nodem_baton->name.c_str(),
-             nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode);
+             nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode, &nodem_baton->info);
 #else
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
 
     status = gtm_ci(gtm_function, nodem_baton->result, nodem_baton->name.c_str(),
-             nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode);
+             nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode, &nodem_baton->info);
 #endif
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
@@ -1084,6 +1086,7 @@ gtm_status_t function(nodem::NodemBaton* nodem_baton)
  * @member {string} args - Arguments
  * @member {uint32_t} relink (<0>|1) - Whether to relink the procedure before calling it
  * @member {mode_t} mode (0|1) - Data mode; 0 is string mode, 1 is canonical mode
+ * @member {gtm_uint_t} info - Indirection limit
  * @member {gtm_char_t*} error - Error message returned from YottaDB/GT.M, via the Call-in interface
  * @member {NodemState*} nodem_state - Per-thread state class containing the following members
  * @nested-member {debug_t} debug - Debug mode: OFF, LOW, MEDIUM, or HIGH; defaults to OFF
@@ -1098,6 +1101,7 @@ gtm_status_t procedure(nodem::NodemBaton* nodem_baton)
         nodem::debug_log(">>>    arguments: ", nodem_baton->args);
         nodem::debug_log(">>>    relink: ", nodem_baton->relink);
         nodem::debug_log(">>>    mode: ", nodem_baton->mode);
+        nodem::debug_log(">>>    info: ", nodem_baton->info);
     }
 
     gtm_status_t status;
@@ -1126,10 +1130,12 @@ gtm_status_t procedure(nodem::NodemBaton* nodem_baton)
     procedure_access.handle = NULL;
 
     status = gtm_cip(&procedure_access, nodem_baton->name.c_str(), nodem_baton->args.c_str(),
-             nodem_baton->relink, nodem_baton->mode);
+             nodem_baton->relink, nodem_baton->mode, nodem_baton->info);
 #else
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   call using gtm_ci");
-    status = gtm_ci(gtm_procedure, nodem_baton->name.c_str(), nodem_baton->args.c_str(), nodem_baton->relink, nodem_baton->mode);
+
+    status = gtm_ci(gtm_procedure, nodem_baton->name.c_str(), nodem_baton->args.c_str(),
+             nodem_baton->relink, nodem_baton->mode, nodem_baton->info);
 #endif
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
