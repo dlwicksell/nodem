@@ -1,5 +1,15 @@
 # NodeM Changelog #
 
+## v0.20.9 - 2024 Oct 26 ##
+
+- Add support for Node.js 23.x
+- Rename multiple source files
+  - nodem.h => nodem.hh
+  - compat.h => compat.hh
+  - utility.h => utility.hh
+  - gtm.h => gtm.hh
+  - ydb.h => ydb.hh
+
 ## v0.20.8 - 2024 Aug 19 ##
 
 - Improve the `function` and `procedure` implementations

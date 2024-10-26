@@ -6,7 +6,7 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.8 - 2024 Aug 19
+Version 0.20.9 - 2024 Oct 26
 
 ## Copyright and License ##
 
@@ -82,7 +82,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.8 (ABI=127) [FWS]; YottaDB Version: 2.00'
+'Node.js Adaptor for YottaDB: Version: 0.20.9 (ABI=131) [FWS]; YottaDB Version: 2.00'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,
@@ -131,7 +131,7 @@ undefined
 ## Installation ##
 
 Nodem should run on every version of Node.js starting with version 0.12.0,
-through the current release (v22.0.0 at this time), as well as every version of
+through the current release (v23.1.0 at this time), as well as every version of
 IO.js. However, in the future, both Node.js and the V8 JavaScript engine at its
 core, could change their APIs in a non-backwards compatible way, which might
 break Nodem for that version.

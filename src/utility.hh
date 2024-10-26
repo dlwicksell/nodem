@@ -1,11 +1,11 @@
 /*
  * Package:    NodeM
- * File:       utility.h
+ * File:       utility.hh
  * Summary:    Utility functions
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2019-2023 Fourth Watch Software LC
+ * Copyright © 2019-2024 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -21,8 +21,8 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#ifndef UTILITY_H
-#   define UTILITY_H
+#ifndef UTILITY_HH
+#   define UTILITY_HH
 
 #include <unistd.h>
 #include <iostream>
@@ -85,4 +85,4 @@ static void debug_log(A... args)
 
 } // @end namespace nodem
 
-#endif // @end UTILITY_H
+#endif // @end UTILITY_HH

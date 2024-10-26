@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2023 Fourth Watch Software LC
+ * Copyright © 2018-2024 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -22,7 +22,7 @@
  */
 
 #if NODEM_SIMPLE_API == 1
-#   include "ydb.h"
+#   include "ydb.hh"
 
 using std::boolalpha;
 using std::cerr;

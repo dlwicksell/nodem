@@ -8,3 +8,5 @@ TODO
 .cppcheckrc
 .eslint.config.mjs
 **/.*.sw[ponx]
+node_modules
+package-lock.json

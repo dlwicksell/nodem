@@ -1,11 +1,11 @@
 /*
  * Package:    NodeM
- * File:       gtm.h
+ * File:       gtm.hh
  * Summary:    Functions that wrap calls to the Call-in interface
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2023 Fourth Watch Software LC
+ * Copyright © 2018-2024 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -21,10 +21,10 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#ifndef GTM_H
-#   define GTM_H
+#ifndef GTM_HH
+#   define GTM_HH
 
-#include "nodem.h"
+#include "nodem.hh"
 
 namespace gtm {
 
@@ -49,4 +49,4 @@ gtm_status_t procedure(nodem::NodemBaton*);
 
 } // @end gtm namespace
 
-#endif // @end GTM_H
+#endif // @end GTM_HH

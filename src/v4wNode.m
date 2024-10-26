@@ -1,4 +1,4 @@
-v4wNode() ; 0.20.8 ; Aug 19, 2024@17:42
+v4wNode() ; 0.20.9 ; Oct 25, 2024@20:14
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -304,7 +304,7 @@ debug(level)
  ;
  ;; @function version
  ;; @summary Return the about/version string
- ;; @param {string} v4wVersion - Nodem version string from nodem.h/nodem.cc used to confirm correct integration
+ ;; @param {string} v4wVersion - Nodem version string from nodem.hh/nodem.cc used to confirm correct integration
  ;; @returns {string} - The YottaDB or GT.M version
 version(v4wVersion)
  ; Handle $zyrelease not existing in this M implementation version (150373074: %GTM-E-INVSVN, Invalid special variable name)

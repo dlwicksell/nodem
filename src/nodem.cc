@@ -21,10 +21,10 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#include "nodem.h"
-#include "compat.h"
-#include "gtm.h"
-#include "ydb.h"
+#include "nodem.hh"
+#include "compat.hh"
+#include "gtm.hh"
+#include "ydb.hh"
 #include <cerrno>
 #include <csignal>
 #include <cstdlib>
@@ -55,6 +55,9 @@ using v8::Isolate;
 using v8::Local;
 #if NODE_MAJOR_VERSION >= 3
 using v8::MaybeLocal;
+#endif
+#if NODE_MAJOR_VERSION >= 1
+using v8::Name;
 #endif
 #if NODE_MAJOR_VERSION >= 6
 using v8::NewStringType;
@@ -8497,7 +8500,11 @@ void Nodem::update(const FunctionCallbackInfo<Value>& info)
  * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
  * @returns {void}
  */
+#   if NODE_MAJOR_VERSION >= 23
+void Nodem::restart(const FunctionCallbackInfo<Value>& info)
+#   else
 void Nodem::restart(Local<String> property, const PropertyCallbackInfo<Value>& info)
+#   endif
 {
     Isolate* isolate = Isolate::GetCurrent();
 
@@ -8513,7 +8520,11 @@ void Nodem::restart(Local<String> property, const PropertyCallbackInfo<Value>& i
  * @param {FunctionCallbackInfo<Value>&} info - A special object passed by the Node.js runtime, including passed arguments
  * @returns {void}
  */
+#   if NODE_MAJOR_VERSION >= 23
+void Nodem::rollback(const FunctionCallbackInfo<Value>& info)
+#   else
 void Nodem::rollback(Local<String> property, const PropertyCallbackInfo<Value>& info)
+#   endif
 {
     Isolate* isolate = Isolate::GetCurrent();
 
@@ -8579,11 +8590,19 @@ void Nodem::Init(Local<Object> exports)
 
     fn_template->SetClassName(new_string_n(isolate, "Nodem"));
 #if NODEM_SIMPLE_API == 1
-#   if NODE_MAJOR_VERSION >= 22
-    fn_template->InstanceTemplate()->SetAccessor(String::NewFromUtf8Literal(isolate, "tpRestart"),
+#   if NODE_MAJOR_VERSION >= 23
+    Local<Name> tpRestart = new_string_n(isolate, "tpRestart");
+    Local<FunctionTemplate> restart_tpl = FunctionTemplate::New(isolate, restart);
+    fn_template->InstanceTemplate()->SetAccessorProperty(tpRestart, restart_tpl);
+
+    Local<Name> tpRollback = new_string_n(isolate, "tpRollback");
+    Local<FunctionTemplate> rollback_tpl = FunctionTemplate::New(isolate, rollback);
+    fn_template->InstanceTemplate()->SetAccessorProperty(tpRollback, rollback_tpl);
+#   elif NODE_MAJOR_VERSION >= 22
+    fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRestart"),
                  restart, nullptr, Local<Value>(), ReadOnly, SideEffectType::kHasNoSideEffect);
 
-    fn_template->InstanceTemplate()->SetAccessor(String::NewFromUtf8Literal(isolate, "tpRollback"),
+    fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRollback"),
                  rollback, nullptr, Local<Value>(), ReadOnly, SideEffectType::kHasNoSideEffect);
 #   else
     fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRestart"),

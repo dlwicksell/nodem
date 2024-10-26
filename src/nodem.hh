@@ -1,6 +1,6 @@
 /*
  * Package:    NodeM
- * File:       nodem.h
+ * File:       nodem.hh
  * Summary:    A YottaDB/GT.M database driver and binding for Node.js
  * Maintainer: David Wicksell <dlw@linux.com>
  *
@@ -21,12 +21,13 @@
  * along with this program. If not, see http://www.gnu.org/licenses/.
  */
 
-#ifndef NODEM_H
-#   define NODEM_H
+#ifndef NODEM_HH
+#   define NODEM_HH
 
-#include "utility.h"
+#include "utility.hh"
 #include <node.h>
 #include <node_object_wrap.h>
+#include <node_buffer.h>
 #include <uv.h>
 
 extern "C" {
@@ -61,7 +62,7 @@ extern "C" {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 20
-#define NODEM_PATCH_VERSION 8
+#define NODEM_PATCH_VERSION 9
 
 #define NODEM_STRINGIFY(number) #number
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)
@@ -183,8 +184,13 @@ private:
     static void retrieve(const v8::FunctionCallbackInfo<v8::Value>&);
     static void update(const v8::FunctionCallbackInfo<v8::Value>&);
 #if NODEM_SIMPLE_API == 1
+#   if NODE_MAJOR_VERSION >= 23
+    static void restart(const v8::FunctionCallbackInfo<v8::Value>&);
+    static void rollback(const v8::FunctionCallbackInfo<v8::Value>&);
+#   else
     static void restart(v8::Local<v8::String>, const v8::PropertyCallbackInfo<v8::Value>&);
     static void rollback(v8::Local<v8::String>, const v8::PropertyCallbackInfo<v8::Value>&);
+#   endif
 
     int tp_restart = YDB_TP_RESTART;
     int tp_rollback = YDB_TP_ROLLBACK;
@@ -414,4 +420,4 @@ struct NodemBaton {
 
 } // @end namespace nodem
 
-#endif // @end NODEM_H
+#endif // @end NODEM_HH

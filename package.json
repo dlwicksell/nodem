@@ -1,7 +1,7 @@
 {
   "name": "nodem",
   "description": "A YottaDB and GT.M database driver and language binding for Node.js",
-  "version": "0.20.8",
+  "version": "0.20.9",
   "author": {
     "name": "David Wicksell",
     "email": "dlw@linux.com",
