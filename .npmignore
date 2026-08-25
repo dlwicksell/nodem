@@ -1,12 +1,22 @@
-.git
-.gitignore
-build
-builderror.log
-src/v4wNode.o
+# Package: NodeM
+# File:    .npmignore
+# Summary: NPM ignore list
+#
+# SPDX-FileCopyrightText:  © 2023-2026 Fourth Watch Software LC
+# SPDX-FileContributor:    David Wicksell <dlw@linux.com>
+# SPDX-FileComment:        https://github.com/dlwicksell/nodem
+# SPDX-License-Identifier: AGPL-3.0-or-later
+
+# Build output
+/build/
+/builderror.log
+/src/v4wNode.o
+
+# Local tooling config
+/.cppcheckrc
+/.eslint.config.mjs
+
+# Editor and developer scratch files
+/TODO
 tags
-TODO
-.cppcheckrc
-.eslint.config.mjs
-**/.*.sw[ponx]
-node_modules
-package-lock.json
+.*.sw[ponx]

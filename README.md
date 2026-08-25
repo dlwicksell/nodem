@@ -6,12 +6,12 @@
 
 ## A YottaDB and GT.M database driver and language binding for Node.js ##
 
-Version 0.20.9 - 2024 Oct 26
+Version 0.20.10 - 2026 Aug 25
 
 ## Copyright and License ##
 
 Addon module written and maintained by David Wicksell <dlw@linux.com>  
-Copyright © 2012-2024 Fourth Watch Software LC
+Copyright © 2013-2026 Fourth Watch Software LC
 
 This program is free software: you can redistribute it and/or modify it under
 the terms of the GNU Affero General Public License (AGPL) as published by the
@@ -82,7 +82,7 @@ undefined
 > ydb.open(); // Open connection to YottaDB
 { ok: true, pid: 12345, tid: 12345 }
 > ydb.version();
-'Node.js Adaptor for YottaDB: Version: 0.20.9 (ABI=131) [FWS]; YottaDB Version: 2.00'
+'Node.js Adaptor for YottaDB: Version: 0.20.10 (ABI=147) [FWS]; YottaDB Version: 2.06'
 > ydb.get({global: 'v4wTest', subscripts: [0, 2, 0]}); // write ^v4wTest(0,2,0)
 {
   ok: true,

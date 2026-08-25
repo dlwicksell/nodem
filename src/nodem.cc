@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2012-2024 Fourth Watch Software LC
+ * Copyright © 2013-2026 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -42,7 +42,9 @@ using node::GetCurrentEventLoop;
 using v8::Array;
 using v8::Boolean;
 using v8::Context;
+#if NODE_MAJOR_VERSION < 22
 using v8::DEFAULT;
+#endif
 using v8::DontDelete;
 using v8::EscapableHandleScope;
 using v8::Exception;
@@ -66,7 +68,6 @@ using v8::Number;
 using v8::Object;
 using v8::PropertyCallbackInfo;
 #if NODE_MAJOR_VERSION >= 22
-using v8::ReadOnly;
 using v8::SideEffectType;
 #endif
 using v8::String;
@@ -610,7 +611,9 @@ static vector<string> build_subscripts(const Local<Value> subscripts, bool& erro
  */
 gtm_char_t* NodemValue::to_byte(void)
 {
-#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12)
+#if NODE_MAJOR_VERSION >= 24
+    value->WriteOneByteV2(Isolate::GetCurrent(), 0, size - 1, buffer, String::WriteFlags::kNullTerminate);
+#elif NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12)
     value->WriteOneByte(Isolate::GetCurrent(), buffer, 0, size);
 #else
     value->WriteOneByte(buffer, 0, size);
@@ -3655,7 +3658,7 @@ void Nodem::help(const FunctionCallbackInfo<Value>& info)
             << endl;
     }
 
-    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2012-2024 Fourth Watch Software LC"));
+    info.GetReturnValue().Set(new_string_n(isolate, "NodeM - Copyright (C) 2013-2026 Fourth Watch Software LC"));
     return;
 } // @end nodem::Nodem::help method
 
@@ -8508,7 +8511,7 @@ void Nodem::restart(Local<String> property, const PropertyCallbackInfo<Value>& i
 {
     Isolate* isolate = Isolate::GetCurrent();
 
-    Nodem* nodem = ObjectWrap::Unwrap<Nodem>(info.Holder());
+    Nodem* nodem = ObjectWrap::Unwrap<Nodem>(info.This());
 
     info.GetReturnValue().Set(Number::New(isolate, nodem->tp_restart));
 }
@@ -8528,7 +8531,7 @@ void Nodem::rollback(Local<String> property, const PropertyCallbackInfo<Value>& 
 {
     Isolate* isolate = Isolate::GetCurrent();
 
-    Nodem* nodem = ObjectWrap::Unwrap<Nodem>(info.Holder());
+    Nodem* nodem = ObjectWrap::Unwrap<Nodem>(info.This());
 
     info.GetReturnValue().Set(Number::New(isolate, nodem->tp_rollback));
 }
@@ -8593,17 +8596,17 @@ void Nodem::Init(Local<Object> exports)
 #   if NODE_MAJOR_VERSION >= 23
     Local<Name> tpRestart = new_string_n(isolate, "tpRestart");
     Local<FunctionTemplate> restart_tpl = FunctionTemplate::New(isolate, restart);
-    fn_template->InstanceTemplate()->SetAccessorProperty(tpRestart, restart_tpl);
+    fn_template->InstanceTemplate()->SetAccessorProperty(tpRestart, restart_tpl, Local<FunctionTemplate>(), DontDelete);
 
     Local<Name> tpRollback = new_string_n(isolate, "tpRollback");
     Local<FunctionTemplate> rollback_tpl = FunctionTemplate::New(isolate, rollback);
-    fn_template->InstanceTemplate()->SetAccessorProperty(tpRollback, rollback_tpl);
+    fn_template->InstanceTemplate()->SetAccessorProperty(tpRollback, rollback_tpl, Local<FunctionTemplate>(), DontDelete);
 #   elif NODE_MAJOR_VERSION >= 22
     fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRestart"),
-                 restart, nullptr, Local<Value>(), ReadOnly, SideEffectType::kHasNoSideEffect);
+                 restart, nullptr, Local<Value>(), DontDelete, SideEffectType::kHasNoSideEffect);
 
     fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRollback"),
-                 rollback, nullptr, Local<Value>(), ReadOnly, SideEffectType::kHasNoSideEffect);
+                 rollback, nullptr, Local<Value>(), DontDelete, SideEffectType::kHasNoSideEffect);
 #   else
     fn_template->InstanceTemplate()->SetAccessor(new_string_n(isolate, "tpRestart"),
                  restart, nullptr, Local<Value>(), DEFAULT, DontDelete);

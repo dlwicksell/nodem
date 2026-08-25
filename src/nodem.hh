@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2015-2024 Fourth Watch Software LC
+ * Copyright © 2015-2026 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -25,6 +25,7 @@
 #   define NODEM_HH
 
 #include "utility.hh"
+
 #include <node.h>
 #include <node_object_wrap.h>
 #include <node_buffer.h>
@@ -62,7 +63,7 @@ extern "C" {
 
 #define NODEM_MAJOR_VERSION 0
 #define NODEM_MINOR_VERSION 20
-#define NODEM_PATCH_VERSION 9
+#define NODEM_PATCH_VERSION 10
 
 #define NODEM_STRINGIFY(number) #number
 #define NODEM_STRING(number)    NODEM_STRINGIFY(number)

@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2018-2024 Fourth Watch Software LC
+ * Copyright © 2018-2026 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -290,7 +290,7 @@ ydb_status_t get(nodem::NodemBaton* nodem_baton)
     ydb_status_t status = ydb_get_s(&glvn, subs_size, subs_array, &value);
 
     if (nodem_baton->nodem_state->debug > nodem::LOW) nodem::debug_log(">>   status: ", status);
-    if (status != YDB_OK) ydb_zstatus(nodem_baton->error, ERR_LEN);
+    if (status != YDB_OK && status != YDB_ERR_GVUNDEF && status != YDB_ERR_LVUNDEF) ydb_zstatus(nodem_baton->error, ERR_LEN);
     if (nodem_baton->nodem_state->tp_level == 0) uv_mutex_unlock(&nodem::mutex_g);
 
     strncpy(nodem_baton->result, value.buf_addr, value.len_used);

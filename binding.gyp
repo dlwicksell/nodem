@@ -5,7 +5,7 @@
 # Maintainer: David Wicksell <dlw@linux.com>
 #
 # Written by David Wicksell <dlw@linux.com>
-# Copyright © 2012-2016,2018-2020,2022 Fourth Watch Software LC
+# Copyright © 2013-2026 Fourth Watch Software LC
 #
 # This program is free software: you can redistribute it and/or modify it
 # under the terms of the GNU Affero General Public License (AGPL) as published
@@ -31,9 +31,7 @@
         'src/ydb.cc'
       ],
       'cflags': [
-        '-error',
-        '-pedantic',
-        '-std=c++11',
+        '-Wpedantic',
         '-Wno-cast-function-type',
         '-Wno-expansion-to-defined'
       ],

@@ -5,7 +5,7 @@
  * Maintainer: David Wicksell <dlw@linux.com>
  *
  * Written by David Wicksell <dlw@linux.com>
- * Copyright © 2020-2024 Fourth Watch Software LC
+ * Copyright © 2020-2026 Fourth Watch Software LC
  *
  * This program is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Affero General Public License (AGPL) as published
@@ -307,7 +307,9 @@ inline static unsigned int uint32_value_n(v8::Isolate* isolate, const v8::Local<
  */
 inline static int utf8_length_n(v8::Isolate* isolate, const v8::Local<v8::String>& string)
 {
-#if NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12)
+#if NODE_MAJOR_VERSION >= 24
+    return string->Utf8LengthV2(isolate);
+#elif NODE_MAJOR_VERSION >= 11 || (NODE_MAJOR_VERSION == 10 && NODE_MINOR_VERSION >= 12)
     return string->Utf8Length(isolate);
 #else
     return string->Utf8Length();

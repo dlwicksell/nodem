@@ -1,4 +1,4 @@
-v4wNode() ; 0.20.9 ; Oct 25, 2024@20:14
+v4wNode() ; 0.20.10 ; Aug 24, 2026@22:54
  ;
  ; Package:    NodeM
  ; File:       v4wNode.m
@@ -6,7 +6,7 @@ v4wNode() ; 0.20.9 ; Oct 25, 2024@20:14
  ; Maintainer: David Wicksell <dlw@linux.com>
  ;
  ; Written by David Wicksell <dlw@linux.com>
- ; Copyright © 2012-2024 Fourth Watch Software LC
+ ; Copyright © 2013-2026 Fourth Watch Software LC
  ;
  ; This program is free software: you can redistribute it and/or modify it
  ; under the terms of the GNU Affero General Public License (AGPL) as published

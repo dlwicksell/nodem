@@ -1,5 +1,13 @@
 # NodeM Changelog #
 
+## v0.20.10 - 2026 Aug 25 ##
+
+- Add support for Node.js 24.x through 26.x
+- Stop building an error message when `get` finds an undefined node in `ydb.cc`
+- Fix `tpRestart` and `tpRollback` being deletable in Node.js 22.x and newer
+- Clean up the compiler warning flags in `binding.gyp`
+- Add SPDX license headers to `.gitignore` and `.npmignore`
+
 ## v0.20.9 - 2024 Oct 26 ##
 
 - Add support for Node.js 23.x
